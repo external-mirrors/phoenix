@@ -1,0 +1,8 @@
+.{
+    .name = .xphoenix,
+    .version = "0.0.0",
+    .fingerprint = 0xad6a2037c2e0892a, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.14.1",
+    .dependencies = .{},
+    .paths = .{""},
+}

@@ -2,6 +2,9 @@ const std = @import("std");
 const x11 = @import("protocol/x11.zig");
 const request = @import("protocol/request.zig");
 const reply = @import("protocol/reply.zig");
+const Client = @import("Client.zig");
+const ResourceIdBaseManager = @import("ResourceIdBaseManager.zig");
+const ClientManager = @import("ClientManager.zig");
 
 const vendor = "XPhoenix";
 const root_window: x11.Card32 = 0x3b2;
@@ -17,6 +20,13 @@ pub fn main() !void {
     var server = try address.listen(.{});
     defer server.deinit();
 
+    var client_manager = ClientManager.init(allocator);
+    defer client_manager.deinit();
+
+    var resource_id_base_manager = ResourceIdBaseManager{};
+
+    // TODO: When a client is removed also remove its resource_id_base from resource_id_base_manager
+
     // TODO: Use auth if there is one added in xauthority file for the path (X1 is $USER/unix:1)
     // and validate client connection against it. Right now we accept all connections.
 
@@ -25,30 +35,38 @@ pub fn main() !void {
             std.log.err("connection from client failed, error: {s}\n", .{@errorName(err)});
             continue;
         };
-        defer connection.stream.close();
         std.log.info("got client connect", .{});
 
         var buffered_reader = std.io.bufferedReader(connection.stream.reader());
-        const reader = buffered_reader.reader();
-
         var buffered_writer = std.io.bufferedWriter(connection.stream.writer());
-        const writer = buffered_writer.writer();
 
-        handle_client_connect(reader, writer, allocator) catch |err| {
+        const resource_id_base = handle_client_connect(&buffered_reader, &buffered_writer, &resource_id_base_manager, allocator) catch |err| {
             std.log.err("Failed to handle client connect, error: {s}\n", .{@errorName(err)});
+            connection.stream.close();
             continue;
         };
-        try buffered_writer.flush();
+
+        try client_manager.add_client(Client.init(connection, resource_id_base));
     }
 }
 
-fn handle_client_connect(reader: anytype, writer: anytype, allocator: std.mem.Allocator) !void {
+// Returns the resource id base
+fn handle_client_connect(buffered_reader: anytype, buffered_writer: anytype, resource_id_base_manager: *ResourceIdBaseManager, allocator: std.mem.Allocator) !u32 {
+    const reader = buffered_reader.reader();
+    const writer = buffered_writer.writer();
+
     var connection_setup_request = try request.read_request(request.ConnectionSetupRequest, reader, allocator);
     defer connection_setup_request.deinit(allocator);
 
     std.log.info("auth_protocol_name_length: {s}", .{connection_setup_request.auth_protocol_name.items});
     std.log.info("auth_protocol_data_length: {s} (len: {d})", .{ std.fmt.fmtSliceHexLower(connection_setup_request.auth_protocol_data.items), connection_setup_request.auth_protocol_data.items.len });
     std.log.info("connection setup request: {}", .{x11.stringify_fmt(connection_setup_request)});
+
+    const resource_id_base = resource_id_base_manager.get_next_free() orelse {
+        std.log.warn("all resources id bases are exhausted, no more clients can be accepted", .{});
+        return error.ResourceIdBasesExhausted;
+    };
+    errdefer resource_id_base_manager.free(resource_id_base);
 
     var vendor_buf: [32]x11.Card8 = undefined;
     const ven = std.fmt.bufPrint(&vendor_buf, "{s}", .{vendor}) catch unreachable;
@@ -101,8 +119,8 @@ fn handle_client_connect(reader: anytype, writer: anytype, allocator: std.mem.Al
 
     var accept_reply = reply.ConnectionSetupAcceptReply{
         .release_number = 10000000,
-        .resource_id_base = 0x04000000, // TODO:
-        .resource_id_mask = 0x001fffff,
+        .resource_id_base = resource_id_base,
+        .resource_id_mask = ResourceIdBaseManager.resource_id_mask,
         .motion_buffer_size = 256,
         .maximum_request_length = 0xffff, // TODO: 16777212
         .image_byte_order = .lsb_first, // TODO:
@@ -117,6 +135,8 @@ fn handle_client_connect(reader: anytype, writer: anytype, allocator: std.mem.Al
     };
 
     try reply.send_reply(reply.ConnectionSetupAcceptReply, &accept_reply, writer);
+    try buffered_writer.flush();
+    return resource_id_base;
 }
 
 test "all tests" {

@@ -16,6 +16,9 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(exe);
 
+    const check = b.step("check", "Check if xphoenix compiles");
+    check.dependOn(&exe.step);
+
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {

@@ -1,6 +1,7 @@
 // Clients can create resources with ids from 0 to 0x001fffff (resource_id_mask).
 // To differentiate between each clients resources (with the same ids) each client has a different resource id base,
-// that is each bit after 0x001fffff (0xFFE00000).
+// that is each bit after 0x001fffff (0xFFE00000). That means that right now a maximum of 0xFFE (4094) clients can connect to
+// to the server at once.
 
 const std = @import("std");
 
@@ -8,7 +9,7 @@ const Self = @This();
 
 pub const resource_id_mask: u32 = 0x001fffff;
 const resource_id_base_size: u32 = 0xFFF; // Dont change this
-const base_bit_shift = @popCount(0xFFFFFFFF - resource_id_base_size);
+const base_bit_shift = @popCount(0xFFFFFFFF - resource_id_base_size) + 1;
 
 free_resource_id_bases: std.StaticBitSet(resource_id_base_size) = .initEmpty(),
 resource_id_base_counter: u32 = 1,

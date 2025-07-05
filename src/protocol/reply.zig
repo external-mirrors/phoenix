@@ -2,13 +2,13 @@ const std = @import("std");
 const x11 = @import("x11.zig");
 
 // TODO: Byteswap
-pub fn send_reply(comptime T: type, reply: *T, writer: anytype) !void {
+pub fn write_reply(comptime T: type, reply: *T, writer: anytype) !void {
     reply_set_length_fields(T, reply);
-    std.log.info("reply: {}", .{x11.stringify_fmt(reply)});
-    return send_reply_fields(T, reply, writer);
+    std.log.info("Reply: {}", .{x11.stringify_fmt(reply)});
+    return write_reply_fields(T, reply, writer);
 }
 
-fn send_reply_fields(comptime T: type, reply: *const T, writer: anytype) !void {
+fn write_reply_fields(comptime T: type, reply: *const T, writer: anytype) !void {
     if (@typeInfo(T) != .@"struct")
         @compileError("Expected T to be a struct, got: " ++ @typeName(T) ++ " which is a " ++ @tagName(@typeInfo(T)));
 
@@ -27,10 +27,10 @@ fn send_reply_fields(comptime T: type, reply: *const T, writer: anytype) !void {
             .bool => try writer.writeInt(x11.Card8, if (@field(reply, field.name)) 1 else 0, x11.native_endian),
             .@"struct" => {
                 if (@hasDecl(field.type, "get_options")) {
-                    try send_reply_protocol_list(field.type, &@field(reply, field.name), writer);
+                    try write_reply_list_of(field.type, &@field(reply, field.name), writer);
                 } else {
                     const field_value = &@field(reply, field.name);
-                    try send_reply_fields(@TypeOf(field_value.*), field_value, writer);
+                    try write_reply_fields(@TypeOf(field_value.*), field_value, writer);
                 }
             },
             else => @compileError("Only enum, integer and struct types are supported in replies right now, got: " ++ @typeName(T) ++ "." ++ field.name ++ " which is a " ++ @tagName(@typeInfo(field.type))),
@@ -38,22 +38,22 @@ fn send_reply_fields(comptime T: type, reply: *const T, writer: anytype) !void {
     }
 }
 
-fn send_reply_protocol_list(comptime T: type, protocol_list: *const T, writer: anytype) !void {
+fn write_reply_list_of(comptime T: type, list_of: *const T, writer: anytype) !void {
     const element_type = comptime T.get_element_type();
-    const protocol_list_options = comptime T.get_options();
+    const list_of_options = comptime T.get_options();
     switch (@typeInfo(element_type)) {
         .@"enum", .int => {
-            try writer.writeAll(protocol_list.items);
+            try writer.writeAll(list_of.items);
         },
         .@"struct" => {
-            for (protocol_list.items) |*item| {
-                try send_reply_fields(@TypeOf(item.*), item, writer);
+            for (list_of.items) |*item| {
+                try write_reply_fields(@TypeOf(item.*), item, writer);
             }
         },
         else => @compileError("Only enum, integer and struct types are supported as ListOf element types now, got: " ++ @typeName(element_type)),
     }
     // TODO: Calculate padding correctly by calculating how many bytes the above occupied, not length
-    try writer.writeByteNTimes(0, x11.padding(protocol_list.items.len, protocol_list_options.padding));
+    try writer.writeByteNTimes(0, x11.padding(list_of.items.len, list_of_options.padding));
 }
 
 fn reply_set_length_fields(comptime T: type, reply: *T) void {
@@ -69,10 +69,10 @@ fn reply_set_length_fields(comptime T: type, reply: *T) void {
 
         // comptime std.mem.startsWith(x11.Card8, field.name, "main.ListOf")
         if (@hasDecl(field.type, "get_options")) {
-            const protocol_list_options = comptime field.type.get_options();
-            const protocol_list = &@field(reply, field.name);
-            @field(reply, protocol_list_options.length_field) = @intCast(protocol_list.items.len);
-            reply_set_length_fields_protocol_list(field.type, &@field(reply, field.name));
+            const list_of_options = comptime field.type.get_options();
+            const list_of = &@field(reply, field.name);
+            @field(reply, list_of_options.length_field) = @intCast(list_of.items.len);
+            reply_set_length_fields_list_of(field.type, &@field(reply, field.name));
         } else {
             const field_value = &@field(reply, field.name);
             reply_set_length_fields(@TypeOf(field_value.*), field_value);
@@ -80,12 +80,12 @@ fn reply_set_length_fields(comptime T: type, reply: *T) void {
     }
 }
 
-fn reply_set_length_fields_protocol_list(comptime T: type, protocol_list: *const T) void {
+fn reply_set_length_fields_list_of(comptime T: type, list_of: *const T) void {
     const element_type = comptime T.get_element_type();
     switch (@typeInfo(element_type)) {
         .@"enum", .int => {},
         .@"struct" => {
-            for (protocol_list.items) |*item| {
+            for (list_of.items) |*item| {
                 reply_set_length_fields(@TypeOf(item.*), item);
             }
         },
@@ -107,7 +107,7 @@ fn calculate_reply_length_bytes(comptime T: type, reply: *T) i32 {
             .bool => size += 1,
             .@"struct" => {
                 if (@hasDecl(field.type, "get_options")) {
-                    size += calculate_reply_length_bytes_protocol_list(field.type, &@field(reply, field.name));
+                    size += calculate_reply_length_bytes_list_of(field.type, &@field(reply, field.name));
                 } else {
                     const field_value = &@field(reply, field.name);
                     size += calculate_reply_length_bytes(@TypeOf(field_value.*), field_value);
@@ -119,23 +119,23 @@ fn calculate_reply_length_bytes(comptime T: type, reply: *T) i32 {
     return size;
 }
 
-fn calculate_reply_length_bytes_protocol_list(comptime T: type, protocol_list: *const T) i32 {
+fn calculate_reply_length_bytes_list_of(comptime T: type, list_of: *const T) i32 {
     const element_type = comptime T.get_element_type();
-    const protocol_list_options = comptime T.get_options();
+    const list_of_options = comptime T.get_options();
     var size: i32 = 0;
     switch (@typeInfo(element_type)) {
         .@"enum", .int => {
-            size += @intCast(protocol_list.items.len * @sizeOf(element_type));
+            size += @intCast(list_of.items.len * @sizeOf(element_type));
         },
         .@"struct" => {
-            for (protocol_list.items) |*item| {
+            for (list_of.items) |*item| {
                 size += calculate_reply_length_bytes(@TypeOf(item.*), item);
             }
         },
         else => @compileError("Only enum, integer and struct types are supported as ListOf element types now, got: " ++ @typeName(element_type)),
     }
     // TODO: Calculate padding correctly by calculating how many bytes the above occupied, not length
-    size += @intCast(x11.padding(protocol_list.items.len, protocol_list_options.padding)); // TODO:
+    size += @intCast(x11.padding(list_of.items.len, list_of_options.padding)); // TODO:
     return size;
 }
 

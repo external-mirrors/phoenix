@@ -1,6 +1,5 @@
 const std = @import("std");
 const x11 = @import("x11.zig");
-const opcode = @import("opcode.zig");
 
 // TODO: Byteswap.
 // TODO: Use an arena allocator for all data and wrap the result type in a new struct which
@@ -82,7 +81,7 @@ pub const RequestHeader = extern struct {
 };
 
 pub const QueryExtensionRequest = struct {
-    opcode: opcode.Major,
+    opcode: x11.Card8, // opcode.Major
     pad1: x11.Card8,
     length: x11.Card16,
     length_of_name: x11.Card16,

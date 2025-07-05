@@ -3,7 +3,7 @@ const x11 = @import("x11.zig");
 
 // TODO: Byteswap
 pub fn write_reply(comptime T: type, reply: *T, writer: anytype) !void {
-    reply_set_length_fields(T, reply);
+    reply_set_length_fields_root(T, reply);
     std.log.info("Reply: {}", .{x11.stringify_fmt(reply)});
     return write_reply_fields(T, reply, writer);
 }
@@ -33,6 +33,17 @@ fn write_reply_fields(comptime T: type, reply: *const T, writer: anytype) !void 
                     try write_reply_fields(@TypeOf(field_value.*), field_value, writer);
                 }
             },
+            .array => |*arr| {
+                switch (arr.child) {
+                    x11.Card8 => {
+                        const slice = @field(reply, field.name);
+                        for (slice) |element| {
+                            try writer.writeInt(@TypeOf(element), element, x11.native_endian);
+                        }
+                    },
+                    else => @compileError("Only x11.Card8 arrays are supported right now, got array of " ++ @typeName(arr.child)),
+                }
+            },
             else => @compileError("Only enum, integer and struct types are supported in replies right now, got: " ++ @typeName(T) ++ "." ++ field.name ++ " which is a " ++ @tagName(@typeInfo(field.type))),
         }
     }
@@ -56,13 +67,20 @@ fn write_reply_list_of(comptime T: type, list_of: *const T, writer: anytype) !vo
     try writer.writeByteNTimes(0, x11.padding(list_of.items.len, list_of_options.padding));
 }
 
-fn reply_set_length_fields(comptime T: type, reply: *T) void {
-    if (@hasField(T, "header")) {
+fn reply_set_length_fields_root(comptime T: type, reply: *T) void {
+    if (@hasField(T, "header") or @hasField(T, "length")) {
         const header_size = if (T == ConnectionSetupAcceptReply) @sizeOf(ReplyHeader) else @sizeOf(GenericReply);
         const struct_length_without_header = @max(0, calculate_reply_length_bytes(T, reply) - header_size);
-        reply.header.length = @intCast(struct_length_without_header / 4);
+        if (@hasField(T, "header")) {
+            reply.header.length = @intCast(struct_length_without_header / 4);
+        } else if (@hasField(T, "length")) {
+            reply.length = @intCast(struct_length_without_header / 4);
+        }
     }
+    reply_set_length_fields(T, reply);
+}
 
+fn reply_set_length_fields(comptime T: type, reply: *T) void {
     inline for (@typeInfo(T).@"struct".fields) |*field| {
         if (@typeInfo(field.type) != .@"struct")
             continue;
@@ -111,6 +129,12 @@ fn calculate_reply_length_bytes(comptime T: type, reply: *T) i32 {
                 } else {
                     const field_value = &@field(reply, field.name);
                     size += calculate_reply_length_bytes(@TypeOf(field_value.*), field_value);
+                }
+            },
+            .array => |*arr| {
+                switch (arr.child) {
+                    x11.Card8 => size += (1 * arr.len),
+                    else => @compileError("Only x11.Card8 arrays are supported right now, got array of " ++ @typeName(arr.child)),
                 }
             },
             else => @compileError("Only enum, integer and struct types are supported in replies right now, got " ++ @typeName(T) ++ "." ++ field.name ++ " which is a " ++ @tagName(@typeInfo(field.type))),
@@ -272,7 +296,7 @@ pub const ReplyHeader = struct {
     type: ReplyType,
     data1: x11.Card8,
     sequence_number: x11.Card16,
-    length: x11.Card32,
+    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
 };
 
 pub const Str = struct {
@@ -284,7 +308,7 @@ pub const QueryExtensionReply = struct {
     type: ReplyType,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
-    length: x11.Card32,
+    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
     present: bool,
     major_opcode: x11.Card8,
     first_event: x11.Card8,
@@ -296,7 +320,7 @@ pub const ListExtensionsReply = struct {
     type: ReplyType,
     num_strs: x11.Card8,
     sequence_number: x11.Card16,
-    length: x11.Card32,
+    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
     pad1: [24]x11.Card8 = [_]x11.Card8{0} ** 24,
     names: x11.ListOf(Str, .{ .length_field = "num_strs", .padding = 4 }),
 };

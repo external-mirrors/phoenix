@@ -7,13 +7,15 @@ const ResourceIdBaseManager = @import("ResourceIdBaseManager.zig");
 const ClientManager = @import("ClientManager.zig");
 const opcode = @import("protocol/opcode.zig");
 const x11_error = @import("protocol/error.zig");
+const core_handler = @import("protocol/handlers/core.zig");
 
 const vendor = "XPhoenix";
 const root_window: x11.Card32 = 0x3b2;
 const screen_colormap: x11.Card32 = 0x20;
 const root_visual: x11.Card32 = 0x21;
 
-// TODO: Return Length error if request length header isn't long enough for the message
+// TODO: Return Length error if request length header isn't long enough for the message.
+// TODO: Support BIG-REQUESTS extension.
 
 pub fn main() !void {
     const allocator = std.heap.smp_allocator;
@@ -63,21 +65,6 @@ pub fn main() !void {
         const num_events = std.posix.epoll_wait(epoll_fd, &epoll_events, poll_timeout_ms);
         for (0..num_events) |event_index| {
             const epoll_event = &epoll_events[event_index];
-
-            if (epoll_event.events & (std.os.linux.EPOLL.RDHUP | std.os.linux.EPOLL.HUP) != 0) {
-                if (epoll_event.data.fd == server.stream.handle) {
-                    std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, epoll_event.data.fd, null) catch |err| {
-                        std.log.err("Epoll del failed for server: {d}. Error: {s}", .{ epoll_event.data.fd, @errorName(err) });
-                    };
-                    std.log.err("Server socket failed (HUP), closing " ++ vendor, .{});
-                    running = false;
-                    break;
-                } else {
-                    std.log.info("Client disconnected: {d}", .{epoll_event.data.fd});
-                    remove_client(epoll_fd, &client_manager, &resource_id_base_manager, epoll_event.data.fd);
-                    continue;
-                }
-            }
 
             if (epoll_event.data.fd == server.stream.handle) {
                 const connection = server.accept() catch |err| {
@@ -139,6 +126,21 @@ pub fn main() !void {
                     remove_client(epoll_fd, &client_manager, &resource_id_base_manager, client.connection.stream.handle);
                     continue;
                 };
+            }
+
+            if (epoll_event.events & (std.os.linux.EPOLL.RDHUP | std.os.linux.EPOLL.HUP) != 0) {
+                if (epoll_event.data.fd == server.stream.handle) {
+                    std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, epoll_event.data.fd, null) catch |err| {
+                        std.log.err("Epoll del failed for server: {d}. Error: {s}", .{ epoll_event.data.fd, @errorName(err) });
+                    };
+                    std.log.err("Server socket failed (HUP), closing " ++ vendor, .{});
+                    running = false;
+                    break;
+                } else {
+                    std.log.info("Client disconnected: {d}", .{epoll_event.data.fd});
+                    remove_client(epoll_fd, &client_manager, &resource_id_base_manager, epoll_event.data.fd);
+                    continue;
+                }
             }
         }
     }
@@ -269,32 +271,24 @@ fn handle_client_request(client: *Client, allocator: std.mem.Allocator) !bool {
     const client_data = client.read_buffer_slice(@sizeOf(request.RequestHeader)) orelse return false;
     const request_header: *const request.RequestHeader = @alignCast(@ptrCast(client_data.ptr));
     const request_header_length = request_header.length * 4;
-    std.log.info("Got client data. TODO: Handle. Opcode: {d}:{d}, length: {d}", .{ request_header.major_opcode, request_header.minor_opcode, request_header_length });
+    std.log.info("Got client data. Opcode: {d}:{d}, length: {d}", .{ request_header.major_opcode, request_header.minor_opcode, request_header_length });
     if (client.read_buffer_data_size() < request_header_length)
         return false;
 
-    switch (request_header.major_opcode) {
-        @intFromEnum(opcode.Major.query_extension) => {
-            const query_extension_request = try request.read_request(request.QueryExtensionRequest, client.read_buffer.reader(), allocator);
-            std.log.info("query extension: {s}", .{x11.stringify_fmt(query_extension_request)});
-            // TODO: Respond with success instead
-            const err = x11_error.Implementation{
-                .sequence_number = client.next_sequence_number(),
-                .minor_opcode = request_header.minor_opcode,
-                .major_opcode = request_header.major_opcode,
-            };
-            try client.write_buffer.writer().writeAll(std.mem.asBytes(&err));
-        },
-        else => {
-            std.log.warn("Unimplemented request: {d}", .{request_header.major_opcode});
-            const err = x11_error.Implementation{
-                .sequence_number = client.next_sequence_number(),
-                .minor_opcode = request_header.minor_opcode,
-                .major_opcode = request_header.major_opcode,
-            };
-            client.sequence_number +%= 1;
-            try client.write_buffer.writer().writeAll(std.mem.asBytes(&err));
-        },
+    // TODO: Respond to client with proper error
+    if (request_header.major_opcode == 0) {
+        return error.InvalidMajorOpcode;
+    } else if (request_header.major_opcode >= 1 and request_header.major_opcode <= 127) {
+        try core_handler.handle_request(client, request_header.major_opcode, request_header.minor_opcode, allocator);
+    } else {
+        // TODO: Implement
+        std.log.warn("Unimplemented extension request: {d}:{d}", .{ request_header.major_opcode, request_header.minor_opcode });
+        const err = x11_error.Implementation{
+            .sequence_number = client.next_sequence_number(),
+            .minor_opcode = request_header.minor_opcode,
+            .major_opcode = request_header.major_opcode,
+        };
+        try client.write_buffer.writer().writeAll(std.mem.asBytes(&err));
     }
 
     try client.write_buffer_to_client();

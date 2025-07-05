@@ -73,6 +73,7 @@ pub fn read_buffer_slice(self: *Self, size: usize) ?[]const u8 {
 }
 
 pub fn read_client_data_to_buffer(self: *Self) !void {
+    // TODO: Write directly to read_buffer instead from connection.stream
     var read_buffer: [4096]u8 = undefined;
     while (true) {
         const bytes_read = self.connection.stream.read(&read_buffer) catch |err| switch (err) {

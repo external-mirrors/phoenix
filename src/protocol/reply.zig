@@ -238,7 +238,7 @@ pub const GenericReply = extern struct {
     data05: x11.Card32,
 };
 
-pub const ReplyHeader = extern struct {
+pub const ConnectionSetupReplyHeader = extern struct {
     status: ReplyStatus = .success,
     pad1: x11.Card8 = 0,
     protocol_major_version: x11.Card16 = 28000, // TODO:
@@ -247,7 +247,7 @@ pub const ReplyHeader = extern struct {
 };
 
 pub const ConnectionSetupAcceptReply = struct {
-    header: ReplyHeader = .{},
+    header: ConnectionSetupReplyHeader = .{},
     release_number: x11.Card32,
     resource_id_base: x11.Card32,
     resource_id_mask: x11.Card32,
@@ -268,7 +268,40 @@ pub const ConnectionSetupAcceptReply = struct {
     screens: x11.ListOf(Screen, .{ .length_field = "num_screens" }),
 };
 
+pub const ReplyHeader = struct {
+    type: ReplyType,
+    data1: x11.Card8,
+    sequence_number: x11.Card16,
+    length: x11.Card32,
+};
+
+pub const Str = struct {
+    length: x11.Card8,
+    data: x11.ListOf(x11.Card8, .{ .length_field = "length" }),
+};
+
+pub const QueryExtensionReply = struct {
+    type: ReplyType,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16,
+    length: x11.Card32,
+    present: bool,
+    major_opcode: x11.Card8,
+    first_event: x11.Card8,
+    first_error: x11.Card8,
+    pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
+};
+
+pub const ListExtensionsReply = struct {
+    type: ReplyType,
+    num_strs: x11.Card8,
+    sequence_number: x11.Card16,
+    length: x11.Card32,
+    pad1: [24]x11.Card8 = [_]x11.Card8{0} ** 24,
+    names: x11.ListOf(Str, .{ .length_field = "num_strs", .padding = 4 }),
+};
+
 test "sizes" {
-    try std.testing.expectEqual(8, @sizeOf(ReplyHeader));
+    try std.testing.expectEqual(8, @sizeOf(ConnectionSetupReplyHeader));
     try std.testing.expectEqual(32, @sizeOf(GenericReply));
 }

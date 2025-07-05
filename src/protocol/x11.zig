@@ -25,6 +25,7 @@ pub fn ListOf(comptime T: type, comptime options: ListOfOptions) type {
     };
 }
 
+/// Automatically adds the padding (4) after the string
 pub fn String8(length_field: []const u8) type {
     return ListOf(Card8, .{ .length_field = length_field, .padding = 4 });
 }

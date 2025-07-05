@@ -5,11 +5,15 @@ const reply = @import("protocol/reply.zig");
 const Client = @import("Client.zig");
 const ResourceIdBaseManager = @import("ResourceIdBaseManager.zig");
 const ClientManager = @import("ClientManager.zig");
+const opcode = @import("protocol/opcode.zig");
+const x11_error = @import("protocol/error.zig");
 
 const vendor = "XPhoenix";
 const root_window: x11.Card32 = 0x3b2;
 const screen_colormap: x11.Card32 = 0x20;
 const root_visual: x11.Card32 = 0x21;
+
+// TODO: Return Length error if request length header isn't long enough for the message
 
 pub fn main() !void {
     const allocator = std.heap.smp_allocator;
@@ -80,8 +84,9 @@ pub fn main() !void {
                     std.log.err("Connection from client failed, error: {s}", .{@errorName(err)});
                     continue;
                 };
+
                 add_client(epoll_fd, connection, &client_manager, &resource_id_base_manager, allocator) catch |err| {
-                    std.log.err("Failed to add client: {d}. Error: {s}", .{ connection.stream.handle, @errorName(err) });
+                    std.log.err("Failed to add client: {d}, disconnecting client. Error: {s}", .{ connection.stream.handle, @errorName(err) });
                     connection.stream.close();
                 };
             } else if (epoll_event.events & std.os.linux.EPOLL.IN != 0) {
@@ -99,7 +104,7 @@ pub fn main() !void {
                 switch (client.state) {
                     .connecting => {
                         const finished = handle_client_connect(client, allocator) catch |err| {
-                            std.log.err("Client connection setup failed: {d}. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
+                            std.log.err("Client connection setup failed: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
                             remove_client(epoll_fd, &client_manager, &resource_id_base_manager, client.connection.stream.handle);
                             continue;
                         };
@@ -112,21 +117,25 @@ pub fn main() !void {
                         continue;
                     },
                     .connected => {
-                        // TODO: Byteswap
-                        const client_data = client.read_buffer_slice(@sizeOf(request.RequestHeader)) orelse continue;
-                        const request_header: *const request.RequestHeader = @alignCast(@ptrCast(client_data.ptr));
-                        std.log.info("Got client data. TODO: Handle. Opcode: {d}:{d}, length: {d}", .{ request_header.major_opcode, request_header.minor_opcode, request_header.length });
+                        const finished = handle_client_request(client, allocator) catch |err| {
+                            std.log.err("Client request handling failed: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
+                            remove_client(epoll_fd, &client_manager, &resource_id_base_manager, client.connection.stream.handle);
+                            continue;
+                        };
+
+                        if (finished) {
+                            client.clear_read_buffer_data();
+                        }
                     },
                 }
             } else if (epoll_event.events & std.os.linux.EPOLL.OUT != 0) {
-                std.log.info("Client is ready for output", .{});
                 var client = client_manager.get_client(epoll_event.data.fd) orelse {
                     std.log.err("Output data is ready for an unknown client: {d}", .{epoll_event.data.fd});
                     continue;
                 };
 
                 client.write_buffer_to_client() catch |err| {
-                    std.log.err("Failed to write data to client: {d}. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
+                    std.log.err("Failed to write data to client: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
                     remove_client(epoll_fd, &client_manager, &resource_id_base_manager, client.connection.stream.handle);
                     continue;
                 };
@@ -254,10 +263,49 @@ fn handle_client_connect(client: *Client, allocator: std.mem.Allocator) !bool {
     return true;
 }
 
+/// Returns true if the client request finished
+fn handle_client_request(client: *Client, allocator: std.mem.Allocator) !bool {
+    // TODO: Byteswap
+    const client_data = client.read_buffer_slice(@sizeOf(request.RequestHeader)) orelse return false;
+    const request_header: *const request.RequestHeader = @alignCast(@ptrCast(client_data.ptr));
+    const request_header_length = request_header.length * 4;
+    std.log.info("Got client data. TODO: Handle. Opcode: {d}:{d}, length: {d}", .{ request_header.major_opcode, request_header.minor_opcode, request_header_length });
+    if (client.read_buffer_data_size() < request_header_length)
+        return false;
+
+    switch (request_header.major_opcode) {
+        @intFromEnum(opcode.Major.query_extension) => {
+            const query_extension_request = try request.read_request(request.QueryExtensionRequest, client.read_buffer.reader(), allocator);
+            std.log.info("query extension: {s}", .{x11.stringify_fmt(query_extension_request)});
+            // TODO: Respond with success instead
+            const err = x11_error.Implementation{
+                .sequence_number = client.next_sequence_number(),
+                .minor_opcode = request_header.minor_opcode,
+                .major_opcode = request_header.major_opcode,
+            };
+            try client.write_buffer.writer().writeAll(std.mem.asBytes(&err));
+        },
+        else => {
+            std.log.warn("Unimplemented request: {d}", .{request_header.major_opcode});
+            const err = x11_error.Implementation{
+                .sequence_number = client.next_sequence_number(),
+                .minor_opcode = request_header.minor_opcode,
+                .major_opcode = request_header.major_opcode,
+            };
+            client.sequence_number +%= 1;
+            try client.write_buffer.writer().writeAll(std.mem.asBytes(&err));
+        },
+    }
+
+    try client.write_buffer_to_client();
+    return true;
+}
+
 test "all tests" {
     _ = @import("protocol/x11.zig");
     _ = @import("protocol/request.zig");
     _ = @import("protocol/reply.zig");
+    _ = @import("protocol/error.zig");
     _ = @import("Client.zig");
     _ = @import("ClientManager.zig");
     _ = @import("ResourceIdBaseManager.zig");

@@ -15,6 +15,7 @@ state: State,
 read_buffer: DataBuffer,
 write_buffer: DataBuffer,
 resource_id_base: u32,
+sequence_number: u16,
 
 pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, allocator: std.mem.Allocator) Self {
     return .{
@@ -23,6 +24,7 @@ pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, alloca
         .read_buffer = .init(allocator),
         .write_buffer = .init(allocator),
         .resource_id_base = resource_id_base,
+        .sequence_number = 1,
     };
 }
 
@@ -99,4 +101,12 @@ pub fn write_buffer_to_client(self: *Self) !void {
         std.log.info("Wrote {d} bytes to client {d}", .{ bytes_written, self.connection.stream.handle });
         self.write_buffer.discard(bytes_written);
     }
+}
+
+pub fn next_sequence_number(self: *Self) u16 {
+    const sequence = self.sequence_number;
+    self.sequence_number +%= 1;
+    if (self.sequence_number == 0)
+        self.sequence_number = 1;
+    return sequence;
 }

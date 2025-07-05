@@ -40,6 +40,6 @@ pub fn remove_client(self: *Self, client_to_remove_fd: std.posix.socket_t) ?Clie
     return if (self.clients.fetchRemove(client_to_remove_fd)) |removed_item| removed_item.value else null;
 }
 
-pub fn get_client(self: *Self, client_fd: std.posix.socket_t) ?Client {
-    return self.clients.get(client_fd);
+pub fn get_client(self: *Self, client_fd: std.posix.socket_t) ?*Client {
+    return if (self.clients.getPtr(client_fd)) |client| client else null;
 }

@@ -22,20 +22,6 @@ pub fn ListOf(comptime T: type, comptime options: ListOfOptions) type {
         pub fn get_element_type() type {
             return T;
         }
-
-        // pub fn format(
-        //     self: @This(),
-        //     comptime fmt: []const u8,
-        //     fmt_options: std.fmt.FormatOptions,
-        //     writer: anytype,
-        // ) !void {
-        //     _ = fmt_options;
-        //     std.debug.print("fmt: {s}\n", .{fmt});
-        //     return switch (T) {
-        //         u8 => writer.writeAll(self.items),
-        //         else => std.fmt.formatType(self.items, "{" ++ fmt ++ "}", .{}, writer, 32),
-        //     };
-        // }
     };
 }
 

@@ -62,8 +62,8 @@ pub fn main() !void {
 
             if (epoll_event.events & (std.os.linux.EPOLL.RDHUP | std.os.linux.EPOLL.HUP) != 0) {
                 if (epoll_event.data.fd == server.stream.handle) {
-                    std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, epoll_event.data.fd, null) catch {
-                        std.log.err("Epoll del failed for server: {d}", .{epoll_event.data.fd});
+                    std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, epoll_event.data.fd, null) catch |err| {
+                        std.log.err("Epoll del failed for server: {d}. Error: {s}", .{ epoll_event.data.fd, @errorName(err) });
                     };
                     std.log.err("Server socket failed (HUP), closing " ++ vendor, .{});
                     running = false;
@@ -98,7 +98,7 @@ pub fn main() !void {
 
                 switch (client.state) {
                     .connecting => {
-                        const finished = handle_client_connect(&client, allocator) catch |err| {
+                        const finished = handle_client_connect(client, allocator) catch |err| {
                             std.log.err("Client connection setup failed: {d}. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
                             remove_client(epoll_fd, &client_manager, &resource_id_base_manager, client.connection.stream.handle);
                             continue;
@@ -112,7 +112,10 @@ pub fn main() !void {
                         continue;
                     },
                     .connected => {
-                        std.log.info("Got client data. TODO: Handle", .{});
+                        // TODO: Byteswap
+                        const client_data = client.read_buffer_slice(@sizeOf(request.RequestHeader)) orelse continue;
+                        const request_header: *const request.RequestHeader = @alignCast(@ptrCast(client_data.ptr));
+                        std.log.info("Got client data. TODO: Handle. Opcode: {d}:{d}, length: {d}", .{ request_header.major_opcode, request_header.minor_opcode, request_header.length });
                     },
                 }
             } else if (epoll_event.events & std.os.linux.EPOLL.OUT != 0) {
@@ -158,8 +161,8 @@ fn add_client(epoll_fd: std.posix.fd_t, connection: std.net.Server.Connection, c
 }
 
 fn remove_client(epoll_fd: std.posix.fd_t, client_manager: *ClientManager, resource_id_base_manager: *ResourceIdBaseManager, client_fd: std.posix.socket_t) void {
-    std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, client_fd, null) catch {
-        std.log.err("Epoll del failed for client: {d}", .{client_fd});
+    std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, client_fd, null) catch |err| {
+        std.log.err("Epoll del failed for client: {d}. Error: {s}", .{ client_fd, @errorName(err) });
     };
     if (client_manager.remove_client(client_fd)) |client_removed|
         resource_id_base_manager.free(client_removed.resource_id_base);
@@ -168,6 +171,7 @@ fn remove_client(epoll_fd: std.posix.fd_t, client_manager: *ClientManager, resou
 /// Returns true if the client connection finished
 fn handle_client_connect(client: *Client, allocator: std.mem.Allocator) !bool {
     const client_data = client.read_buffer_slice(@sizeOf(request.ConnectionSetupRequest)) orelse return false;
+    // TODO: byteswap
     const connection_request_header: *const request.ConnectionSetupRequestHeader = @alignCast(@ptrCast(client_data.ptr));
     if (client.read_buffer_data_size() < connection_request_header.total_size())
         return false;
@@ -254,4 +258,7 @@ test "all tests" {
     _ = @import("protocol/x11.zig");
     _ = @import("protocol/request.zig");
     _ = @import("protocol/reply.zig");
+    _ = @import("Client.zig");
+    _ = @import("ClientManager.zig");
+    _ = @import("ResourceIdBaseManager.zig");
 }

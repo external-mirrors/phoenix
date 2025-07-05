@@ -39,7 +39,16 @@ pub const ConnectionSetupRequest = struct {
     }
 };
 
-// TODO: Byteswap
+pub const RequestHeader = extern struct {
+    major_opcode: x11.Card8,
+    minor_opcode: x11.Card8,
+    length: x11.Card16,
+};
+
+// TODO: Byteswap.
+// TODO: Use an arena allocator for all data and wrap the result type in a new struct which
+// includes the arena allocator and has a deinit method that does deinit on the arena,
+// just like how std.json.parse works.
 /// The returned data can have reference to the slice in |reader|, so that slice needs to be valid
 /// as long as the returned data is used.
 pub fn read_request(comptime T: type, reader: anytype, allocator: std.mem.Allocator) !T {
@@ -73,4 +82,5 @@ pub fn read_request(comptime T: type, reader: anytype, allocator: std.mem.Alloca
 
 test "sizes" {
     try std.testing.expectEqual(12, @sizeOf(ConnectionSetupRequestHeader));
+    try std.testing.expectEqual(4, @sizeOf(RequestHeader));
 }

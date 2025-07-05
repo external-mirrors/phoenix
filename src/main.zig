@@ -300,6 +300,7 @@ test "all tests" {
     _ = @import("protocol/request.zig");
     _ = @import("protocol/reply.zig");
     _ = @import("protocol/error.zig");
+    _ = @import("protocol/handlers/core.zig");
     _ = @import("Client.zig");
     _ = @import("ClientManager.zig");
     _ = @import("ResourceIdBaseManager.zig");

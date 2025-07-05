@@ -88,33 +88,7 @@ pub fn main() !void {
                     continue;
                 };
 
-                switch (client.state) {
-                    .connecting => {
-                        const finished = handle_client_connect(client, allocator) catch |err| {
-                            std.log.err("Client connection setup failed: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
-                            remove_client(epoll_fd, &client_manager, &resource_id_base_manager, client.connection.stream.handle);
-                            continue;
-                        };
-
-                        if (finished) {
-                            client.state = .connected;
-                            client.clear_read_buffer_data();
-                        }
-
-                        continue;
-                    },
-                    .connected => {
-                        const finished = handle_client_request(client, allocator) catch |err| {
-                            std.log.err("Client request handling failed: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
-                            remove_client(epoll_fd, &client_manager, &resource_id_base_manager, client.connection.stream.handle);
-                            continue;
-                        };
-
-                        if (finished) {
-                            client.clear_read_buffer_data();
-                        }
-                    },
-                }
+                process_all_client_requests(epoll_fd, &client_manager, &resource_id_base_manager, client, allocator);
             } else if (epoll_event.events & std.os.linux.EPOLL.OUT != 0) {
                 var client = client_manager.get_client(epoll_event.data.fd) orelse {
                     std.log.err("Output data is ready for an unknown client: {d}", .{epoll_event.data.fd});
@@ -179,7 +153,37 @@ fn remove_client(epoll_fd: std.posix.fd_t, client_manager: *ClientManager, resou
         resource_id_base_manager.free(client_removed.resource_id_base);
 }
 
-/// Returns true if the client connection finished
+fn process_all_client_requests(epoll_fd: std.posix.fd_t, client_manager: *ClientManager, resource_id_base_manager: *ResourceIdBaseManager, client: *Client, allocator: std.mem.Allocator) void {
+    while (true) {
+        switch (client.state) {
+            .connecting => {
+                const finished = handle_client_connect(client, allocator) catch |err| {
+                    std.log.err("Client connection setup failed: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
+                    remove_client(epoll_fd, client_manager, resource_id_base_manager, client.connection.stream.handle);
+                    continue;
+                };
+
+                if (finished) {
+                    client.state = .connected;
+                } else {
+                    return;
+                }
+            },
+            .connected => {
+                const finished = handle_client_request(client, allocator) catch |err| {
+                    std.log.err("Client request handling failed: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
+                    remove_client(epoll_fd, client_manager, resource_id_base_manager, client.connection.stream.handle);
+                    continue;
+                };
+
+                if (!finished)
+                    return;
+            },
+        }
+    }
+}
+
+/// Returns true if there was enough data from the client to handle the request
 fn handle_client_connect(client: *Client, allocator: std.mem.Allocator) !bool {
     const client_data = client.read_buffer_slice(@sizeOf(request.ConnectionSetupRequest)) orelse return false;
     // TODO: byteswap
@@ -265,7 +269,7 @@ fn handle_client_connect(client: *Client, allocator: std.mem.Allocator) !bool {
     return true;
 }
 
-/// Returns true if the client request finished
+/// Returns true if there was enough data from the client to handle the request
 fn handle_client_request(client: *Client, allocator: std.mem.Allocator) !bool {
     // TODO: Byteswap
     const client_data = client.read_buffer_slice(@sizeOf(request.RequestHeader)) orelse return false;
@@ -274,6 +278,8 @@ fn handle_client_request(client: *Client, allocator: std.mem.Allocator) !bool {
     std.log.info("Got client data. Opcode: {d}:{d}, length: {d}", .{ request_header.major_opcode, request_header.minor_opcode, request_header_length });
     if (client.read_buffer_data_size() < request_header_length)
         return false;
+
+    const bytes_available_to_read_before = client.read_buffer_data_size();
 
     // TODO: Respond to client with proper error
     if (request_header.major_opcode == 0) {
@@ -289,6 +295,16 @@ fn handle_client_request(client: *Client, allocator: std.mem.Allocator) !bool {
             .major_opcode = request_header.major_opcode,
         };
         try client.write_buffer.writer().writeAll(std.mem.asBytes(&err));
+    }
+
+    const bytes_available_to_read_after = client.read_buffer_data_size();
+    std.debug.assert(bytes_available_to_read_after <= bytes_available_to_read_before);
+    // TODO: If this isn't equal to request_header_length then return Length error. For now we skip those bytes
+    const bytes_read = bytes_available_to_read_before - bytes_available_to_read_after;
+    if (bytes_read > request_header_length) {
+        std.log.err("Handler read more bytes than request header! expected to read {d} bytes, actually read {d} bytes", .{ request_header_length, bytes_read });
+    } else if (bytes_read < request_header_length) {
+        try client.read_buffer.reader().skipBytes(request_header_length - bytes_read, .{});
     }
 
     try client.write_buffer_to_client();

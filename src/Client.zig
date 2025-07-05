@@ -45,23 +45,23 @@ fn append_data_to_read_buffer(self: *Self, data: []const u8) !void {
     return self.read_buffer.write(data);
 }
 
-pub fn erase_data_front_read_buffer(self: *Self, size: usize) void {
-    if (size >= self.read_buffer.readableLength()) {
-        self.read_buffer.discard(self.read_buffer.readableLength());
-    } else {
-        self.read_buffer.discard(size);
-    }
-}
+// pub fn erase_data_front_read_buffer(self: *Self, size: usize) void {
+//     if (size >= self.read_buffer.readableLength()) {
+//         self.read_buffer.discard(self.read_buffer.readableLength());
+//     } else {
+//         self.read_buffer.discard(size);
+//     }
+// }
 
-/// Clears the data and deallocates it (resizes to 0)
-pub fn reset_read_buffer_data(self: *Self) void {
-    self.read_buffer.discard(self.read_buffer.readableLength());
-    self.read_buffer.shrink(0);
-}
+// /// Clears the data and deallocates it (resizes to 0)
+// pub fn reset_read_buffer_data(self: *Self) void {
+//     self.read_buffer.discard(self.read_buffer.readableLength());
+//     self.read_buffer.shrink(0);
+// }
 
-pub fn clear_read_buffer_data(self: *Self) void {
-    self.read_buffer.discard(self.read_buffer.readableLength());
-}
+// pub fn clear_read_buffer_data(self: *Self) void {
+//     self.read_buffer.discard(self.read_buffer.readableLength());
+// }
 
 pub fn read_buffer_data_size(self: *Self) usize {
     return self.read_buffer.readableLength();

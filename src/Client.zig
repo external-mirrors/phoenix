@@ -2,6 +2,9 @@ const std = @import("std");
 const Window = @import("Window.zig");
 const ResourceIdBaseManager = @import("ResourceIdBaseManager.zig");
 const resource = @import("resource.zig");
+const request = @import("protocol/request.zig");
+const reply = @import("protocol/reply.zig");
+const x11_error = @import("protocol/error.zig");
 const x11 = @import("protocol/x11.zig");
 
 const Self = @This();
@@ -117,6 +120,20 @@ pub fn write_buffer_to_client(self: *Self) !void {
         std.log.info("Wrote {d} bytes to client {d}", .{ bytes_written, self.connection.stream.handle });
         self.write_buffer.discard(bytes_written);
     }
+}
+
+pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator) !T {
+    return request.read_request(T, self.read_buffer.reader(), allocator);
+}
+
+pub fn write_reply(self: *Self, reply_data: anytype) !void {
+    if (@typeInfo(@TypeOf(reply_data)) != .pointer)
+        @compileError("Expected reply data to be a pointer");
+    return reply.write_reply(@TypeOf(reply_data.*), reply_data, self.write_buffer.writer());
+}
+
+pub fn write_error(self: *Self, err: *const x11_error.Error) !void {
+    return self.write_buffer.writer().writeAll(std.mem.asBytes(err));
 }
 
 pub fn next_sequence_number(self: *Self) u16 {

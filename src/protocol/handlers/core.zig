@@ -24,7 +24,7 @@ pub fn handle_request(client: *Client, request_header: *const request.RequestHea
                 .minor_opcode = request_header.minor_opcode,
                 .major_opcode = request_header.major_opcode,
             };
-            try client.write_buffer.writer().writeAll(std.mem.asBytes(&err));
+            try client.write_error(&err);
         },
     }
 }
@@ -38,8 +38,7 @@ fn do_shit(shit: Shit) void {
 }
 
 fn intern_atom(client: *Client, request_header: *const request.RequestHeader, sequence_number: u16, allocator: std.mem.Allocator) !void {
-    const writer = client.write_buffer.writer();
-    const intern_atom_request = try request.read_request(request.InternAtomRequest, client.read_buffer.reader(), allocator);
+    const intern_atom_request = try client.read_request(request.InternAtomRequest, allocator);
     std.log.info("InternAtom request: {s}", .{x11.stringify_fmt(intern_atom_request)});
 
     var atom: x11.Atom = undefined;
@@ -55,7 +54,7 @@ fn intern_atom(client: *Client, request_header: *const request.RequestHeader, se
                     .minor_opcode = request_header.minor_opcode,
                     .major_opcode = request_header.major_opcode,
                 };
-                try writer.writeAll(std.mem.asBytes(&err_reply));
+                try client.write_error(&err_reply);
                 return;
             },
         };
@@ -66,13 +65,12 @@ fn intern_atom(client: *Client, request_header: *const request.RequestHeader, se
         .sequence_number = sequence_number,
         .atom = atom,
     };
-    try reply.write_reply(reply.InternAtomReply, &intern_atom_reply, writer);
+    try client.write_reply(&intern_atom_reply);
 }
 
 // TODO: Actually read the request values, handling them properly
 fn get_property(client: *Client, request_header: *const request.RequestHeader, sequence_number: u16, allocator: std.mem.Allocator) !void {
-    const writer = client.write_buffer.writer();
-    const get_property_request = try request.read_request(request.GetProperyRequest, client.read_buffer.reader(), allocator);
+    const get_property_request = try client.read_request(request.GetProperyRequest, allocator);
     std.log.info("GetProperty request: {s}", .{x11.stringify_fmt(get_property_request)});
     // TODO: Error if running in security mode and the window is not owned by the client
     const window = resource.get_window(get_property_request.window) orelse {
@@ -84,7 +82,7 @@ fn get_property(client: *Client, request_header: *const request.RequestHeader, s
             .minor_opcode = request_header.minor_opcode,
             .major_opcode = request_header.major_opcode,
         };
-        try writer.writeAll(std.mem.asBytes(&err));
+        try client.write_error(&err);
         return;
     };
 
@@ -97,7 +95,7 @@ fn get_property(client: *Client, request_header: *const request.RequestHeader, s
             .minor_opcode = request_header.minor_opcode,
             .major_opcode = request_header.major_opcode,
         };
-        try writer.writeAll(std.mem.asBytes(&err));
+        try client.write_error(&err);
         return;
     };
 
@@ -112,7 +110,7 @@ fn get_property(client: *Client, request_header: *const request.RequestHeader, s
             .bytes_after = 0,
             .data = .{ .items = property.string8.items },
         };
-        try reply.write_reply(reply.GetPropertyCard8Reply, &get_property_reply, writer);
+        try client.write_reply(&get_property_reply);
     } else {
         // TODO: Proper error
         const err = x11_error.Error{
@@ -122,7 +120,7 @@ fn get_property(client: *Client, request_header: *const request.RequestHeader, s
             .minor_opcode = request_header.minor_opcode,
             .major_opcode = request_header.major_opcode,
         };
-        try writer.writeAll(std.mem.asBytes(&err));
+        try client.write_error(&err);
         return;
     }
 }
@@ -132,8 +130,7 @@ fn create_gc(_: *Client, _: *const request.RequestHeader, _: u16, _: std.mem.All
 }
 
 fn query_extension(client: *Client, _: *const request.RequestHeader, sequence_number: u16, allocator: std.mem.Allocator) !void {
-    const writer = client.write_buffer.writer();
-    const query_extension_request = try request.read_request(request.QueryExtensionRequest, client.read_buffer.reader(), allocator);
+    const query_extension_request = try client.read_request(request.QueryExtensionRequest, allocator);
     std.log.info("QueryExtension request: {s}", .{x11.stringify_fmt(query_extension_request)});
     // TODO: Return correct data
     var query_extension_reply = reply.QueryExtensionReply{
@@ -144,5 +141,5 @@ fn query_extension(client: *Client, _: *const request.RequestHeader, sequence_nu
         .first_event = 0,
         .first_error = 0,
     };
-    try reply.write_reply(reply.QueryExtensionReply, &query_extension_reply, writer);
+    try client.write_reply(&query_extension_reply);
 }

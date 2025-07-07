@@ -201,7 +201,7 @@ fn handle_client_connect(client: *Client, allocator: std.mem.Allocator) !bool {
     const connection_request_header: *const request.ConnectionSetupRequestHeader = @alignCast(@ptrCast(client_data.ptr));
     if (client.read_buffer_data_size() < connection_request_header.total_size())
         return false;
-    const connection_setup_request = try request.read_request(request.ConnectionSetupRequest, client.read_buffer.reader(), allocator);
+    const connection_setup_request = try client.read_request(request.ConnectionSetupRequest, allocator);
 
     std.log.info("auth_protocol_name_length: {s}", .{connection_setup_request.auth_protocol_name.items});
     std.log.info("auth_protocol_data_length: {s} (len: {d})", .{ std.fmt.fmtSliceHexLower(connection_setup_request.auth_protocol_data.items), connection_setup_request.auth_protocol_data.items.len });
@@ -274,8 +274,7 @@ fn handle_client_connect(client: *Client, allocator: std.mem.Allocator) !bool {
     };
 
     // TODO: Make sure writer doesn't write too much data, or disconnect the client if it does
-    const writer = client.write_buffer.writer();
-    try reply.write_reply(reply.ConnectionSetupAcceptReply, &accept_reply, writer);
+    try client.write_reply(&accept_reply);
     try client.write_buffer_to_client();
     return true;
 }
@@ -308,7 +307,7 @@ fn handle_client_request(client: *Client, allocator: std.mem.Allocator) !bool {
             .minor_opcode = request_header.minor_opcode,
             .major_opcode = request_header.major_opcode,
         };
-        try client.write_buffer.writer().writeAll(std.mem.asBytes(&err));
+        try client.write_error(&err);
     }
 
     const bytes_available_to_read_after = client.read_buffer_data_size();

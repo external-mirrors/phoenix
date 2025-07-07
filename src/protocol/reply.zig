@@ -324,11 +324,6 @@ fn GetPropertyReply(comptime DataType: type) type {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         type: x11.Atom,
         bytes_after: x11.Card32,
-        // In format units:
-        //   (= 0 for format = 0)
-        //   (= n for format = 8)
-        //   (= n/2 for format = 16)
-        //   (= n/4 for format = 32)
         value_length: x11.Card32 = 0,
         pad1: [12]x11.Card8 = [_]x11.Card8{0} ** 12,
         data: x11.ListOf(DataType, .{ .length_field = "value_length", .padding = 4 }),
@@ -338,6 +333,15 @@ fn GetPropertyReply(comptime DataType: type) type {
 pub const GetPropertyCard8Reply = GetPropertyReply(x11.Card8);
 pub const GetPropertyCard16Reply = GetPropertyReply(x11.Card16);
 pub const GetPropertyCard32Reply = GetPropertyReply(x11.Card32);
+
+pub const InternAtomReply = struct {
+    reply_type: ReplyType,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16,
+    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+    atom: x11.Atom,
+    pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
+};
 
 pub const ListExtensionsReply = struct {
     reply_type: ReplyType,

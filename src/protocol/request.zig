@@ -102,6 +102,15 @@ pub const GetProperyRequest = struct {
     long_length: x11.Card32,
 };
 
+pub const InternAtomRequest = struct {
+    opcode: x11.Card8, // opcode.Major
+    only_if_exists: bool,
+    length: x11.Card16,
+    length_of_name: x11.Card16,
+    pad1: x11.Card16,
+    name: x11.String8("length_of_name"),
+};
+
 test "sizes" {
     try std.testing.expectEqual(12, @sizeOf(ConnectionSetupRequestHeader));
     try std.testing.expectEqual(4, @sizeOf(RequestHeader));

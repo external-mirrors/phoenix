@@ -11,6 +11,7 @@ const Atom = @import("../Atom.zig");
 pub fn handle_request(client: *Client, request_header: *const request.RequestHeader, sequence_number: u16, allocator: std.mem.Allocator) !void {
     std.log.info("Handling core request: {d}", .{request_header.major_opcode});
     switch (request_header.major_opcode) {
+        opcode.Major.intern_atom => try intern_atom(client, request_header, sequence_number, allocator),
         opcode.Major.get_property => try get_property(client, request_header, sequence_number, allocator),
         opcode.Major.create_gc => try create_gc(client, request_header, sequence_number, allocator),
         opcode.Major.query_extension => try query_extension(client, request_header, sequence_number, allocator),
@@ -26,6 +27,38 @@ pub fn handle_request(client: *Client, request_header: *const request.RequestHea
             try client.write_buffer.writer().writeAll(std.mem.asBytes(&err));
         },
     }
+}
+
+fn intern_atom(client: *Client, request_header: *const request.RequestHeader, sequence_number: u16, allocator: std.mem.Allocator) !void {
+    const writer = client.write_buffer.writer();
+    const intern_atom_request = try request.read_request(request.InternAtomRequest, client.read_buffer.reader(), allocator);
+    std.log.info("InternAtom request: {s}", .{x11.stringify_fmt(intern_atom_request)});
+
+    var atom: x11.Atom = undefined;
+    if (intern_atom_request.only_if_exists) {
+        atom = if (Atom.get_atom_by_name(intern_atom_request.name.items)) |atom_id| atom_id else Atom.Predefined.none;
+    } else {
+        atom = if (Atom.get_atom_by_name_create_if_not_exists(intern_atom_request.name.items)) |atom_id| atom_id else |err| switch (err) {
+            error.OutOfMemory => {
+                const err_reply = x11_error.Error{
+                    .code = .alloc,
+                    .sequence_number = sequence_number,
+                    .value = 0,
+                    .minor_opcode = request_header.minor_opcode,
+                    .major_opcode = request_header.major_opcode,
+                };
+                try writer.writeAll(std.mem.asBytes(&err_reply));
+                return;
+            },
+        };
+    }
+
+    var intern_atom_reply = reply.InternAtomReply{
+        .reply_type = .reply,
+        .sequence_number = sequence_number,
+        .atom = atom,
+    };
+    try reply.write_reply(reply.InternAtomReply, &intern_atom_reply, writer);
 }
 
 // TODO: Actually read the request values, handling them properly

@@ -104,7 +104,7 @@ pub fn get_atom_by_name(name: []const u8) ?u32 {
     // TODO: Use hash map?
     for (atoms.items, 0..) |atom_name, atom_id| {
         if (std.mem.eql(u8, name, atom_name))
-            return atom_id;
+            return @intCast(atom_id);
     }
     return null;
 }
@@ -116,5 +116,5 @@ pub fn get_atom_by_name_create_if_not_exists(name: []const u8) !u32 {
     const atom_name = try allocator.dupe(u8, name);
     errdefer allocator.free(atom_name);
     try atoms.append(atom_name);
-    return atoms.items.len - 1;
+    return @intCast(atoms.items.len - 1);
 }

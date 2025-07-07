@@ -1,6 +1,11 @@
 const config = @import("config");
 
 pub usingnamespace @cImport({
+    @cInclude("GL/gl.h");
+    @cInclude("GL/glext.h");
+
+    @cInclude("EGL/egl.h");
+    @cInclude("EGL/eglext.h");
     // TODO: Need to do it like this for zls
     //if (config.backends.x11)
     @cInclude("xcb/xcb.h");

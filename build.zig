@@ -17,7 +17,7 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
-        .link_libc = backends.x11 or backends.wayland or backends.drm,
+        .link_libc = true,
         // .single_threaded = true,
     });
 
@@ -32,6 +32,7 @@ pub fn build(b: *std.Build) !void {
     b.installArtifact(exe);
 
     if (backends.x11) {
+        // TODO: Remove this, we can just use our existing X11 code to connect to the X server directly
         exe.root_module.linkSystemLibrary("xcb", .{});
     }
 
@@ -44,6 +45,9 @@ pub fn build(b: *std.Build) !void {
         exe.root_module.linkSystemLibrary("libdrm", .{});
         exe.root_module.linkSystemLibrary("gbm", .{});
     }
+
+    exe.root_module.linkSystemLibrary("gl", .{});
+    exe.root_module.linkSystemLibrary("egl", .{});
 
     const check = b.step("check", "Check if xphoenix compiles");
     check.dependOn(&exe.step);

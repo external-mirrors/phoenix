@@ -30,4 +30,7 @@ test "all tests" {
     _ = @import("backend/BackendX11.zig");
     _ = @import("backend/BackendWayland.zig");
     _ = @import("backend/BackendDrm.zig");
+
+    _ = @import("graphics/graphics.zig");
+    _ = @import("graphics/GraphicsEgl.zig");
 }

@@ -11,7 +11,7 @@ pub const Backend = union(enum) {
     pub fn init_x11(allocator: std.mem.Allocator) !Backend {
         const x11 = try allocator.create(BackendX11);
         errdefer allocator.destroy(x11);
-        x11.* = try .init();
+        x11.* = try .init(allocator);
         return .{ .x11 = x11 };
     }
 
@@ -32,7 +32,7 @@ pub const Backend = union(enum) {
     pub fn deinit(self: Backend, allocator: std.mem.Allocator) void {
         switch (self) {
             inline else => |item| {
-                item.deinit();
+                item.deinit(allocator);
                 allocator.destroy(item);
             },
         }
@@ -48,20 +48,20 @@ pub const Backend = union(enum) {
 test "x11" {
     const allocator = std.testing.allocator;
     const x11 = try Backend.init_x11(allocator);
-    try x11.create_window();
     defer x11.deinit(allocator);
+    try x11.create_window();
 }
 
 test "wayland" {
     const allocator = std.testing.allocator;
     const wayland = try Backend.init_wayland(allocator);
-    try wayland.create_window();
     defer wayland.deinit(allocator);
+    try wayland.create_window();
 }
 
 test "drm" {
     const allocator = std.testing.allocator;
     const drm = try Backend.init_drm(allocator);
-    try drm.create_window();
     defer drm.deinit(allocator);
+    try drm.create_window();
 }

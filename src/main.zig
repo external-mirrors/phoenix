@@ -19,12 +19,6 @@ var root_window: *Window = undefined;
 const screen_colormap: x11.Colormap = @enumFromInt(0x20);
 const root_visual: x11.VisualId = @enumFromInt(0x21);
 
-// TODO: Return Length error if request length header isn't long enough for the message.
-// TODO: Support BIG-REQUESTS extension.
-// TODO: Use auth if there is one added in xauthority file for the path (X1 is $USER/unix:1)
-//       and validate client connection against it. Right now we accept all connections.
-// TODO: Use epoll equivalent on other OS'
-
 pub fn main() !void {
     const allocator = std.heap.smp_allocator;
 

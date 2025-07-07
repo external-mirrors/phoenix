@@ -1,0 +1,6 @@
+Remove HashMaps usage when the key is an integer. Iterating an array is faster.
+Return Length error if request length header isn't long enough for the message.
+Support BIG-REQUESTS extension.
+Use auth if there is one added in xauthority file for the path (X1 is $USER/unix:1)
+    and validate client connection against it. Right now we accept all connections.
+Use epoll equivalent on other OS'.

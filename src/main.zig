@@ -11,6 +11,8 @@ const core_handler = @import("protocol/handlers/core.zig");
 const Window = @import("Window.zig");
 const resource = @import("resource.zig");
 const Atom = @import("protocol/Atom.zig");
+const RequestContext = @import("RequestContext.zig");
+const backend_imp = @import("backend/backend.zig");
 
 const vendor = "XPhoenix";
 var root_client: *Client = undefined;
@@ -44,6 +46,9 @@ pub fn main() !void {
     const epoll_fd = try std.posix.epoll_create1(0);
     if (epoll_fd == -1) return error.FailedToCreateEpoll;
     defer std.posix.close(epoll_fd);
+
+    var backend = try backend_imp.Backend.init_x11(allocator);
+    defer backend.deinit(allocator);
 
     const server_connection = std.net.Server.Connection{
         .stream = server.stream,
@@ -90,7 +95,7 @@ pub fn main() !void {
                     continue;
                 };
 
-                process_all_client_requests(epoll_fd, &client_manager, &resource_id_base_manager, client, allocator);
+                process_all_client_requests(epoll_fd, &client_manager, &resource_id_base_manager, client, backend, allocator);
             } else if (epoll_event.events & std.os.linux.EPOLL.OUT != 0) {
                 var client = client_manager.get_client(epoll_event.data.fd) orelse {
                     std.log.err("Output data is ready for an unknown client: {d}", .{epoll_event.data.fd});
@@ -158,7 +163,14 @@ fn remove_client(epoll_fd: std.posix.fd_t, client_manager: *ClientManager, resou
     }
 }
 
-fn process_all_client_requests(epoll_fd: std.posix.fd_t, client_manager: *ClientManager, resource_id_base_manager: *ResourceIdBaseManager, client: *Client, allocator: std.mem.Allocator) void {
+fn process_all_client_requests(
+    epoll_fd: std.posix.fd_t,
+    client_manager: *ClientManager,
+    resource_id_base_manager: *ResourceIdBaseManager,
+    client: *Client,
+    backend: backend_imp.Backend,
+    allocator: std.mem.Allocator,
+) void {
     while (true) {
         switch (client.state) {
             .connecting => {
@@ -175,7 +187,7 @@ fn process_all_client_requests(epoll_fd: std.posix.fd_t, client_manager: *Client
                 }
             },
             .connected => {
-                const finished = handle_client_request(client, allocator) catch |err| {
+                const finished = handle_client_request(client, backend, allocator) catch |err| {
                     std.log.err("Client request handling failed: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
                     remove_client(epoll_fd, client_manager, resource_id_base_manager, client.connection.stream.handle);
                     continue;
@@ -274,7 +286,7 @@ fn handle_client_connect(client: *Client, allocator: std.mem.Allocator) !bool {
 }
 
 /// Returns true if there was enough data from the client to handle the request
-fn handle_client_request(client: *Client, allocator: std.mem.Allocator) !bool {
+fn handle_client_request(client: *Client, backend: backend_imp.Backend, allocator: std.mem.Allocator) !bool {
     // TODO: Byteswap
     const client_data = client.read_buffer_slice(@sizeOf(request.RequestHeader)) orelse return false;
     const request_header: *const request.RequestHeader = @alignCast(@ptrCast(client_data.ptr));
@@ -283,20 +295,27 @@ fn handle_client_request(client: *Client, allocator: std.mem.Allocator) !bool {
     if (client.read_buffer_data_size() < request_header_length)
         return false;
 
-    const sequence_number = client.next_sequence_number();
+    const request_context = RequestContext{
+        .allocator = allocator,
+        .client = client,
+        .request_header = request_header,
+        .sequence_number = client.next_sequence_number(),
+        .backend = backend,
+    };
+
     const bytes_available_to_read_before = client.read_buffer_data_size();
 
     // TODO: Respond to client with proper error
     if (request_header.major_opcode == 0) {
         return error.InvalidMajorOpcode;
     } else if (request_header.major_opcode >= 1 and request_header.major_opcode <= 127) {
-        try core_handler.handle_request(client, request_header, sequence_number, allocator);
+        try core_handler.handle_request(request_context);
     } else {
         // TODO: Implement
         std.log.warn("Unimplemented extension request: {d}:{d}", .{ request_header.major_opcode, request_header.minor_opcode });
         const err = x11_error.Error{
             .code = .implementation,
-            .sequence_number = sequence_number,
+            .sequence_number = request_context.sequence_number,
             .value = 0,
             .minor_opcode = request_header.minor_opcode,
             .major_opcode = request_header.major_opcode,
@@ -334,6 +353,7 @@ test "all tests" {
     _ = @import("ResourceIdBaseManager.zig");
     _ = @import("Window.zig");
     _ = @import("resource.zig");
+    _ = @import("RequestContext.zig");
 
     _ = @import("backend/backend.zig");
     _ = @import("backend/BackendX11.zig");

@@ -12,12 +12,7 @@ pub fn read_request(comptime T: type, reader: anytype, allocator: std.mem.Alloca
     var request: T = undefined;
     inline for (@typeInfo(T).@"struct".fields) |*field| {
         switch (@typeInfo(field.type)) {
-            .@"enum" => |e| {
-                switch (e.tag_type) {
-                    x11.Card8 => @field(request, field.name) = @enumFromInt(try reader.readInt(x11.Card8, x11.native_endian)),
-                    else => @compileError("Only x11.Card8 enum types are supported in requests right now, got: " ++ @typeName(e.tag_type)),
-                }
-            },
+            .@"enum" => |e| @field(request, field.name) = try std.meta.intToEnum(field.type, try reader.readInt(e.tag_type, x11.native_endian)),
             .int => |i| @field(request, field.name) = try reader.readInt(@Type(.{ .int = i }), x11.native_endian),
             .bool => @field(request, field.name) = if (try reader.readInt(u8, x11.native_endian) == 0) false else true,
             .@"struct" => {

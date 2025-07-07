@@ -14,7 +14,7 @@ pub fn deinit_global_resources() void {
 }
 
 pub fn add_window(window: *Window) !void {
-    const result = try all_resources.getOrPut(window.window_id);
+    const result = try all_resources.getOrPut(@intFromEnum(window.window_id));
     std.debug.assert(!result.found_existing);
     result.value_ptr.* = .{ .window = window };
 }
@@ -24,7 +24,7 @@ pub fn remove_window(window: *Window) void {
 }
 
 pub fn get_window(window_id: x11.Window) ?*Window {
-    if (all_resources.get(window_id)) |resource| {
+    if (all_resources.get(@intFromEnum(window_id))) |resource| {
         return if (std.meta.activeTag(resource) == .window) resource.window else null;
     } else {
         return null;

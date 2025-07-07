@@ -1,75 +1,76 @@
 const std = @import("std");
+const x11 = @import("x11.zig");
 
 pub const Predefined = struct {
-    pub const none: u8 = 0;
-    pub const primary: u8 = 1;
-    pub const secondary: u8 = 2;
-    pub const arc: u8 = 3;
-    pub const atom: u8 = 4;
-    pub const bitmap: u8 = 5;
-    pub const cardinal: u8 = 6;
-    pub const colormap: u8 = 7;
-    pub const cursor: u8 = 8;
-    pub const cut_buffer0: u8 = 9;
-    pub const cut_buffer1: u8 = 10;
-    pub const cut_buffer2: u8 = 11;
-    pub const cut_buffer3: u8 = 12;
-    pub const cut_buffer4: u8 = 13;
-    pub const cut_buffer5: u8 = 14;
-    pub const cut_buffer6: u8 = 15;
-    pub const cut_buffer7: u8 = 16;
-    pub const drawable: u8 = 17;
-    pub const font: u8 = 18;
-    pub const integer: u8 = 19;
-    pub const pixmap: u8 = 20;
-    pub const point: u8 = 21;
-    pub const rectangle: u8 = 22;
-    pub const resource_manager: u8 = 23;
-    pub const rgb_color_map: u8 = 24;
-    pub const rgb_best_map: u8 = 25;
-    pub const rgb_blue_map: u8 = 26;
-    pub const rgb_default_map: u8 = 27;
-    pub const rgb_gray_map: u8 = 28;
-    pub const rgb_green_map: u8 = 29;
-    pub const rgb_red_map: u8 = 30;
-    pub const string: u8 = 31;
-    pub const visualid: u8 = 32;
-    pub const window: u8 = 33;
-    pub const wm_command: u8 = 34;
-    pub const wm_hints: u8 = 35;
-    pub const wm_client_machine: u8 = 36;
-    pub const wm_icon_name: u8 = 37;
-    pub const wm_icon_size: u8 = 38;
-    pub const wm_name: u8 = 39;
-    pub const wm_normal_hints: u8 = 40;
-    pub const wm_size_hints: u8 = 41;
-    pub const wm_zoom_hints: u8 = 42;
-    pub const min_space: u8 = 43;
-    pub const norm_space: u8 = 44;
-    pub const max_space: u8 = 45;
-    pub const end_space: u8 = 46;
-    pub const superscript_x: u8 = 47;
-    pub const superscript_y: u8 = 48;
-    pub const subscript_x: u8 = 49;
-    pub const subscript_y: u8 = 50;
-    pub const underline_position: u8 = 51;
-    pub const underline_thickness: u8 = 52;
-    pub const strikeout_ascent: u8 = 53;
-    pub const strikeout_descent: u8 = 54;
-    pub const italic_angle: u8 = 55;
-    pub const x_height: u8 = 56;
-    pub const quad_width: u8 = 57;
-    pub const weight: u8 = 58;
-    pub const point_size: u8 = 59;
-    pub const resolution: u8 = 60;
-    pub const copyright: u8 = 61;
-    pub const notice: u8 = 62;
-    pub const font_name: u8 = 63;
-    pub const family_name: u8 = 64;
-    pub const full_name: u8 = 65;
-    pub const cap_height: u8 = 66;
-    pub const wm_class: u8 = 67;
-    pub const wm_transient_for: u8 = 68;
+    pub const none: x11.Atom = @enumFromInt(0);
+    pub const primary: x11.Atom = @enumFromInt(1);
+    pub const secondary: x11.Atom = @enumFromInt(2);
+    pub const arc: x11.Atom = @enumFromInt(3);
+    pub const atom: x11.Atom = @enumFromInt(4);
+    pub const bitmap: x11.Atom = @enumFromInt(5);
+    pub const cardinal: x11.Atom = @enumFromInt(6);
+    pub const colormap: x11.Atom = @enumFromInt(7);
+    pub const cursor: x11.Atom = @enumFromInt(8);
+    pub const cut_buffer0: x11.Atom = @enumFromInt(9);
+    pub const cut_buffer1: x11.Atom = @enumFromInt(10);
+    pub const cut_buffer2: x11.Atom = @enumFromInt(11);
+    pub const cut_buffer3: x11.Atom = @enumFromInt(12);
+    pub const cut_buffer4: x11.Atom = @enumFromInt(13);
+    pub const cut_buffer5: x11.Atom = @enumFromInt(14);
+    pub const cut_buffer6: x11.Atom = @enumFromInt(15);
+    pub const cut_buffer7: x11.Atom = @enumFromInt(16);
+    pub const drawable: x11.Atom = @enumFromInt(17);
+    pub const font: x11.Atom = @enumFromInt(18);
+    pub const integer: x11.Atom = @enumFromInt(19);
+    pub const pixmap: x11.Atom = @enumFromInt(20);
+    pub const point: x11.Atom = @enumFromInt(21);
+    pub const rectangle: x11.Atom = @enumFromInt(22);
+    pub const resource_manager: x11.Atom = @enumFromInt(23);
+    pub const rgb_color_map: x11.Atom = @enumFromInt(24);
+    pub const rgb_best_map: x11.Atom = @enumFromInt(25);
+    pub const rgb_blue_map: x11.Atom = @enumFromInt(26);
+    pub const rgb_default_map: x11.Atom = @enumFromInt(27);
+    pub const rgb_gray_map: x11.Atom = @enumFromInt(28);
+    pub const rgb_green_map: x11.Atom = @enumFromInt(29);
+    pub const rgb_red_map: x11.Atom = @enumFromInt(30);
+    pub const string: x11.Atom = @enumFromInt(31);
+    pub const visualid: x11.Atom = @enumFromInt(32);
+    pub const window: x11.Atom = @enumFromInt(33);
+    pub const wm_command: x11.Atom = @enumFromInt(34);
+    pub const wm_hints: x11.Atom = @enumFromInt(35);
+    pub const wm_client_machine: x11.Atom = @enumFromInt(36);
+    pub const wm_icon_name: x11.Atom = @enumFromInt(37);
+    pub const wm_icon_size: x11.Atom = @enumFromInt(38);
+    pub const wm_name: x11.Atom = @enumFromInt(39);
+    pub const wm_normal_hints: x11.Atom = @enumFromInt(40);
+    pub const wm_size_hints: x11.Atom = @enumFromInt(41);
+    pub const wm_zoom_hints: x11.Atom = @enumFromInt(42);
+    pub const min_space: x11.Atom = @enumFromInt(43);
+    pub const norm_space: x11.Atom = @enumFromInt(44);
+    pub const max_space: x11.Atom = @enumFromInt(45);
+    pub const end_space: x11.Atom = @enumFromInt(46);
+    pub const superscript_x: x11.Atom = @enumFromInt(47);
+    pub const superscript_y: x11.Atom = @enumFromInt(48);
+    pub const subscript_x: x11.Atom = @enumFromInt(49);
+    pub const subscript_y: x11.Atom = @enumFromInt(50);
+    pub const underline_position: x11.Atom = @enumFromInt(51);
+    pub const underline_thickness: x11.Atom = @enumFromInt(52);
+    pub const strikeout_ascent: x11.Atom = @enumFromInt(53);
+    pub const strikeout_descent: x11.Atom = @enumFromInt(54);
+    pub const italic_angle: x11.Atom = @enumFromInt(55);
+    pub const x_height: x11.Atom = @enumFromInt(56);
+    pub const quad_width: x11.Atom = @enumFromInt(57);
+    pub const weight: x11.Atom = @enumFromInt(58);
+    pub const point_size: x11.Atom = @enumFromInt(59);
+    pub const resolution: x11.Atom = @enumFromInt(60);
+    pub const copyright: x11.Atom = @enumFromInt(61);
+    pub const notice: x11.Atom = @enumFromInt(62);
+    pub const font_name: x11.Atom = @enumFromInt(63);
+    pub const family_name: x11.Atom = @enumFromInt(64);
+    pub const full_name: x11.Atom = @enumFromInt(65);
+    pub const cap_height: x11.Atom = @enumFromInt(66);
+    pub const wm_class: x11.Atom = @enumFromInt(67);
+    pub const wm_transient_for: x11.Atom = @enumFromInt(68);
 };
 
 var allocator: std.mem.Allocator = undefined;
@@ -82,7 +83,7 @@ pub fn init(alloc: std.mem.Allocator) !void {
 
     inline for (@typeInfo(Predefined).@"struct".decls) |*decl| {
         const field = @field(Predefined, decl.name);
-        std.debug.assert(atoms.items.len == field);
+        std.debug.assert(atoms.items.len == @intFromEnum(field));
         const atom_name = try std.ascii.allocUpperString(allocator, decl.name);
         errdefer allocator.free(atom_name);
         try atoms.append(atom_name);
@@ -96,25 +97,25 @@ pub fn deinit() void {
     atoms.deinit();
 }
 
-pub fn get_atom_name_by_id(atom_id: u32) ?[]const u8 {
+pub fn get_atom_name_by_id(atom_id: x11.Atom) ?[]const u8 {
     return if (atom_id < atoms.items.len) atoms.items[atom_id] else null;
 }
 
-pub fn get_atom_by_name(name: []const u8) ?u32 {
+pub fn get_atom_by_name(name: []const u8) ?x11.Atom {
     // TODO: Use hash map?
     for (atoms.items, 0..) |atom_name, atom_id| {
         if (std.mem.eql(u8, name, atom_name))
-            return @intCast(atom_id);
+            return @enumFromInt(atom_id);
     }
     return null;
 }
 
-pub fn get_atom_by_name_create_if_not_exists(name: []const u8) !u32 {
+pub fn get_atom_by_name_create_if_not_exists(name: []const u8) !x11.Atom {
     if (get_atom_by_name(name)) |atom|
         return atom;
 
     const atom_name = try allocator.dupe(u8, name);
     errdefer allocator.free(atom_name);
     try atoms.append(atom_name);
-    return @intCast(atoms.items.len - 1);
+    return @enumFromInt(atoms.items.len - 1);
 }

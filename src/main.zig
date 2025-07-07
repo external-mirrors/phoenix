@@ -16,8 +16,8 @@ const vendor = "XPhoenix";
 var root_client: *Client = undefined;
 var root_window: *Window = undefined;
 // TODO: Add these to the window
-const screen_colormap: x11.Card32 = 0x20;
-const root_visual: x11.Card32 = 0x21;
+const screen_colormap: x11.Colormap = @enumFromInt(0x20);
+const root_visual: x11.VisualId = @enumFromInt(0x21);
 
 // TODO: Return Length error if request length header isn't long enough for the message.
 // TODO: Support BIG-REQUESTS extension.
@@ -62,7 +62,7 @@ pub fn main() !void {
         return error.FailedToSetupRootClient;
     };
 
-    const root_window_id: x11.Card32 = 0x3b2 | root_client.resource_id_base;
+    const root_window_id: x11.Window = @enumFromInt(0x3b2 | root_client.resource_id_base);
     root_window = try root_client.create_window(root_window_id);
     try root_window.set_property_string8(Atom.Predefined.resource_manager, "*background:\t#222222");
 
@@ -266,8 +266,8 @@ fn handle_client_connect(client: *Client, allocator: std.mem.Allocator) !bool {
         .bitmap_format_bit_order = .least_significant, // TODO:
         .bitmap_format_scanline_unit = 0,
         .bitmap_format_scanline_pad = 32,
-        .min_keycode = 8, // TODO:
-        .max_keycode = 255, // TODO:
+        .min_keycode = @enumFromInt(8), // TODO:
+        .max_keycode = @enumFromInt(255), // TODO:
         .vendor = .{ .items = ven },
         .pixmap_formats = .{ .items = &pixmap_formats },
         .screens = .{ .items = &screens },

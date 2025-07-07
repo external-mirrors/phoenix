@@ -29,6 +29,14 @@ pub fn handle_request(client: *Client, request_header: *const request.RequestHea
     }
 }
 
+const Shit = enum(u8) {
+    _,
+};
+
+fn do_shit(shit: Shit) void {
+    std.debug.print("shit: {}\n", .{shit});
+}
+
 fn intern_atom(client: *Client, request_header: *const request.RequestHeader, sequence_number: u16, allocator: std.mem.Allocator) !void {
     const writer = client.write_buffer.writer();
     const intern_atom_request = try request.read_request(request.InternAtomRequest, client.read_buffer.reader(), allocator);
@@ -72,7 +80,7 @@ fn get_property(client: *Client, request_header: *const request.RequestHeader, s
         const err = x11_error.Error{
             .code = .window,
             .sequence_number = sequence_number,
-            .value = get_property_request.window,
+            .value = @intFromEnum(get_property_request.window),
             .minor_opcode = request_header.minor_opcode,
             .major_opcode = request_header.major_opcode,
         };
@@ -85,7 +93,7 @@ fn get_property(client: *Client, request_header: *const request.RequestHeader, s
         const err = x11_error.Error{
             .code = .atom,
             .sequence_number = sequence_number,
-            .value = get_property_request.property,
+            .value = @intFromEnum(get_property_request.property),
             .minor_opcode = request_header.minor_opcode,
             .major_opcode = request_header.major_opcode,
         };

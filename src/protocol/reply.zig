@@ -14,15 +14,7 @@ fn write_reply_fields(comptime T: type, reply: *const T, writer: anytype) !void 
 
     inline for (@typeInfo(T).@"struct".fields) |*field| {
         switch (@typeInfo(field.type)) {
-            .@"enum" => |e| {
-                switch (e.tag_type) {
-                    x11.Card8 => {
-                        const enum_value = @intFromEnum(@field(reply, field.name));
-                        try writer.writeInt(x11.Card8, enum_value, x11.native_endian);
-                    },
-                    else => @compileError("Only x11.Card8 enum types are supported in replies right now, got: " ++ @typeName(e.tag_type)),
-                }
-            },
+            .@"enum" => |e| try writer.writeInt(e.tag_type, @intFromEnum(@field(reply, field.name)), x11.native_endian),
             .int => |i| try writer.writeInt(@Type(.{ .int = i }), @field(reply, field.name), x11.native_endian),
             .bool => try writer.writeInt(x11.Card8, if (@field(reply, field.name)) 1 else 0, x11.native_endian),
             .@"struct" => {
@@ -53,9 +45,7 @@ fn write_reply_list_of(comptime T: type, list_of: *const T, writer: anytype) !vo
     const element_type = comptime T.get_element_type();
     const list_of_options = comptime T.get_options();
     switch (@typeInfo(element_type)) {
-        .@"enum", .int => {
-            try writer.writeAll(list_of.items);
-        },
+        .@"enum", .int => try writer.writeAll(list_of.items),
         .@"struct" => {
             for (list_of.items) |*item| {
                 try write_reply_fields(@TypeOf(item.*), item, writer);
@@ -115,12 +105,7 @@ fn calculate_reply_length_bytes(comptime T: type, reply: *T) i32 {
     var size: i32 = 0;
     inline for (@typeInfo(T).@"struct".fields) |*field| {
         switch (@typeInfo(field.type)) {
-            .@"enum" => |e| {
-                switch (e.tag_type) {
-                    x11.Card8 => size += 1,
-                    else => @compileError("Only x11.Card8 enum types are supported in replies right now, got: " ++ @typeName(e.tag_type)),
-                }
-            },
+            .@"enum" => |e| size += @sizeOf(e.tag_type),
             .int => |i| size += (i.bits / 8),
             .bool => size += 1,
             .@"struct" => {
@@ -148,9 +133,7 @@ fn calculate_reply_length_bytes_list_of(comptime T: type, list_of: *const T) i32
     const list_of_options = comptime T.get_options();
     var size: i32 = 0;
     switch (@typeInfo(element_type)) {
-        .@"enum", .int => {
-            size += @intCast(list_of.items.len * @sizeOf(element_type));
-        },
+        .@"enum", .int => size += @intCast(list_of.items.len * @sizeOf(element_type)),
         .@"struct" => {
             for (list_of.items) |*item| {
                 size += calculate_reply_length_bytes(@TypeOf(item.*), item);

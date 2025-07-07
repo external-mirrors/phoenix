@@ -30,13 +30,28 @@ pub fn String8(length_field: []const u8) type {
     return ListOf(Card8, .{ .length_field = length_field, .padding = 4 });
 }
 
-pub const KeyCode = Card8;
-pub const Window = Card32;
-pub const Colormap = Card32;
-pub const VisualId = Card32;
-pub const Atom = Card32;
+pub const KeyCode = enum(Card8) {
+    _,
+};
+
+pub const Window = enum(Card32) {
+    _,
+};
+
+pub const Colormap = enum(Card32) {
+    _,
+};
+
+pub const VisualId = enum(Card32) {
+    _,
+};
+
+pub const Atom = enum(Card32) {
+    _,
+};
+
 pub const any_property_type: Atom = 0;
-pub const none: Card8 = 0;
+pub const none: Atom = 0;
 
 pub const PropertyValue = union(enum) {
     string8: std.ArrayList(Card8),
@@ -52,7 +67,7 @@ pub const PropertyValue = union(enum) {
 
 pub const PropertyHashMap = std.HashMap(Atom, PropertyValue, struct {
     pub fn hash(_: @This(), key: Atom) u64 {
-        return @intCast(key);
+        return @intFromEnum(key);
     }
 
     pub fn eql(_: @This(), a: Atom, b: Atom) bool {

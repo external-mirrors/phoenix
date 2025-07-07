@@ -5,16 +5,13 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     const backends_option = b.option([]const u8, "backends",
-        \\Select which backends to include in the build ("all", "x11", "wayland", "drm"). This is a comma-separated list. Defaults to "drm"
-    ) orelse "drm";
+        \\Select which backends to include in the build ("all", "x11", "wayland", "drm"). This is a comma-separated list. Defaults to "all"
+    ) orelse "all";
     const backends = try backends_from_string_list(backends_option);
     if (!backends.x11 and !backends.wayland and !backends.drm) {
         std.log.err("Expected at least one backend (-Dbackends) to be specified", .{});
         return error.MissingBackendOption;
     }
-
-    const config = b.addOptions();
-    config.addOption(Backends, "backends", backends);
 
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -23,6 +20,9 @@ pub fn build(b: *std.Build) !void {
         .link_libc = backends.x11 or backends.wayland or backends.drm,
         // .single_threaded = true,
     });
+
+    const config = b.addOptions();
+    config.addOption(Backends, "backends", backends);
     exe_mod.addOptions("config", config);
 
     const exe = b.addExecutable(.{

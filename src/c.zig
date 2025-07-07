@@ -1,8 +1,9 @@
 const config = @import("config");
 
 pub usingnamespace @cImport({
-    if (config.backends.x11)
-        @cInclude("xcb/xcb.h");
+    // TODO: Need to do it like this for zls
+    //if (config.backends.x11)
+    @cInclude("xcb/xcb.h");
 
     if (config.backends.wayland)
         @cInclude("wayland-client.h");

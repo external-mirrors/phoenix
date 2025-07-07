@@ -49,6 +49,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     if (epoll_fd == -1) return error.FailedToCreateEpoll;
     errdefer std.posix.close(epoll_fd);
 
+    // TODO: Choose backend from argv but give an error if xphoenix is built without that backend
     var backend = try backend_imp.Backend.init_x11(allocator);
     errdefer backend.deinit(allocator);
 

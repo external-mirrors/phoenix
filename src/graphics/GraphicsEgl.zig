@@ -3,6 +3,35 @@ const c = @import("../c.zig");
 
 const Self = @This();
 
+const required_egl_major: i32 = 1;
+const required_egl_minor: i32 = 5;
+
+const config_attr = [_]c.EGLint{
+    c.EGL_SURFACE_TYPE,      c.EGL_WINDOW_BIT,
+    c.EGL_CONFORMANT,        c.EGL_OPENGL_BIT,
+    c.EGL_RENDERABLE_TYPE,   c.EGL_OPENGL_BIT,
+    c.EGL_COLOR_BUFFER_TYPE, c.EGL_RGB_BUFFER,
+
+    c.EGL_RED_SIZE,          8,
+    c.EGL_GREEN_SIZE,        8,
+    c.EGL_BLUE_SIZE,         8,
+    //c.EGL_ALPHA_SIZE,        0,
+    //c.EGL_DEPTH_SIZE,        24,
+    //c.EGL_STENCIL_SIZE,      8,
+
+    // uncomment for multisampled framebuffer
+    //c.EGL_SAMPLE_BUFFERS, 1,
+    //c.EGL_SAMPLES,        4, // 4x MSAA
+
+    c.EGL_NONE,
+};
+
+const surface_attr = [_]c.EGLint{
+    c.EGL_GL_COLORSPACE, c.EGL_GL_COLORSPACE_LINEAR, // or use c.EGL_GL_COLORSPACE_SRGB for sRGB framebuffer
+    c.EGL_RENDER_BUFFER, c.EGL_BACK_BUFFER,
+    c.EGL_NONE,
+};
+
 const PFNGLDEBUGMESSAGECALLBACKPROC = *const fn (c.GLDEBUGPROC, ?*const anyopaque) callconv(.c) void;
 const PFNEGLGETPLATFORMDISPLAYEXTPROC = *const fn (c.EGLenum, ?*anyopaque, [*c]const c.EGLint) callconv(.c) c.EGLDisplay;
 
@@ -10,16 +39,21 @@ egl_display: c.EGLDisplay,
 egl_surface: c.EGLSurface,
 egl_context: c.EGLContext,
 
-const required_egl_major: i32 = 1;
-const required_egl_minor: i32 = 5;
-
 pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplayType, window_id: c.EGLNativeWindowType, debug: bool) !Self {
-    const glDebugMessageCallback: PFNGLDEBUGMESSAGECALLBACKPROC = @ptrCast(c.eglGetProcAddress("glDebugMessageCallback") orelse return error.FailedToResolveOpenglProc);
+    const context_attr = [_]c.EGLint{
+        c.EGL_CONTEXT_MAJOR_VERSION,                           required_egl_major,
+        c.EGL_CONTEXT_MINOR_VERSION,                           required_egl_minor,
+        c.EGL_CONTEXT_OPENGL_PROFILE_MASK,                     c.EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
+        if (debug) c.EGL_CONTEXT_OPENGL_DEBUG else c.EGL_NONE, c.EGL_TRUE,
+        c.EGL_NONE,
+    };
 
+    const glDebugMessageCallback: PFNGLDEBUGMESSAGECALLBACKPROC = @ptrCast(c.eglGetProcAddress("glDebugMessageCallback") orelse return error.FailedToResolveOpenglProc);
     const eglGetPlatformDisplayEXT: PFNEGLGETPLATFORMDISPLAYEXTPROC = @ptrCast(c.eglGetProcAddress("eglGetPlatformDisplayEXT") orelse return error.FailedToResolveOpenglProc);
+
     const egl_display = eglGetPlatformDisplayEXT(platform, connection, &[_]c.EGLint{
         screen_type,
-        0, // screenp from xcb_connect. // TODO: Pass it in
+        0, // screenp from xcb_connect. // TODO: Pass it in as an arg from init since it needs to match screen_type
         c.EGL_NONE,
     }) orelse return error.FailedToGetOpenglDisplay;
 
@@ -37,47 +71,13 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
     if (c.eglBindAPI(c.EGL_OPENGL_API) == c.EGL_FALSE)
         return error.FailedToBindEgl;
 
-    const config_attr = [_]c.EGLint{
-        c.EGL_SURFACE_TYPE,      c.EGL_WINDOW_BIT,
-        c.EGL_CONFORMANT,        c.EGL_OPENGL_BIT,
-        c.EGL_RENDERABLE_TYPE,   c.EGL_OPENGL_BIT,
-        c.EGL_COLOR_BUFFER_TYPE, c.EGL_RGB_BUFFER,
-
-        c.EGL_RED_SIZE,          8,
-        c.EGL_GREEN_SIZE,        8,
-        c.EGL_BLUE_SIZE,         8,
-        //c.EGL_ALPHA_SIZE,        0,
-        //c.EGL_DEPTH_SIZE,        24,
-        //c.EGL_STENCIL_SIZE,      8,
-
-        // uncomment for multisampled framebuffer
-        //c.EGL_SAMPLE_BUFFERS, 1,
-        //c.EGL_SAMPLES,        4, // 4x MSAA
-
-        c.EGL_NONE,
-    };
-
     var egl_config: c.EGLConfig = null;
     var num_configs: c.EGLint = 0;
     if (c.eglChooseConfig(egl_display, &config_attr, &egl_config, 1, &num_configs) == c.EGL_FALSE or num_configs != 1)
         return error.FailedToChooseEglConfig;
 
-    const surface_attr = [_]c.EGLint{
-        c.EGL_GL_COLORSPACE, c.EGL_GL_COLORSPACE_LINEAR, // or use c.EGL_GL_COLORSPACE_SRGB for sRGB framebuffer
-        c.EGL_RENDER_BUFFER, c.EGL_BACK_BUFFER,
-        c.EGL_NONE,
-    };
-
     const egl_surface = c.eglCreateWindowSurface(egl_display, egl_config, window_id, &surface_attr) orelse return error.FailedToCreateEglWindowSurface;
     errdefer _ = c.eglDestroySurface(egl_display, egl_surface);
-
-    const context_attr = [_]c.EGLint{
-        c.EGL_CONTEXT_MAJOR_VERSION,                           required_egl_major,
-        c.EGL_CONTEXT_MINOR_VERSION,                           required_egl_minor,
-        c.EGL_CONTEXT_OPENGL_PROFILE_MASK,                     c.EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
-        if (debug) c.EGL_CONTEXT_OPENGL_DEBUG else c.EGL_NONE, c.EGL_TRUE,
-        c.EGL_NONE,
-    };
 
     const egl_context = c.eglCreateContext(egl_display, egl_config, c.EGL_NO_CONTEXT, &context_attr) orelse return error.FailedToCreateEglContext;
     errdefer _ = c.eglDestroyContext(egl_display, egl_context);
@@ -94,6 +94,7 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
         std.log.warn("Failed to enable egl vsync", .{});
 
     c.glEnable(c.GL_BLEND);
+    c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
     c.glDisable(c.GL_DEPTH_TEST);
     c.glDisable(c.GL_CULL_FACE);
 
@@ -113,6 +114,11 @@ pub fn deinit(self: *Self) void {
     self.egl_context = undefined;
     self.egl_surface = undefined;
     self.egl_display = undefined;
+}
+
+pub fn resize(self: *Self, width: u32, height: u32) void {
+    _ = self;
+    c.glViewport(0, 0, @intCast(width), @intCast(height));
 }
 
 pub fn clear(self: *Self) void {

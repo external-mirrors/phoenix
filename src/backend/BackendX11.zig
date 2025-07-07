@@ -21,6 +21,9 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     const screen = c.xcb_setup_roots_iterator(c.xcb_get_setup(connection)).data;
     const window_id = c.xcb_generate_id(connection);
 
+    // TODO: Make these configurable
+    const width: u32 = 1920;
+    const height: u32 = 1080;
     const window_cookie = c.xcb_create_window_checked(
         connection,
         c.XCB_COPY_FROM_PARENT,
@@ -28,8 +31,8 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         screen.*.root,
         0,
         0,
-        1920,
-        1080,
+        width,
+        height,
         1,
         c.XCB_WINDOW_CLASS_INPUT_OUTPUT,
         screen.*.root_visual,
@@ -50,6 +53,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         return error.FailedToMapRootWindow;
     }
 
+    graphics.resize(width, height);
     graphics.clear();
     graphics.display();
 

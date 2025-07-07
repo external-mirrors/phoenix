@@ -28,6 +28,12 @@ pub const Graphics = union(enum) {
         }
     }
 
+    pub fn resize(self: Graphics, width: u32, height: u32) void {
+        switch (self) {
+            inline else => |item| item.resize(width, height),
+        }
+    }
+
     pub fn clear(self: Graphics) void {
         switch (self) {
             inline else => |item| item.clear(),

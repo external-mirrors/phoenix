@@ -19,6 +19,7 @@ pub fn read_request(comptime T: type, reader: anytype, allocator: std.mem.Alloca
                 }
             },
             .int => |i| @field(request, field.name) = try reader.readInt(@Type(.{ .int = i }), x11.native_endian),
+            .bool => @field(request, field.name) = if (try reader.readInt(u8, x11.native_endian) == 0) false else true,
             .@"struct" => {
                 const list_of_options = comptime field.type.get_options();
                 var list_of = &@field(request, field.name);
@@ -88,6 +89,17 @@ pub const QueryExtensionRequest = struct {
     length_of_name: x11.Card16,
     pad2: x11.Card16,
     name: x11.String8("length_of_name"),
+};
+
+pub const GetProperyRequest = struct {
+    opcode: x11.Card8, // opcode.Major
+    delete: bool,
+    length: x11.Card16, // 6
+    window: x11.Window,
+    property: x11.Atom,
+    type: x11.Atom,
+    long_offset: x11.Card32,
+    long_length: x11.Card32,
 };
 
 test "sizes" {

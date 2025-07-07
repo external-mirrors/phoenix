@@ -8,6 +8,7 @@ const std = @import("std");
 const Self = @This();
 
 pub const resource_id_mask: u32 = 0x001fffff;
+pub const resource_id_base_mask: u32 = 0xFFFFFFFF - resource_id_mask;
 const resource_id_base_size: u32 = 0xFFF; // Dont change this
 const base_bit_shift = @popCount(0xFFFFFFFF - resource_id_base_size) + 1;
 

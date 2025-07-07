@@ -2,7 +2,7 @@ const std = @import("std");
 const Client = @import("Client.zig");
 
 const Self = @This();
-const ClientHashMap = std.HashMap(std.posix.socket_t, Client, struct {
+const ClientHashMap = std.HashMap(std.posix.socket_t, *Client, struct {
     pub fn hash(_: @This(), key: std.posix.socket_t) u64 {
         return @intCast(key);
     }
@@ -13,33 +13,46 @@ const ClientHashMap = std.HashMap(std.posix.socket_t, Client, struct {
 }, std.hash_map.default_max_load_percentage);
 
 clients: ClientHashMap,
+allocator: std.mem.Allocator,
 
 pub fn init(allocator: std.mem.Allocator) Self {
     return .{
         .clients = .init(allocator),
+        .allocator = allocator,
     };
 }
 
 pub fn deinit(self: *Self) void {
-    var it = self.clients.valueIterator();
-    while (it.next()) |client| {
-        client.deinit();
+    var client_it = self.clients.valueIterator();
+    while (client_it.next()) |client| {
+        client.*.deinit();
+        self.allocator.destroy(client);
     }
     self.clients.deinit();
 }
 
-pub fn add_client(self: *Self, client: Client) !bool {
+pub fn add_client(self: *Self, client: Client) !*Client {
+    const new_client = try self.allocator.create(Client);
+    new_client.* = client;
+    errdefer self.allocator.destroy(new_client);
+
     const result = try self.clients.getOrPut(client.connection.stream.handle);
     if (result.found_existing)
-        return false;
-    result.value_ptr.* = client;
-    return true;
+        return error.ClientAlreadyAdded;
+
+    result.value_ptr.* = new_client;
+    return new_client;
 }
 
-pub fn remove_client(self: *Self, client_to_remove_fd: std.posix.socket_t) ?Client {
-    return if (self.clients.fetchRemove(client_to_remove_fd)) |removed_item| removed_item.value else null;
+pub fn remove_client(self: *Self, client_to_remove_fd: std.posix.socket_t) bool {
+    if (self.clients.fetchRemove(client_to_remove_fd)) |removed_item| {
+        removed_item.value.deinit();
+        self.allocator.destroy(removed_item.value);
+        return true;
+    }
+    return false;
 }
 
 pub fn get_client(self: *Self, client_fd: std.posix.socket_t) ?*Client {
-    return if (self.clients.getPtr(client_fd)) |client| client else null;
+    return if (self.clients.get(client_fd)) |client| client else null;
 }

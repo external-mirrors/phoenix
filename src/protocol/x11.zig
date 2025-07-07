@@ -34,6 +34,31 @@ pub const KeyCode = Card8;
 pub const Window = Card32;
 pub const Colormap = Card32;
 pub const VisualId = Card32;
+pub const Atom = Card32;
+pub const any_property_type: Atom = 0;
+pub const none: Card8 = 0;
+
+pub const PropertyValue = union(enum) {
+    string8: std.ArrayList(Card8),
+    card16_list: std.ArrayList(Card16),
+    card32_list: std.ArrayList(Card32),
+
+    pub fn deinit(self: *PropertyValue) void {
+        switch (self) {
+            else => |*item| item.*.deinit(),
+        }
+    }
+};
+
+pub const PropertyHashMap = std.HashMap(Atom, PropertyValue, struct {
+    pub fn hash(_: @This(), key: Atom) u64 {
+        return @intCast(key);
+    }
+
+    pub fn eql(_: @This(), a: Atom, b: Atom) bool {
+        return a == b;
+    }
+}, std.hash_map.default_max_load_percentage);
 
 pub inline fn padding(value: anytype, comptime pad: @TypeOf(value)) @TypeOf(value) {
     return if (pad == 0) 0 else (pad - (value % pad)) % pad;

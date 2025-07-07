@@ -1,4 +1,8 @@
 const std = @import("std");
+const Window = @import("Window.zig");
+const ResourceIdBaseManager = @import("ResourceIdBaseManager.zig");
+const resource = @import("resource.zig");
+const x11 = @import("protocol/x11.zig");
 
 const Self = @This();
 const max_read_buffer_size: usize = 1 * 1024 * 1024; // 1mb. If the server doesn't dont manage to read the data fast enough then the client is forcefully disconnected
@@ -10,21 +14,25 @@ const State = enum {
     connected,
 };
 
+allocator: std.mem.Allocator,
 connection: std.net.Server.Connection,
 state: State,
 read_buffer: DataBuffer,
 write_buffer: DataBuffer,
 resource_id_base: u32,
 sequence_number: u16,
+resources: resource.ResourceHashMap,
 
 pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, allocator: std.mem.Allocator) Self {
     return .{
+        .allocator = allocator,
         .connection = connection,
         .state = .connecting,
         .read_buffer = .init(allocator),
         .write_buffer = .init(allocator),
         .resource_id_base = resource_id_base,
         .sequence_number = 1,
+        .resources = .init(allocator),
     };
 }
 
@@ -32,6 +40,13 @@ pub fn deinit(self: *Self) void {
     self.connection.stream.close();
     self.read_buffer.deinit();
     self.write_buffer.deinit();
+
+    var resources_it = self.resources.valueIterator();
+    while (resources_it.next()) |res| {
+        res.*.deinit();
+        self.allocator.destroy(res);
+    }
+    self.resources.deinit();
 }
 
 // Unused right now, but this will be used similarly to how xace works
@@ -110,4 +125,29 @@ pub fn next_sequence_number(self: *Self) u16 {
     if (self.sequence_number == 0)
         self.sequence_number = 1;
     return sequence;
+}
+
+/// Returns a reference to the created window. The ownership is with this client
+pub fn create_window(self: *Self, window_id: x11.Window) !*Window {
+    if (window_id & ResourceIdBaseManager.resource_id_base_mask != self.resource_id_base)
+        return error.ResourceNotOwnedByClient;
+
+    const new_window = try self.allocator.create(Window);
+    new_window.* = Window.init(window_id, self.allocator);
+    errdefer self.allocator.destroy(new_window);
+
+    const result = try self.resources.getOrPut(window_id);
+    if (result.found_existing)
+        return error.ResourceAlreadyExists;
+
+    result.value_ptr.* = .{ .window = new_window };
+    errdefer _ = self.resources.remove(window_id);
+    try resource.add_window(new_window);
+    return new_window;
+}
+
+pub fn destroy_window(self: *Self, window: *Window) void {
+    self.resources.remove(window.window_id);
+    window.deinit();
+    self.allocator.destroy(window);
 }

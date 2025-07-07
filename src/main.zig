@@ -8,14 +8,22 @@ const ClientManager = @import("ClientManager.zig");
 const opcode = @import("protocol/opcode.zig");
 const x11_error = @import("protocol/error.zig");
 const core_handler = @import("protocol/handlers/core.zig");
+const Window = @import("Window.zig");
+const resource = @import("resource.zig");
+const Atom = @import("protocol/Atom.zig");
 
 const vendor = "XPhoenix";
-const root_window: x11.Card32 = 0x3b2;
+var root_client: *Client = undefined;
+var root_window: *Window = undefined;
+// TODO: Add these to the window
 const screen_colormap: x11.Card32 = 0x20;
 const root_visual: x11.Card32 = 0x21;
 
 // TODO: Return Length error if request length header isn't long enough for the message.
 // TODO: Support BIG-REQUESTS extension.
+// TODO: Use auth if there is one added in xauthority file for the path (X1 is $USER/unix:1)
+//       and validate client connection against it. Right now we accept all connections.
+// TODO: Use epoll equivalent on other OS'
 
 pub fn main() !void {
     const allocator = std.heap.smp_allocator;
@@ -24,39 +32,39 @@ pub fn main() !void {
     const address = try std.net.Address.initUnix(unix_domain_socket_path);
     std.posix.unlink(unix_domain_socket_path) catch {}; // TODO: Dont just remove the file? what if it's used by something else. I guess they will have a reference to it so it wont get deleted?
     var server = try address.listen(.{ .force_nonblocking = true });
-    defer server.deinit();
+    // TODO:
+    //defer server.deinit();
+
+    resource.init_global_resources(allocator);
+    defer resource.deinit_global_resources();
+
+    try Atom.init(allocator);
+    defer Atom.deinit();
 
     var client_manager = ClientManager.init(allocator);
     defer client_manager.deinit();
 
     var resource_id_base_manager = ResourceIdBaseManager{};
 
-    // TODO: When a client is removed also remove its resource_id_base from resource_id_base_manager
-
-    // TODO: Use auth if there is one added in xauthority file for the path (X1 is $USER/unix:1)
-    // and validate client connection against it. Right now we accept all connections.
-
-    // TODO: Use epoll equivalent on other OS'
     var epoll_events: [32]std.os.linux.epoll_event = undefined;
-
     const epoll_fd = try std.posix.epoll_create1(0);
     if (epoll_fd == -1) return error.FailedToCreateEpoll;
     defer std.posix.close(epoll_fd);
-    //var client_pollfds = std.ArrayList(std.posix.pollfd).init(allocator);
-    //defer client_pollfds.deinit();
 
-    // var accept_clients_thread = try std.Thread.spawn(.{ .stack_size = 4 * 1024 * 1024 }, accept_clients, .{ &server, &client_manager, &resource_id_base_manager });
-    // defer accept_clients_thread.join();
+    const server_connection = std.net.Server.Connection{
+        .stream = server.stream,
+        .address = server.listen_address,
+    };
 
-    {
-        var epoll_event = std.os.linux.epoll_event{
-            .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.OUT | std.os.linux.EPOLL.ET,
-            .data = .{
-                .fd = server.stream.handle,
-            },
-        };
-        try std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_ADD, server.stream.handle, &epoll_event);
-    }
+    root_client = add_client(epoll_fd, server_connection, &client_manager, &resource_id_base_manager, allocator) catch |err| {
+        std.log.err("Failed to add client: {d}, disconnecting client. Error: {s}", .{ server_connection.stream.handle, @errorName(err) });
+        server_connection.stream.close();
+        return error.FailedToSetupRootClient;
+    };
+
+    const root_window_id: x11.Card32 = 0x3b2 | root_client.resource_id_base;
+    root_window = try root_client.create_window(root_window_id);
+    try root_window.set_property_string8(Atom.Predefined.resource_manager, "*background:\t#222222");
 
     const poll_timeout_ms: u32 = 500;
     var running = true;
@@ -72,7 +80,7 @@ pub fn main() !void {
                     continue;
                 };
 
-                add_client(epoll_fd, connection, &client_manager, &resource_id_base_manager, allocator) catch |err| {
+                _ = add_client(epoll_fd, connection, &client_manager, &resource_id_base_manager, allocator) catch |err| {
                     std.log.err("Failed to add client: {d}, disconnecting client. Error: {s}", .{ connection.stream.handle, @errorName(err) });
                     connection.stream.close();
                 };
@@ -125,7 +133,7 @@ fn set_socket_non_blocking(socket: std.posix.socket_t) void {
     _ = std.posix.fcntl(socket, std.posix.F.SETFL, flags | std.posix.SOCK.NONBLOCK) catch unreachable;
 }
 
-fn add_client(epoll_fd: std.posix.fd_t, connection: std.net.Server.Connection, client_manager: *ClientManager, resource_id_base_manager: *ResourceIdBaseManager, allocator: std.mem.Allocator) !void {
+fn add_client(epoll_fd: std.posix.fd_t, connection: std.net.Server.Connection, client_manager: *ClientManager, resource_id_base_manager: *ResourceIdBaseManager, allocator: std.mem.Allocator) !*Client {
     set_socket_non_blocking(connection.stream.handle);
     std.log.info("Client connected: {d}, waiting for client connection setup", .{connection.stream.handle});
 
@@ -142,15 +150,18 @@ fn add_client(epoll_fd: std.posix.fd_t, connection: std.net.Server.Connection, c
     try std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_ADD, connection.stream.handle, &new_client_epoll_event);
     errdefer std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, connection.stream.handle, null) catch {};
 
-    _ = try client_manager.add_client(Client.init(connection, resource_id_base, allocator));
+    return client_manager.add_client(Client.init(connection, resource_id_base, allocator));
 }
 
 fn remove_client(epoll_fd: std.posix.fd_t, client_manager: *ClientManager, resource_id_base_manager: *ResourceIdBaseManager, client_fd: std.posix.socket_t) void {
     std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, client_fd, null) catch |err| {
         std.log.err("Epoll del failed for client: {d}. Error: {s}", .{ client_fd, @errorName(err) });
     };
-    if (client_manager.remove_client(client_fd)) |client_removed|
-        resource_id_base_manager.free(client_removed.resource_id_base);
+
+    if (client_manager.get_client(client_fd)) |client| {
+        _ = client_manager.remove_client(client_fd);
+        resource_id_base_manager.free(client.resource_id_base);
+    }
 }
 
 fn process_all_client_requests(epoll_fd: std.posix.fd_t, client_manager: *ClientManager, resource_id_base_manager: *ResourceIdBaseManager, client: *Client, allocator: std.mem.Allocator) void {
@@ -227,7 +238,7 @@ fn handle_client_connect(client: *Client, allocator: std.mem.Allocator) !bool {
     };
 
     var screens = [_]reply.Screen{.{
-        .root_window = root_window,
+        .root_window = root_window.window_id,
         .colormap = screen_colormap,
         .white_pixel = 0x00ffffff,
         .black_pixel = 0x00000000,
@@ -279,18 +290,21 @@ fn handle_client_request(client: *Client, allocator: std.mem.Allocator) !bool {
     if (client.read_buffer_data_size() < request_header_length)
         return false;
 
+    const sequence_number = client.next_sequence_number();
     const bytes_available_to_read_before = client.read_buffer_data_size();
 
     // TODO: Respond to client with proper error
     if (request_header.major_opcode == 0) {
         return error.InvalidMajorOpcode;
     } else if (request_header.major_opcode >= 1 and request_header.major_opcode <= 127) {
-        try core_handler.handle_request(client, request_header.major_opcode, request_header.minor_opcode, allocator);
+        try core_handler.handle_request(client, request_header, sequence_number, allocator);
     } else {
         // TODO: Implement
         std.log.warn("Unimplemented extension request: {d}:{d}", .{ request_header.major_opcode, request_header.minor_opcode });
-        const err = x11_error.Implementation{
-            .sequence_number = client.next_sequence_number(),
+        const err = x11_error.Error{
+            .code = .implementation,
+            .sequence_number = sequence_number,
+            .value = 0,
             .minor_opcode = request_header.minor_opcode,
             .major_opcode = request_header.major_opcode,
         };
@@ -302,8 +316,11 @@ fn handle_client_request(client: *Client, allocator: std.mem.Allocator) !bool {
     // TODO: If this isn't equal to request_header_length then return Length error. For now we skip those bytes
     const bytes_read = bytes_available_to_read_before - bytes_available_to_read_after;
     if (bytes_read > request_header_length) {
+        // TODO: Output error to client
         std.log.err("Handler read more bytes than request header! expected to read {d} bytes, actually read {d} bytes", .{ request_header_length, bytes_read });
     } else if (bytes_read < request_header_length) {
+        // TODO: Output error to client, once all requests have a handler
+        std.log.info("Handler read {d} bytes which is less than request header length {d}, skipping the extra bytes", .{ bytes_read, request_header_length });
         try client.read_buffer.reader().skipBytes(request_header_length - bytes_read, .{});
     }
 
@@ -316,8 +333,11 @@ test "all tests" {
     _ = @import("protocol/request.zig");
     _ = @import("protocol/reply.zig");
     _ = @import("protocol/error.zig");
+    _ = @import("protocol/Atom.zig");
     _ = @import("protocol/handlers/core.zig");
     _ = @import("Client.zig");
     _ = @import("ClientManager.zig");
     _ = @import("ResourceIdBaseManager.zig");
+    _ = @import("Window.zig");
+    _ = @import("resource.zig");
 }

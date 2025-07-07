@@ -250,7 +250,7 @@ pub const ReplyType = enum(x11.Card8) {
 };
 
 pub const GenericReply = extern struct {
-    type: ReplyType,
+    reply_type: ReplyType,
     data1: x11.Card8,
     sequence_number: x11.Card16,
     length: x11.Card32,
@@ -293,7 +293,7 @@ pub const ConnectionSetupAcceptReply = struct {
 };
 
 pub const ReplyHeader = struct {
-    type: ReplyType,
+    reply_type: ReplyType,
     data1: x11.Card8,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -305,7 +305,7 @@ pub const Str = struct {
 };
 
 pub const QueryExtensionReply = struct {
-    type: ReplyType,
+    reply_type: ReplyType,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -316,8 +316,31 @@ pub const QueryExtensionReply = struct {
     pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
 };
 
+fn GetPropertyReply(comptime DataType: type) type {
+    return struct {
+        reply_type: ReplyType,
+        format: x11.Card8,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        type: x11.Atom,
+        bytes_after: x11.Card32,
+        // In format units:
+        //   (= 0 for format = 0)
+        //   (= n for format = 8)
+        //   (= n/2 for format = 16)
+        //   (= n/4 for format = 32)
+        value_length: x11.Card32 = 0,
+        pad1: [12]x11.Card8 = [_]x11.Card8{0} ** 12,
+        data: x11.ListOf(DataType, .{ .length_field = "value_length", .padding = 4 }),
+    };
+}
+
+pub const GetPropertyCard8Reply = GetPropertyReply(x11.Card8);
+pub const GetPropertyCard16Reply = GetPropertyReply(x11.Card16);
+pub const GetPropertyCard32Reply = GetPropertyReply(x11.Card32);
+
 pub const ListExtensionsReply = struct {
-    type: ReplyType,
+    reply_type: ReplyType,
     num_strs: x11.Card8,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply

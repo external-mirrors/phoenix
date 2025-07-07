@@ -1,6 +1,6 @@
 const std = @import("std");
 const x11 = @import("protocol/x11.zig");
-const resource = @import("resource.zig");
+const ResourceManager = @import("ResourceManager.zig");
 
 const Self = @This();
 
@@ -18,8 +18,8 @@ pub fn init(window_id: x11.Window, allocator: std.mem.Allocator) Self {
     };
 }
 
-pub fn deinit(self: *Self) void {
-    resource.remove_window(self);
+pub fn deinit(self: *Self, resource_manager: *ResourceManager) void {
+    resource_manager.remove_window(self);
     self.properties.deinit();
     self.children.deinit();
 }

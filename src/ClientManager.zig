@@ -1,5 +1,6 @@
 const std = @import("std");
 const Client = @import("Client.zig");
+const ResourceManager = @import("ResourceManager.zig");
 
 const Self = @This();
 const ClientHashMap = std.HashMap(std.posix.socket_t, *Client, struct {
@@ -22,10 +23,10 @@ pub fn init(allocator: std.mem.Allocator) Self {
     };
 }
 
-pub fn deinit(self: *Self) void {
+pub fn deinit(self: *Self, resource_manager: *ResourceManager) void {
     var client_it = self.clients.valueIterator();
     while (client_it.next()) |client| {
-        client.*.deinit();
+        client.*.deinit(resource_manager);
         self.allocator.destroy(client);
     }
     self.clients.deinit();
@@ -44,9 +45,9 @@ pub fn add_client(self: *Self, client: Client) !*Client {
     return new_client;
 }
 
-pub fn remove_client(self: *Self, client_to_remove_fd: std.posix.socket_t) bool {
+pub fn remove_client(self: *Self, client_to_remove_fd: std.posix.socket_t, resource_manager: *ResourceManager) bool {
     if (self.clients.fetchRemove(client_to_remove_fd)) |removed_item| {
-        removed_item.value.deinit();
+        removed_item.value.deinit(resource_manager);
         self.allocator.destroy(removed_item.value);
         return true;
     }

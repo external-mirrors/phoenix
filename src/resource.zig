@@ -1,42 +1,13 @@
 const std = @import("std");
 const Window = @import("Window.zig");
-const x11 = @import("protocol/x11.zig");
-
-// Only keeps references, not ownership
-var all_resources: ResourceHashMap = undefined;
-
-pub fn init_global_resources(allocator: std.mem.Allocator) void {
-    all_resources = .init(allocator);
-}
-
-pub fn deinit_global_resources() void {
-    all_resources.deinit();
-}
-
-pub fn add_window(window: *Window) !void {
-    const result = try all_resources.getOrPut(@intFromEnum(window.window_id));
-    std.debug.assert(!result.found_existing);
-    result.value_ptr.* = .{ .window = window };
-}
-
-pub fn remove_window(window: *Window) void {
-    _ = all_resources.remove(@intFromEnum(window.window_id));
-}
-
-pub fn get_window(window_id: x11.Window) ?*Window {
-    if (all_resources.get(@intFromEnum(window_id))) |resource| {
-        return if (std.meta.activeTag(resource) == .window) resource.window else null;
-    } else {
-        return null;
-    }
-}
+const ResourceManager = @import("ResourceManager.zig");
 
 pub const Resource = union(enum) {
     window: *Window,
 
-    pub fn deinit(self: Resource) void {
+    pub fn deinit(self: Resource, resource_manager: *ResourceManager) void {
         switch (self) {
-            inline else => |item| item.deinit(),
+            inline else => |item| item.deinit(resource_manager),
         }
     }
 };

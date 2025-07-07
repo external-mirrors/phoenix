@@ -1,5 +1,7 @@
 const std = @import("std");
-const x11 = @import("x11.zig");
+const x11 = @import("protocol/x11.zig");
+
+const Self = @This();
 
 pub const Predefined = struct {
     pub const none: x11.Atom = @enumFromInt(0);
@@ -73,49 +75,53 @@ pub const Predefined = struct {
     pub const wm_transient_for: x11.Atom = @enumFromInt(68);
 };
 
-var allocator: std.mem.Allocator = undefined;
-var atoms: std.ArrayList([]const u8) = undefined;
+allocator: std.mem.Allocator,
+atoms: std.ArrayList([]const u8),
 
-pub fn init(alloc: std.mem.Allocator) !void {
-    allocator = alloc;
-    atoms = .init(allocator);
-    errdefer deinit();
+pub fn init(allocator: std.mem.Allocator) !Self {
+    var self = Self{
+        .allocator = allocator,
+        .atoms = .init(allocator),
+    };
+    errdefer self.deinit();
 
     inline for (@typeInfo(Predefined).@"struct".decls) |*decl| {
         const field = @field(Predefined, decl.name);
-        std.debug.assert(atoms.items.len == @intFromEnum(field));
+        std.debug.assert(self.atoms.items.len == @intFromEnum(field));
         const atom_name = try std.ascii.allocUpperString(allocator, decl.name);
         errdefer allocator.free(atom_name);
-        try atoms.append(atom_name);
+        try self.atoms.append(atom_name);
     }
+
+    return self;
 }
 
-pub fn deinit() void {
-    for (atoms.items) |atom| {
-        allocator.free(atom);
+pub fn deinit(self: *Self) void {
+    for (self.atoms.items) |atom| {
+        self.allocator.free(atom);
     }
-    atoms.deinit();
+    self.atoms.deinit();
 }
 
-pub fn get_atom_name_by_id(atom_id: x11.Atom) ?[]const u8 {
-    return if (atom_id < atoms.items.len) atoms.items[atom_id] else null;
+pub fn get_atom_name_by_id(self: *Self, atom_id: x11.Atom) ?[]const u8 {
+    return if (atom_id < self.atoms.items.len) self.atoms.items[atom_id] else null;
 }
 
-pub fn get_atom_by_name(name: []const u8) ?x11.Atom {
+pub fn get_atom_by_name(self: *Self, name: []const u8) ?x11.Atom {
     // TODO: Use hash map?
-    for (atoms.items, 0..) |atom_name, atom_id| {
+    for (self.atoms.items, 0..) |atom_name, atom_id| {
         if (std.mem.eql(u8, name, atom_name))
             return @enumFromInt(atom_id);
     }
     return null;
 }
 
-pub fn get_atom_by_name_create_if_not_exists(name: []const u8) !x11.Atom {
-    if (get_atom_by_name(name)) |atom|
+pub fn get_atom_by_name_create_if_not_exists(self: *Self, name: []const u8) !x11.Atom {
+    if (self.get_atom_by_name(name)) |atom|
         return atom;
 
-    const atom_name = try allocator.dupe(u8, name);
-    errdefer allocator.free(atom_name);
-    try atoms.append(atom_name);
-    return @enumFromInt(atoms.items.len - 1);
+    const atom_name = try self.allocator.dupe(u8, name);
+    errdefer self.allocator.free(atom_name);
+    try self.atoms.append(atom_name);
+    return @enumFromInt(self.atoms.items.len - 1);
 }

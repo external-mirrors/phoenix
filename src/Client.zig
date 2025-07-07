@@ -1,6 +1,7 @@
 const std = @import("std");
 const Window = @import("Window.zig");
 const ResourceIdBaseManager = @import("ResourceIdBaseManager.zig");
+const ResourceManager = @import("ResourceManager.zig");
 const resource = @import("resource.zig");
 const request = @import("protocol/request.zig");
 const reply = @import("protocol/reply.zig");
@@ -39,14 +40,14 @@ pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, alloca
     };
 }
 
-pub fn deinit(self: *Self) void {
+pub fn deinit(self: *Self, resource_manager: *ResourceManager) void {
     self.connection.stream.close();
     self.read_buffer.deinit();
     self.write_buffer.deinit();
 
     var resources_it = self.resources.valueIterator();
     while (resources_it.next()) |res| {
-        res.*.deinit();
+        res.*.deinit(resource_manager);
         self.allocator.destroy(res);
     }
     self.resources.deinit();
@@ -145,7 +146,7 @@ pub fn next_sequence_number(self: *Self) u16 {
 }
 
 /// Returns a reference to the created window. The ownership is with this client
-pub fn create_window(self: *Self, window_id: x11.Window) !*Window {
+pub fn create_window(self: *Self, window_id: x11.Window, resource_manager: *ResourceManager) !*Window {
     if (@intFromEnum(window_id) & ResourceIdBaseManager.resource_id_base_mask != self.resource_id_base)
         return error.ResourceNotOwnedByClient;
 
@@ -159,7 +160,7 @@ pub fn create_window(self: *Self, window_id: x11.Window) !*Window {
 
     result.value_ptr.* = .{ .window = new_window };
     errdefer _ = self.resources.remove(@intFromEnum(window_id));
-    try resource.add_window(new_window);
+    try resource_manager.add_window(new_window);
     return new_window;
 }
 

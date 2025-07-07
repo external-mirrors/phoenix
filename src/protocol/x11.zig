@@ -59,8 +59,8 @@ pub const PropertyValue = union(enum) {
     card32_list: std.ArrayList(Card32),
 
     pub fn deinit(self: *PropertyValue) void {
-        switch (self) {
-            else => |*item| item.*.deinit(),
+        switch (self.*) {
+            inline else => |*item| item.*.deinit(),
         }
     }
 };

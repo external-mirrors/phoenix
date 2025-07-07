@@ -20,7 +20,7 @@ pub fn add_window(window: *Window) !void {
 }
 
 pub fn remove_window(window: *Window) void {
-    all_resources.remove(window.window_id);
+    _ = all_resources.remove(@intFromEnum(window.window_id));
 }
 
 pub fn get_window(window_id: x11.Window) ?*Window {
@@ -34,9 +34,9 @@ pub fn get_window(window_id: x11.Window) ?*Window {
 pub const Resource = union(enum) {
     window: *Window,
 
-    pub fn deinit(self: *Resource) void {
+    pub fn deinit(self: Resource) void {
         switch (self) {
-            else => |*item| item.*.deinit(),
+            inline else => |item| item.deinit(),
         }
     }
 };

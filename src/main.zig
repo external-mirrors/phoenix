@@ -334,9 +334,15 @@ test "all tests" {
     _ = @import("protocol/error.zig");
     _ = @import("protocol/Atom.zig");
     _ = @import("protocol/handlers/core.zig");
+
     _ = @import("Client.zig");
     _ = @import("ClientManager.zig");
     _ = @import("ResourceIdBaseManager.zig");
     _ = @import("Window.zig");
     _ = @import("resource.zig");
+
+    _ = @import("backend/backend.zig");
+    _ = @import("backend/BackendX11.zig");
+    _ = @import("backend/BackendWayland.zig");
+    _ = @import("backend/BackendDrm.zig");
 }

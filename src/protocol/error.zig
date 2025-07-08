@@ -28,9 +28,9 @@ pub const Error = extern struct {
     value: x11.Card32, // Unused for some errors
     minor_opcode: x11.Card16,
     major_opcode: x11.Card8,
-    pad: [21]x11.Card8 = [_]x11.Card8{0} ** 21,
-};
+    pad1: [21]x11.Card8 = [_]x11.Card8{0} ** 21,
 
-test "sizes" {
-    try std.testing.expectEqual(32, @sizeOf(Error));
-}
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};

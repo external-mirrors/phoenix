@@ -6,6 +6,7 @@ const resource = @import("resource.zig");
 const request = @import("protocol/request.zig");
 const reply = @import("protocol/reply.zig");
 const x11_error = @import("protocol/error.zig");
+const event = @import("protocol/event.zig");
 const x11 = @import("protocol/x11.zig");
 
 const Self = @This();
@@ -55,7 +56,7 @@ pub fn deinit(self: *Self, resource_manager: *ResourceManager) void {
 
 // Unused right now, but this will be used similarly to how xace works
 pub fn is_owner_of_resource(self: *Self, resource_id: u32) bool {
-    return resource_id & self.resource_id_base;
+    return (resource_id & ResourceIdBaseManager.resource_id_base_mask) == self.resource_id_base;
 }
 
 fn append_data_to_read_buffer(self: *Self, data: []const u8) !void {
@@ -134,7 +135,13 @@ pub fn write_reply(self: *Self, reply_data: anytype) !void {
 }
 
 pub fn write_error(self: *Self, err: *const x11_error.Error) !void {
+    std.log.info("Replying with error: {s}", .{x11.stringify_fmt(err)});
     return self.write_buffer.writer().writeAll(std.mem.asBytes(err));
+}
+
+pub fn write_event(self: *Self, ev: *const event.Event) !void {
+    //std.log.info("Replying with event: {s}", .{x11.stringify_fmt(ev)});
+    return self.write_buffer.writer().writeAll(std.mem.asBytes(ev));
 }
 
 pub fn next_sequence_number(self: *Self) u16 {

@@ -4,6 +4,7 @@ const request = @import("../request.zig");
 const reply = @import("../reply.zig");
 const x11 = @import("../x11.zig");
 const opcode = @import("../opcode.zig");
+const event = @import("../event.zig");
 const x11_error = @import("../error.zig");
 const resource = @import("../../resource.zig");
 const AtomManager = @import("../../AtomManager.zig");
@@ -11,6 +12,7 @@ const AtomManager = @import("../../AtomManager.zig");
 pub fn handle_request(request_context: RequestContext) !void {
     std.log.info("Handling core request: {d}", .{request_context.request_header.major_opcode});
     switch (request_context.request_header.major_opcode) {
+        opcode.Major.create_window => try create_window(request_context),
         opcode.Major.intern_atom => try intern_atom(request_context),
         opcode.Major.get_property => try get_property(request_context),
         opcode.Major.create_gc => try create_gc(request_context),
@@ -27,6 +29,84 @@ pub fn handle_request(request_context: RequestContext) !void {
             try request_context.client.write_error(&err);
         },
     }
+}
+
+// TODO: Handle all params properly
+fn create_window(request_context: RequestContext) !void {
+    const create_window_request = try request_context.client.read_request(request.CreateWindowRequest, request_context.allocator);
+    std.log.info("CreateWindow request: {s}", .{x11.stringify_fmt(create_window_request)});
+
+    const parent_window = request_context.server.resource_manager.get_window(create_window_request.parent) orelse {
+        std.log.err("Received invalid parent window {d} in CreateWindow request", .{create_window_request.parent});
+        const err = x11_error.Error{
+            .code = .window,
+            .sequence_number = request_context.sequence_number,
+            .value = @intFromEnum(create_window_request.parent),
+            .minor_opcode = request_context.request_header.minor_opcode,
+            .major_opcode = request_context.request_header.major_opcode,
+        };
+        try request_context.client.write_error(&err);
+        return;
+    };
+
+    const window = if (request_context.client.create_window(create_window_request.window, &request_context.server.resource_manager)) |window| window else |err| switch (err) {
+        error.ResourceNotOwnedByClient => {
+            std.log.err("Received invalid window {d} in CreateWindow request which doesn't belong to the client", .{create_window_request.window});
+            // TODO: What type of error should actually be generated?
+            const err_reply = x11_error.Error{
+                .code = .value,
+                .sequence_number = request_context.sequence_number,
+                .value = @intFromEnum(create_window_request.window),
+                .minor_opcode = request_context.request_header.minor_opcode,
+                .major_opcode = request_context.request_header.major_opcode,
+            };
+            try request_context.client.write_error(&err_reply);
+            return;
+        },
+        error.ResourceAlreadyExists => {
+            std.log.err("Received window {d} in CreateWindow request which already exists", .{create_window_request.window});
+            // TODO: What type of error should actually be generated?
+            const err_reply = x11_error.Error{
+                .code = .value,
+                .sequence_number = request_context.sequence_number,
+                .value = @intFromEnum(create_window_request.window),
+                .minor_opcode = request_context.request_header.minor_opcode,
+                .major_opcode = request_context.request_header.major_opcode,
+            };
+            try request_context.client.write_error(&err_reply);
+            return;
+        },
+        error.OutOfMemory => {
+            const err_reply = x11_error.Error{
+                .code = .alloc,
+                .sequence_number = request_context.sequence_number,
+                .value = 0,
+                .minor_opcode = request_context.request_header.minor_opcode,
+                .major_opcode = request_context.request_header.major_opcode,
+            };
+            try request_context.client.write_error(&err_reply);
+            return;
+        },
+    };
+
+    _ = parent_window;
+    _ = window;
+
+    const override_redirect = if (create_window_request.get_value(x11.Card8, "override_redirect") orelse 0 == 0) false else true;
+    const create_notify_event = event.Event{
+        .create_notify = .{
+            .sequence_number = request_context.sequence_number,
+            .parent = create_window_request.parent,
+            .window = create_window_request.window,
+            .x = create_window_request.x,
+            .y = create_window_request.y,
+            .width = create_window_request.width,
+            .height = create_window_request.height,
+            .border_width = create_window_request.border_width,
+            .override_redirect = override_redirect,
+        },
+    };
+    try request_context.client.write_event(&create_notify_event);
 }
 
 fn intern_atom(request_context: RequestContext) !void {
@@ -62,7 +142,7 @@ fn intern_atom(request_context: RequestContext) !void {
 
 // TODO: Actually read the request values, handling them properly
 fn get_property(request_context: RequestContext) !void {
-    const get_property_request = try request_context.client.read_request(request.GetProperyRequest, request_context.allocator);
+    const get_property_request = try request_context.client.read_request(request.GetPropertyRequest, request_context.allocator);
     std.log.info("GetProperty request: {s}", .{x11.stringify_fmt(get_property_request)});
     // TODO: Error if running in security mode and the window is not owned by the client
     const window = request_context.server.resource_manager.get_window(get_property_request.window) orelse {

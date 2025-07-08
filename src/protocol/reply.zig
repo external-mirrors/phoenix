@@ -44,6 +44,8 @@ fn write_reply_fields(comptime T: type, reply: *const T, writer: anytype) !void 
 fn write_reply_list_of(comptime T: type, list_of: *const T, writer: anytype) !void {
     const element_type = comptime T.get_element_type();
     const list_of_options = comptime T.get_options();
+    if (list_of_options.length_field_type != .integer)
+        @compileError("TODO: Support bitmask for ListOf length in reply");
     switch (@typeInfo(element_type)) {
         .@"enum", .int => try writer.writeAll(list_of.items),
         .@"struct" => {
@@ -189,7 +191,7 @@ pub const VisualClass = enum(x11.Card8) {
 };
 
 pub const VisualType = struct {
-    visual_id: x11.VisualId,
+    visual: x11.VisualId,
     class: VisualClass,
     bits_per_rgb_value: x11.Card8,
     colormap_entries: x11.Card16,
@@ -243,6 +245,10 @@ pub const GenericReply = extern struct {
     data03: x11.Card32,
     data04: x11.Card32,
     data05: x11.Card32,
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
 };
 
 pub const ConnectionSetupReplyHeader = extern struct {
@@ -251,6 +257,10 @@ pub const ConnectionSetupReplyHeader = extern struct {
     protocol_major_version: x11.Card16 = 28000, // TODO:
     protocol_minor_version: x11.Card16 = 0, // TODO:
     length: x11.Card16 = 0, // This is automatically updated with the size of the reply
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 8);
+    }
 };
 
 pub const ConnectionSetupAcceptReply = struct {
@@ -334,8 +344,3 @@ pub const ListExtensionsReply = struct {
     pad1: [24]x11.Card8 = [_]x11.Card8{0} ** 24,
     names: x11.ListOf(Str, .{ .length_field = "num_strs", .padding = 4 }),
 };
-
-test "sizes" {
-    try std.testing.expectEqual(8, @sizeOf(ConnectionSetupReplyHeader));
-    try std.testing.expectEqual(32, @sizeOf(GenericReply));
-}

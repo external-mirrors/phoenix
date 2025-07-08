@@ -13,6 +13,7 @@ test "all tests" {
     _ = @import("protocol/request.zig");
     _ = @import("protocol/reply.zig");
     _ = @import("protocol/error.zig");
+    _ = @import("protocol/event.zig");
     _ = @import("protocol/handlers/core.zig");
 
     _ = @import("Server.zig");

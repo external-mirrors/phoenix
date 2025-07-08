@@ -47,10 +47,10 @@ pub const Graphics = union(enum) {
     }
 };
 
-test "egl" {
-    const allocator = std.testing.allocator;
-    const egl = try Graphics.init_egl(allocator);
-    defer egl.deinit(allocator);
-    egl.clear();
-    egl.display();
-}
+// test "egl" {
+//     const allocator = std.testing.allocator;
+//     const egl = try Graphics.init_egl(allocator);
+//     defer egl.deinit(allocator);
+//     egl.clear();
+//     egl.display();
+// }

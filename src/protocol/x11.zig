@@ -5,10 +5,15 @@ pub const Card8 = u8;
 pub const Card16 = u16;
 pub const Card32 = u32;
 
+pub const ListOfLengthType = enum {
+    integer,
+    bitmask, // The length is specified by the number of bits set
+};
+
 pub const ListOfOptions = struct {
     length_field: []const u8,
+    length_field_type: ListOfLengthType = .integer,
     padding: u8 = 0,
-    // TODO: Add multiple_of field, to assert that the size is a multiple of this. This is needed in some places, such as |ConnectionSetupAcceptReply.screens| which needs to be a multiple of 4, or maybe pad the remaining data
 };
 
 pub fn ListOf(comptime T: type, comptime options: ListOfOptions) type {
@@ -34,6 +39,11 @@ pub const KeyCode = enum(Card8) {
     _,
 };
 
+pub const Button = enum(Card8) {
+    _,
+};
+
+
 pub const Window = enum(Card32) {
     _,
 };
@@ -43,6 +53,7 @@ pub const Colormap = enum(Card32) {
 };
 
 pub const VisualId = enum(Card32) {
+    copy_from_parent = 0,
     _,
 };
 
@@ -50,8 +61,22 @@ pub const Atom = enum(Card32) {
     _,
 };
 
+pub const Class = enum(Card16) {
+    copy_from_parent = 0,
+    input_output = 1,
+    input_only = 2,
+};
+
+pub const Pixmap = enum(Card16) {
+    _,
+};
+
+pub const Timestamp = Card32;
+
 pub const any_property_type: Atom = 0;
-pub const none: Atom = 0;
+pub const none: u32 = 0;
+pub const parent_relative: u32 = 0;
+pub const copy_from_parent: u32 = 0;
 
 pub const PropertyValue = union(enum) {
     string8: std.ArrayList(Card8),

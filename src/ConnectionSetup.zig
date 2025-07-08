@@ -37,7 +37,7 @@ pub fn handle_client_connect(client: *Client, root_window: *Window, allocator: s
 
     var visual_types = [_]reply.VisualType{
         .{
-            .visual_id = root_visual,
+            .visual = root_visual,
             .class = .true_color,
             .bits_per_rgb_value = 32,
             .colormap_entries = 256,

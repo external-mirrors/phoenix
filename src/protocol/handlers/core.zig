@@ -244,18 +244,14 @@ pub const ValueMask = packed struct(x11.Card32) {
         return result;
     }
 
-    // Returns null if the field isn't set
-    pub fn get_value_index_by_field(self: ValueMask, comptime requested_field_name: []const u8) ?usize {
-        comptime std.debug.assert(@hasField(ValueMask, requested_field_name));
-        var value_index: usize = 0;
-        inline for (@typeInfo(ValueMask).@"struct".fields) |*field| {
-            if (field.type == bool and @field(self, field.name)) {
-                if (std.mem.eql(u8, field.name, requested_field_name))
-                    return value_index;
-                value_index += 1;
-            }
-        }
-        return null;
+    // In the protocol the size of the |value_list| array depends on how many bits are set in the ValueMask
+    // and the index to the value that matches the bit depends on how many bits are set before that bit
+    pub fn get_value_index_by_field(self: ValueMask, comptime field_name: []const u8) ?usize {
+        if (!@field(self, field_name))
+            return null;
+
+        const index_count_mask: u32 = (1 << @bitOffsetOf(ValueMask, field_name)) - 1;
+        return @popCount(@as(u32, @bitCast(self)) & index_count_mask);
     }
 
     comptime {

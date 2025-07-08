@@ -74,3 +74,7 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
 pub fn create_window(self: *Self) !void {
     _ = self;
 }
+
+pub fn get_drm_card_fd(self: *Self) std.posix.fd_t {
+    return self.graphics.get_dri_card_fd();
+}

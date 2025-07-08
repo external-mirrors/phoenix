@@ -2,17 +2,21 @@ const std = @import("std");
 const Window = @import("Window.zig");
 const ResourceIdBaseManager = @import("ResourceIdBaseManager.zig");
 const ResourceManager = @import("ResourceManager.zig");
+const ReplyMessage = @import("ReplyMessage.zig");
 const resource = @import("resource.zig");
 const request = @import("protocol/request.zig");
 const reply = @import("protocol/reply.zig");
 const x11_error = @import("protocol/error.zig");
 const event = @import("protocol/event.zig");
 const x11 = @import("protocol/x11.zig");
+const netutils = @import("netutils.zig");
 
 const Self = @This();
 const max_read_buffer_size: usize = 1 * 1024 * 1024; // 1mb. If the server doesn't dont manage to read the data fast enough then the client is forcefully disconnected
-const max_write_buffer_size: usize = 2 * 1024 * 1024; // 2mb. Clients that dont consume data fast enough are forcefully disconnected
+// TODO: Use this
+//const max_write_buffer_size: usize = 2 * 1024 * 1024; // 2mb. Clients that dont consume data fast enough are forcefully disconnected
 const DataBuffer = std.fifo.LinearFifo(u8, .Dynamic);
+const ReplyMessageDataBuffer = std.fifo.LinearFifo(ReplyMessage, .Dynamic);
 
 const State = enum {
     connecting,
@@ -23,7 +27,7 @@ allocator: std.mem.Allocator,
 connection: std.net.Server.Connection,
 state: State,
 read_buffer: DataBuffer,
-write_buffer: DataBuffer,
+write_buffer: ReplyMessageDataBuffer,
 resource_id_base: u32,
 sequence_number: u16,
 resources: resource.ResourceHashMap,
@@ -44,6 +48,10 @@ pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, alloca
 pub fn deinit(self: *Self, resource_manager: *ResourceManager) void {
     self.connection.stream.close();
     self.read_buffer.deinit();
+    while (self.write_buffer.readableLength() > 0) {
+        var reply_message = &self.write_buffer.buf[self.write_buffer.head];
+        reply_message.deinit(true);
+    }
     self.write_buffer.deinit();
 
     var resources_it = self.resources.valueIterator();
@@ -96,6 +104,7 @@ pub fn read_client_data_to_buffer(self: *Self) !void {
     // TODO: Write directly to read_buffer instead from connection.stream
     var read_buffer: [4096]u8 = undefined;
     while (true) {
+        // TODO: use readmsg instead
         const bytes_read = self.connection.stream.read(&read_buffer) catch |err| switch (err) {
             error.WouldBlock => return,
             else => return err,
@@ -111,16 +120,27 @@ pub fn read_client_data_to_buffer(self: *Self) !void {
 
 pub fn write_buffer_to_client(self: *Self) !void {
     while (self.write_buffer.readableLength() > 0) {
-        const bytes_written = self.connection.stream.write(self.write_buffer.readableSlice(0)) catch |err| switch (err) {
-            error.WouldBlock => return,
-            else => return err,
-        };
+        var reply_message = &self.write_buffer.buf[self.write_buffer.head];
+        var fds: [ReplyMessage.max_fds]std.posix.fd_t = undefined;
+        for (0..reply_message.num_fds) |i| {
+            fds[i] = reply_message.fds[i].fd;
+        }
 
-        if (bytes_written == 0)
-            return;
+        while (!reply_message.is_empty()) {
+            const bytes_written = netutils.sendmsg(self.connection.stream.handle, reply_message.slice(), fds[0..reply_message.num_fds]) catch |err| switch (err) {
+                error.WouldBlock => return,
+                else => return err,
+            };
 
-        std.log.info("Wrote {d} bytes to client {d}", .{ bytes_written, self.connection.stream.handle });
-        self.write_buffer.discard(bytes_written);
+            reply_message.cleanup_fds();
+            if (bytes_written == 0)
+                return;
+
+            std.log.info("Wrote {d} bytes to client {d}", .{ bytes_written, self.connection.stream.handle });
+            reply_message.discard(bytes_written);
+        }
+
+        self.write_buffer.discard(1);
     }
 }
 
@@ -129,19 +149,33 @@ pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator)
 }
 
 pub fn write_reply(self: *Self, reply_data: anytype) !void {
+    return write_reply_with_fds(self, reply_data, &.{});
+}
+
+pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const ReplyMessage.ReplyMessageFd) !void {
     if (@typeInfo(@TypeOf(reply_data)) != .pointer)
         @compileError("Expected reply data to be a pointer");
-    return reply.write_reply(@TypeOf(reply_data.*), reply_data, self.write_buffer.writer());
+
+    var reply_message = ReplyMessage.init(fds, self.allocator);
+    errdefer reply_message.deinit(false);
+    try reply.write_reply(@TypeOf(reply_data.*), reply_data, reply_message.writer());
+    return self.write_buffer.writeItem(reply_message);
 }
 
 pub fn write_error(self: *Self, err: *const x11_error.Error) !void {
     std.log.info("Replying with error: {s}", .{x11.stringify_fmt(err)});
-    return self.write_buffer.writer().writeAll(std.mem.asBytes(err));
+    var reply_message = ReplyMessage.init(&.{}, self.allocator);
+    errdefer reply_message.deinit(false);
+    try reply_message.data.appendSlice(std.mem.asBytes(err));
+    return self.write_buffer.writeItem(reply_message);
 }
 
 pub fn write_event(self: *Self, ev: *const event.Event) !void {
     //std.log.info("Replying with event: {s}", .{x11.stringify_fmt(ev)});
-    return self.write_buffer.writer().writeAll(std.mem.asBytes(ev));
+    var reply_message = ReplyMessage.init(&.{}, self.allocator);
+    errdefer reply_message.deinit(false);
+    try reply_message.data.appendSlice(std.mem.asBytes(ev));
+    return self.write_buffer.writeItem(reply_message);
 }
 
 pub fn next_sequence_number(self: *Self) u16 {

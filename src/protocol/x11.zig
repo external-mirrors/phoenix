@@ -71,6 +71,14 @@ pub const Pixmap = enum(Card16) {
     _,
 };
 
+pub const Drawable = enum(Card32) {
+    _,
+};
+
+pub const Provider = enum(Card32) {
+    _,
+};
+
 pub const Timestamp = Card32;
 
 pub const any_property_type: Atom = 0;

@@ -38,6 +38,13 @@ pub const Backend = union(enum) {
         }
     }
 
+    /// Returns a reference. The fd is owned by the backend
+    pub fn get_drm_card_fd(self: Backend) std.posix.fd_t {
+        switch (self) {
+            inline else => |item| return item.get_drm_card_fd(),
+        }
+    }
+
     pub fn create_window(self: Backend) !void {
         switch (self) {
             inline else => |item| return item.create_window(),

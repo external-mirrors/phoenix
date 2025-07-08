@@ -213,6 +213,9 @@ fn query_extension(request_context: RequestContext) !void {
     if (std.mem.eql(u8, query_extension_request.name.items, "DRI3")) {
         query_extension_reply.present = true;
         query_extension_reply.major_opcode = opcode.Major.dri3;
+    } else if (std.mem.eql(u8, query_extension_request.name.items, "XFIXES")) {
+        query_extension_reply.present = true;
+        query_extension_reply.major_opcode = opcode.Major.xfixes;
     }
 
     try request_context.client.write_reply(&query_extension_reply);

@@ -28,6 +28,12 @@ pub const Graphics = union(enum) {
         }
     }
 
+    pub fn get_dri_card_fd(self: Graphics) std.posix.fd_t {
+        return switch (self) {
+            inline else => |item| item.get_dri_card_fd(),
+        };
+    }
+
     pub fn resize(self: Graphics, width: u32, height: u32) void {
         switch (self) {
             inline else => |item| item.resize(width, height),

@@ -34,10 +34,13 @@ const surface_attr = [_]c.EGLint{
 
 const PFNGLDEBUGMESSAGECALLBACKPROC = *const fn (c.GLDEBUGPROC, ?*const anyopaque) callconv(.c) void;
 const PFNEGLGETPLATFORMDISPLAYEXTPROC = *const fn (c.EGLenum, ?*anyopaque, [*c]const c.EGLint) callconv(.c) c.EGLDisplay;
+const PFNEGLQUERYDISPLAYATTRIBEXTPROC = *const fn (c.EGLDisplay, c.EGLint, [*c]c.EGLAttrib) callconv(.c) c.EGLBoolean;
+const PFNEGLQUERYDEVICESTRINGEXTPROC = *const fn (c.EGLDeviceEXT, c.EGLint) callconv(.c) [*c]const u8;
 
 egl_display: c.EGLDisplay,
 egl_surface: c.EGLSurface,
 egl_context: c.EGLContext,
+dri_card_fd: std.posix.fd_t,
 
 pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplayType, window_id: c.EGLNativeWindowType, debug: bool) !Self {
     const context_attr = [_]c.EGLint{
@@ -50,6 +53,9 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
 
     const glDebugMessageCallback: PFNGLDEBUGMESSAGECALLBACKPROC = @ptrCast(c.eglGetProcAddress("glDebugMessageCallback") orelse return error.FailedToResolveOpenglProc);
     const eglGetPlatformDisplayEXT: PFNEGLGETPLATFORMDISPLAYEXTPROC = @ptrCast(c.eglGetProcAddress("eglGetPlatformDisplayEXT") orelse return error.FailedToResolveOpenglProc);
+
+    const eglQueryDisplayAttribEXT: PFNEGLQUERYDISPLAYATTRIBEXTPROC = @ptrCast(c.eglGetProcAddress("eglQueryDisplayAttribEXT") orelse return error.FailedToResolveOpenglProc);
+    const eglQueryDeviceStringEXT: PFNEGLQUERYDEVICESTRINGEXTPROC = @ptrCast(c.eglGetProcAddress("eglQueryDeviceStringEXT") orelse return error.FailedToResolveOpenglProc);
 
     const egl_display = eglGetPlatformDisplayEXT(platform, connection, &[_]c.EGLint{
         screen_type,
@@ -90,6 +96,18 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
         c.glEnable(c.GL_DEBUG_OUTPUT_SYNCHRONOUS);
     }
 
+    var dri_card_fd: ?std.posix.fd_t = null;
+    errdefer if (dri_card_fd) |fd| std.posix.close(fd);
+
+    var device: c.EGLAttrib = undefined;
+    if (eglQueryDisplayAttribEXT(egl_display, c.EGL_DEVICE_EXT, &device) == c.EGL_TRUE and device > 0) {
+        const dev: usize = @intCast(device);
+        const dri_card_path = eglQueryDeviceStringEXT(@ptrFromInt(dev), c.EGL_DRM_DEVICE_FILE_EXT) orelse return error.FailedToGetDevicePath;
+        dri_card_fd = try std.posix.openZ(dri_card_path, .{ .ACCMODE = .RDWR, .CLOEXEC = true }, 0);
+    } else {
+        return error.FailedToGetDevicePath;
+    }
+
     if (c.eglSwapInterval(egl_display, 1) == c.EGL_FALSE)
         std.log.warn("Failed to enable egl vsync", .{});
 
@@ -102,10 +120,12 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
         .egl_display = egl_display,
         .egl_surface = egl_surface,
         .egl_context = egl_context,
+        .dri_card_fd = dri_card_fd.?,
     };
 }
 
 pub fn deinit(self: *Self) void {
+    std.posix.close(self.dri_card_fd);
     _ = c.eglMakeCurrent(self.egl_display, null, null, null);
     _ = c.eglDestroyContext(self.egl_display, self.egl_context);
     _ = c.eglDestroySurface(self.egl_display, self.egl_surface);
@@ -114,6 +134,10 @@ pub fn deinit(self: *Self) void {
     self.egl_context = undefined;
     self.egl_surface = undefined;
     self.egl_display = undefined;
+}
+
+pub fn get_dri_card_fd(self: *Self) std.posix.fd_t {
+    return self.dri_card_fd;
 }
 
 pub fn resize(self: *Self, width: u32, height: u32) void {

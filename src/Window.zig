@@ -6,13 +6,21 @@ const Self = @This();
 
 allocator: std.mem.Allocator,
 window_id: x11.Window,
+x: i32,
+y: i32,
+width: i32,
+height: i32,
 properties: x11.PropertyHashMap,
 children: std.ArrayList(*Self),
 
-pub fn init(window_id: x11.Window, allocator: std.mem.Allocator) Self {
+pub fn init(window_id: x11.Window, x: i32, y: i32, width: i32, height: i32, allocator: std.mem.Allocator) Self {
     return .{
         .allocator = allocator,
         .window_id = window_id,
+        .x = x,
+        .y = y,
+        .width = width,
+        .height = height,
         .properties = .init(allocator),
         .children = .init(allocator),
     };

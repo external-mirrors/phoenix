@@ -52,8 +52,10 @@ fn open(request_context: RequestContext) !void {
     // and provider.
 
     const card_fd = request_context.server.backend.get_drm_card_fd();
+
     const render_path = c.drmGetRenderDeviceNameFromFd(card_fd) orelse return error.FailedToGetCardRenderPath;
     defer std.c.free(render_path);
+
     const render_fd = try std.posix.openZ(render_path, .{ .ACCMODE = .RDWR, .CLOEXEC = true }, 0);
     errdefer std.posix.close(render_fd);
 

@@ -187,12 +187,12 @@ pub fn next_sequence_number(self: *Self) u16 {
 }
 
 /// Returns a reference to the created window. The ownership is with this client
-pub fn create_window(self: *Self, window_id: x11.Window, resource_manager: *ResourceManager) !*Window {
+pub fn create_window(self: *Self, window_id: x11.Window, x: i32, y: i32, width: i32, height: i32, resource_manager: *ResourceManager) !*Window {
     if (@intFromEnum(window_id) & ResourceIdBaseManager.resource_id_base_mask != self.resource_id_base)
         return error.ResourceNotOwnedByClient;
 
     const new_window = try self.allocator.create(Window);
-    new_window.* = Window.init(window_id, self.allocator);
+    new_window.* = Window.init(window_id, x, y, width, height, self.allocator);
     errdefer self.allocator.destroy(new_window);
 
     const result = try self.resources.getOrPut(@intFromEnum(window_id));

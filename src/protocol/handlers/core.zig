@@ -13,6 +13,7 @@ pub fn handle_request(request_context: RequestContext) !void {
     std.log.info("Handling core request: {d}", .{request_context.request_header.major_opcode});
     switch (request_context.request_header.major_opcode) {
         opcode.Major.create_window => return create_window(request_context),
+        opcode.Major.get_geometry => return get_geometry(request_context),
         opcode.Major.intern_atom => return intern_atom(request_context),
         opcode.Major.get_property => return get_property(request_context),
         opcode.Major.create_gc => return create_gc(request_context),
@@ -49,7 +50,7 @@ fn create_window(request_context: RequestContext) !void {
         return;
     };
 
-    const window = if (request_context.client.create_window(create_window_request.window, &request_context.server.resource_manager)) |window| window else |err| switch (err) {
+    const window = if (request_context.client.create_window(create_window_request.window, create_window_request.x, create_window_request.y, create_window_request.width, create_window_request.height, &request_context.server.resource_manager)) |window| window else |err| switch (err) {
         error.ResourceNotOwnedByClient => {
             std.log.err("Received invalid window {d} in CreateWindow request which doesn't belong to the client", .{create_window_request.window});
             // TODO: What type of error should actually be generated?
@@ -107,6 +108,37 @@ fn create_window(request_context: RequestContext) !void {
         },
     };
     try request_context.client.write_event(&create_notify_event);
+}
+
+fn get_geometry(request_context: RequestContext) !void {
+    const get_geometry_request = try request_context.client.read_request(GetGeometryRequest, request_context.allocator);
+    std.log.info("GetGeometry request: {s}", .{x11.stringify_fmt(get_geometry_request)});
+
+    // TODO: Support types other than window
+    const window = request_context.server.resource_manager.get_window(get_geometry_request.drawable.to_window()) orelse {
+        std.log.err("Received invalid drawable {d} in GetGeometry request", .{get_geometry_request.drawable});
+        const err = x11_error.Error{
+            .code = .drawable,
+            .sequence_number = request_context.sequence_number,
+            .value = @intFromEnum(get_geometry_request.drawable),
+            .minor_opcode = request_context.request_header.minor_opcode,
+            .major_opcode = request_context.request_header.major_opcode,
+        };
+        try request_context.client.write_error(&err);
+        return;
+    };
+
+    var get_geometry_reply = GetGeometryReply{
+        .depth = 32, // TODO: Use real value
+        .sequence_number = request_context.sequence_number,
+        .root = request_context.server.root_window.window_id,
+        .x = @intCast(window.x),
+        .y = @intCast(window.y),
+        .width = @intCast(window.width),
+        .height = @intCast(window.height),
+        .border_width = 1, // TODO: Use real value
+    };
+    try request_context.client.write_reply(&get_geometry_reply);
 }
 
 fn intern_atom(request_context: RequestContext) !void {
@@ -340,7 +372,28 @@ const GetPropertyCard8Reply = GetPropertyReply(x11.Card8);
 const GetPropertyCard16Reply = GetPropertyReply(x11.Card16);
 const GetPropertyCard32Reply = GetPropertyReply(x11.Card32);
 
-pub const InternAtomRequest = struct {
+const GetGeometryRequest = struct {
+    opcode: x11.Card8, // opcode.Major
+    pad1: x11.Card8,
+    length: x11.Card16,
+    drawable: x11.Drawable,
+};
+
+const GetGeometryReply = struct {
+    reply_type: reply.ReplyType = .reply,
+    depth: x11.Card8,
+    sequence_number: x11.Card16,
+    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+    root: x11.Window,
+    x: i16,
+    y: i16,
+    width: x11.Card16,
+    height: x11.Card16,
+    border_width: x11.Card16,
+    pad1: [10]x11.Card8 = [_]x11.Card8{0} ** 10,
+};
+
+const InternAtomRequest = struct {
     opcode: x11.Card8, // opcode.Major
     only_if_exists: bool,
     length: x11.Card16,

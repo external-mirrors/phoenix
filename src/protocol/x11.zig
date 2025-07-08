@@ -43,7 +43,6 @@ pub const Button = enum(Card8) {
     _,
 };
 
-
 pub const Window = enum(Card32) {
     _,
 };
@@ -73,6 +72,10 @@ pub const Pixmap = enum(Card16) {
 
 pub const Drawable = enum(Card32) {
     _,
+
+    pub fn to_window(self: Drawable) Window {
+        return @enumFromInt(@intFromEnum(self));
+    }
 };
 
 pub const Provider = enum(Card32) {

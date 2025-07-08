@@ -8,4 +8,9 @@ pub const Major = struct {
     pub const get_property: x11.Card8 = 20;
     pub const create_gc: x11.Card8 = 55;
     pub const query_extension: x11.Card8 = 98;
+
+    // Extensions
+    pub const dri3: x11.Card8 = 128;
 };
+
+pub const core_opcode_max: x11.Card8 = 127;

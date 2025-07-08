@@ -285,62 +285,13 @@ pub const ConnectionSetupAcceptReply = struct {
     screens: x11.ListOf(Screen, .{ .length_field = "num_screens" }),
 };
 
-pub const ReplyHeader = struct {
+pub const ReplyHeader = extern struct {
     reply_type: ReplyType,
     data1: x11.Card8,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-};
 
-pub const Str = struct {
-    length: x11.Card8,
-    data: x11.ListOf(x11.Card8, .{ .length_field = "length" }),
-};
-
-pub const QueryExtensionReply = struct {
-    reply_type: ReplyType,
-    pad1: x11.Card8 = 0,
-    sequence_number: x11.Card16,
-    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    present: bool,
-    major_opcode: x11.Card8,
-    first_event: x11.Card8,
-    first_error: x11.Card8,
-    pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
-};
-
-fn GetPropertyReply(comptime DataType: type) type {
-    return struct {
-        reply_type: ReplyType,
-        format: x11.Card8,
-        sequence_number: x11.Card16,
-        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        type: x11.Atom,
-        bytes_after: x11.Card32,
-        value_length: x11.Card32 = 0,
-        pad1: [12]x11.Card8 = [_]x11.Card8{0} ** 12,
-        data: x11.ListOf(DataType, .{ .length_field = "value_length", .padding = 4 }),
-    };
-}
-
-pub const GetPropertyCard8Reply = GetPropertyReply(x11.Card8);
-pub const GetPropertyCard16Reply = GetPropertyReply(x11.Card16);
-pub const GetPropertyCard32Reply = GetPropertyReply(x11.Card32);
-
-pub const InternAtomReply = struct {
-    reply_type: ReplyType,
-    pad1: x11.Card8 = 0,
-    sequence_number: x11.Card16,
-    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    atom: x11.Atom,
-    pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
-};
-
-pub const ListExtensionsReply = struct {
-    reply_type: ReplyType,
-    num_strs: x11.Card8,
-    sequence_number: x11.Card16,
-    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    pad1: [24]x11.Card8 = [_]x11.Card8{0} ** 24,
-    names: x11.ListOf(Str, .{ .length_field = "num_strs", .padding = 4 }),
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 8);
+    }
 };

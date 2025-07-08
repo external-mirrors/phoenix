@@ -2,12 +2,14 @@ const std = @import("std");
 const x11 = @import("protocol/x11.zig");
 const request = @import("protocol/request.zig");
 const reply = @import("protocol/reply.zig");
+const opcode = @import("protocol/opcode.zig");
 const Client = @import("Client.zig");
 const ResourceIdBaseManager = @import("ResourceIdBaseManager.zig");
 const ClientManager = @import("ClientManager.zig");
 const ConnectionSetup = @import("ConnectionSetup.zig");
 const x11_error = @import("protocol/error.zig");
-const core_handler = @import("protocol/handlers/core.zig");
+const core = @import("protocol/handlers/core.zig");
+const extensions = @import("protocol/handlers/extensions.zig");
 const Window = @import("Window.zig");
 const ResourceManager = @import("ResourceManager.zig");
 const AtomManager = @import("AtomManager.zig");
@@ -248,19 +250,10 @@ fn handle_client_request(self: *Self, client: *Client) !bool {
     // TODO: Respond to client with proper error
     if (request_header.major_opcode == 0) {
         return error.InvalidMajorOpcode;
-    } else if (request_header.major_opcode >= 1 and request_header.major_opcode <= 127) {
-        try core_handler.handle_request(request_context);
+    } else if (request_header.major_opcode >= 1 and request_header.major_opcode <= opcode.core_opcode_max) {
+        try core.handle_request(request_context);
     } else {
-        // TODO: Implement
-        std.log.warn("Unimplemented extension request: {d}:{d}", .{ request_header.major_opcode, request_header.minor_opcode });
-        const err = x11_error.Error{
-            .code = .implementation,
-            .sequence_number = request_context.sequence_number,
-            .value = 0,
-            .minor_opcode = request_header.minor_opcode,
-            .major_opcode = request_header.major_opcode,
-        };
-        try client.write_error(&err);
+        try extensions.handle_request(request_context);
     }
 
     const bytes_available_to_read_after = client.read_buffer_data_size();

@@ -14,6 +14,7 @@ pub const Major = struct {
     // Extensions
     pub const dri3: x11.Card8 = 128;
     pub const xfixes: x11.Card8 = 129;
+    pub const present: x11.Card8 = 130;
 };
 
 pub const core_opcode_max: x11.Card8 = 127;

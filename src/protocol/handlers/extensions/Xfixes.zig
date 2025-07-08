@@ -4,7 +4,6 @@ const x11 = @import("../../x11.zig");
 const x11_error = @import("../../error.zig");
 const request = @import("../../request.zig");
 const reply = @import("../../reply.zig");
-const c = @import("../../../c.zig");
 
 pub fn handle_request(request_context: RequestContext) !void {
     std.log.warn("Handling xfixes request: {d}:{d}", .{ request_context.request_header.major_opcode, request_context.request_header.minor_opcode });

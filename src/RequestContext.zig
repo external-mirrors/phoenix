@@ -7,5 +7,5 @@ const backend_imp = @import("backend/backend.zig");
 allocator: std.mem.Allocator,
 client: *Client,
 server: *Server,
-request_header: *const request.RequestHeader,
+header: *const request.RequestHeader,
 sequence_number: u16,

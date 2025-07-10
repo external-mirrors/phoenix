@@ -10,8 +10,8 @@ const resource = @import("../../resource.zig");
 const AtomManager = @import("../../AtomManager.zig");
 
 pub fn handle_request(request_context: RequestContext) !void {
-    std.log.info("Handling core request: {d}", .{request_context.request_header.major_opcode});
-    switch (request_context.request_header.major_opcode) {
+    std.log.info("Handling core request: {d}", .{request_context.header.major_opcode});
+    switch (request_context.header.major_opcode) {
         opcode.Major.create_window => return create_window(request_context),
         opcode.Major.get_geometry => return get_geometry(request_context),
         opcode.Major.intern_atom => return intern_atom(request_context),
@@ -19,13 +19,13 @@ pub fn handle_request(request_context: RequestContext) !void {
         opcode.Major.create_gc => return create_gc(request_context),
         opcode.Major.query_extension => return query_extension(request_context),
         else => {
-            std.log.warn("Unimplemented core request: {d}", .{request_context.request_header.major_opcode});
+            std.log.warn("Unimplemented core request: {d}", .{request_context.header.major_opcode});
             const err = x11_error.Error{
                 .code = .implementation,
                 .sequence_number = request_context.sequence_number,
                 .value = 0,
-                .minor_opcode = request_context.request_header.minor_opcode,
-                .major_opcode = request_context.request_header.major_opcode,
+                .minor_opcode = request_context.header.minor_opcode,
+                .major_opcode = request_context.header.major_opcode,
             };
             return request_context.client.write_error(&err);
         },
@@ -44,11 +44,10 @@ fn create_window(request_context: RequestContext) !void {
             .code = .window,
             .sequence_number = request_context.sequence_number,
             .value = @intFromEnum(req.request.parent),
-            .minor_opcode = request_context.request_header.minor_opcode,
-            .major_opcode = request_context.request_header.major_opcode,
+            .minor_opcode = request_context.header.minor_opcode,
+            .major_opcode = request_context.header.major_opcode,
         };
-        try request_context.client.write_error(&err);
-        return;
+        return request_context.client.write_error(&err);
     };
 
     const window = if (request_context.client.create_window(req.request.window, req.request.x, req.request.y, req.request.width, req.request.height, &request_context.server.resource_manager)) |window| window else |err| switch (err) {
@@ -59,11 +58,10 @@ fn create_window(request_context: RequestContext) !void {
                 .code = .value,
                 .sequence_number = request_context.sequence_number,
                 .value = @intFromEnum(req.request.window),
-                .minor_opcode = request_context.request_header.minor_opcode,
-                .major_opcode = request_context.request_header.major_opcode,
+                .minor_opcode = request_context.header.minor_opcode,
+                .major_opcode = request_context.header.major_opcode,
             };
-            try request_context.client.write_error(&err_reply);
-            return;
+            return request_context.client.write_error(&err_reply);
         },
         error.ResourceAlreadyExists => {
             std.log.err("Received window {d} in CreateWindow request which already exists", .{req.request.window});
@@ -72,22 +70,20 @@ fn create_window(request_context: RequestContext) !void {
                 .code = .value,
                 .sequence_number = request_context.sequence_number,
                 .value = @intFromEnum(req.request.window),
-                .minor_opcode = request_context.request_header.minor_opcode,
-                .major_opcode = request_context.request_header.major_opcode,
+                .minor_opcode = request_context.header.minor_opcode,
+                .major_opcode = request_context.header.major_opcode,
             };
-            try request_context.client.write_error(&err_reply);
-            return;
+            return request_context.client.write_error(&err_reply);
         },
         error.OutOfMemory => {
             const err_reply = x11_error.Error{
                 .code = .alloc,
                 .sequence_number = request_context.sequence_number,
                 .value = 0,
-                .minor_opcode = request_context.request_header.minor_opcode,
-                .major_opcode = request_context.request_header.major_opcode,
+                .minor_opcode = request_context.header.minor_opcode,
+                .major_opcode = request_context.header.major_opcode,
             };
-            try request_context.client.write_error(&err_reply);
-            return;
+            return request_context.client.write_error(&err_reply);
         },
     };
 
@@ -123,11 +119,10 @@ fn get_geometry(request_context: RequestContext) !void {
             .code = .drawable,
             .sequence_number = request_context.sequence_number,
             .value = @intFromEnum(req.request.drawable),
-            .minor_opcode = request_context.request_header.minor_opcode,
-            .major_opcode = request_context.request_header.major_opcode,
+            .minor_opcode = request_context.header.minor_opcode,
+            .major_opcode = request_context.header.major_opcode,
         };
-        try request_context.client.write_error(&err);
-        return;
+        return request_context.client.write_error(&err);
     };
 
     var get_geometry_reply = GetGeometryReply{
@@ -158,11 +153,10 @@ fn intern_atom(request_context: RequestContext) !void {
                     .code = .alloc,
                     .sequence_number = request_context.sequence_number,
                     .value = 0,
-                    .minor_opcode = request_context.request_header.minor_opcode,
-                    .major_opcode = request_context.request_header.major_opcode,
+                    .minor_opcode = request_context.header.minor_opcode,
+                    .major_opcode = request_context.header.major_opcode,
                 };
-                try request_context.client.write_error(&err_reply);
-                return;
+                return request_context.client.write_error(&err_reply);
             },
         };
     }
@@ -186,11 +180,10 @@ fn get_property(request_context: RequestContext) !void {
             .code = .window,
             .sequence_number = request_context.sequence_number,
             .value = @intFromEnum(req.request.window),
-            .minor_opcode = request_context.request_header.minor_opcode,
-            .major_opcode = request_context.request_header.major_opcode,
+            .minor_opcode = request_context.header.minor_opcode,
+            .major_opcode = request_context.header.major_opcode,
         };
-        try request_context.client.write_error(&err);
-        return;
+        return request_context.client.write_error(&err);
     };
 
     const property = window.get_property(req.request.property) orelse {
@@ -199,11 +192,10 @@ fn get_property(request_context: RequestContext) !void {
             .code = .atom,
             .sequence_number = request_context.sequence_number,
             .value = @intFromEnum(req.request.property),
-            .minor_opcode = request_context.request_header.minor_opcode,
-            .major_opcode = request_context.request_header.major_opcode,
+            .minor_opcode = request_context.header.minor_opcode,
+            .major_opcode = request_context.header.major_opcode,
         };
-        try request_context.client.write_error(&err);
-        return;
+        return request_context.client.write_error(&err);
     };
 
     // TODO: Handle this properly
@@ -222,11 +214,10 @@ fn get_property(request_context: RequestContext) !void {
             .code = .implementation,
             .sequence_number = request_context.sequence_number,
             .value = 0,
-            .minor_opcode = request_context.request_header.minor_opcode,
-            .major_opcode = request_context.request_header.major_opcode,
+            .minor_opcode = request_context.header.minor_opcode,
+            .major_opcode = request_context.header.major_opcode,
         };
-        try request_context.client.write_error(&err);
-        return;
+        return request_context.client.write_error(&err);
     }
 }
 

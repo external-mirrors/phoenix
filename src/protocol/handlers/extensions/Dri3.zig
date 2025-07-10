@@ -7,19 +7,19 @@ const reply = @import("../../reply.zig");
 const c = @import("../../../c.zig");
 
 pub fn handle_request(request_context: RequestContext) !void {
-    std.log.warn("Handling dri3 request: {d}:{d}", .{ request_context.request_header.major_opcode, request_context.request_header.minor_opcode });
-    switch (request_context.request_header.minor_opcode) {
+    std.log.warn("Handling dri3 request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
+    switch (request_context.header.minor_opcode) {
         MinorOpcode.query_version => return query_version(request_context),
         MinorOpcode.open => return open(request_context),
         MinorOpcode.pixmap_from_buffer => return pixmap_from_buffer(request_context),
         else => {
-            std.log.warn("Unimplemented dri3 request: {d}:{d}", .{ request_context.request_header.major_opcode, request_context.request_header.minor_opcode });
+            std.log.warn("Unimplemented dri3 request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
             const err = x11_error.Error{
                 .code = .implementation,
                 .sequence_number = request_context.sequence_number,
                 .value = 0,
-                .minor_opcode = request_context.request_header.minor_opcode,
-                .major_opcode = request_context.request_header.major_opcode,
+                .minor_opcode = request_context.header.minor_opcode,
+                .major_opcode = request_context.header.major_opcode,
             };
             return request_context.client.write_error(&err);
         },
@@ -115,6 +115,24 @@ fn pixmap_from_buffer(request_context: RequestContext) !void {
     var req = try request_context.client.read_request(Dri3PixmapFromBufferRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("DRI3PixmapFromBuffer request: {s}, fd: {d}", .{ x11.stringify_fmt(req), request_context.client.get_read_fds() });
+
+    const read_fds = request_context.client.get_read_fds();
+    if (read_fds.len < 1) {
+        const err = x11_error.Error{
+            .code = .length,
+            .sequence_number = request_context.sequence_number,
+            .value = 0,
+            .minor_opcode = request_context.header.minor_opcode,
+            .major_opcode = request_context.header.major_opcode,
+        };
+        return request_context.client.write_error(&err);
+    }
+
+    const buffer_fd = read_fds[0];
+    errdefer std.posix.close(buffer_fd);
+    request_context.client.discard_read_fds(1);
+
+    //request_context.server.backend.pixmap_from_buffer(buffer_fd, req.request.);
 }
 
 const MinorOpcode = struct {

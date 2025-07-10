@@ -51,7 +51,7 @@ pub fn deinit(self: *Self, resource_manager: *ResourceManager) void {
 
     while (self.read_buffer_fds.readableLength() > 0) {
         const read_fd = self.read_buffer_fds.buf[self.read_buffer_fds.head];
-        if(read_fd > 0)
+        if (read_fd > 0)
             std.posix.close(read_fd);
         self.read_buffer_fds.discard(1);
     }
@@ -131,6 +131,10 @@ pub fn skip_read_bytes(self: *Self, num_bytes: usize) void {
 
 pub fn get_read_fds(self: *Self) []const std.posix.fd_t {
     return self.read_buffer_fds.readableSlice(0);
+}
+
+pub fn discard_read_fds(self: *Self, num_fds: usize) void {
+    self.read_buffer_fds.discard(@min(self.read_buffer_fds.readableLength(), num_fds));
 }
 
 pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator) !message.Request(T) {

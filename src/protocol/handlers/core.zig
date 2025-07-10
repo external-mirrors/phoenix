@@ -13,6 +13,7 @@ pub fn handle_request(request_context: RequestContext) !void {
     std.log.info("Handling core request: {d}", .{request_context.header.major_opcode});
     switch (request_context.header.major_opcode) {
         opcode.Major.create_window => return create_window(request_context),
+        opcode.Major.map_window => return map_window(request_context),
         opcode.Major.get_geometry => return get_geometry(request_context),
         opcode.Major.intern_atom => return intern_atom(request_context),
         opcode.Major.get_property => return get_property(request_context),
@@ -105,6 +106,13 @@ fn create_window(request_context: RequestContext) !void {
         },
     };
     try request_context.client.write_event(&create_notify_event);
+}
+
+fn map_window(request_context: RequestContext) !void {
+    var req = try request_context.client.read_request(MapWindowRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("MapWindow request: {s}", .{x11.stringify_fmt(req)});
+    // TODO: Implement
 }
 
 fn get_geometry(request_context: RequestContext) !void {
@@ -319,6 +327,13 @@ pub const CreateWindowRequest = struct {
             return null;
         }
     }
+};
+
+pub const MapWindowRequest = struct {
+    opcode: x11.Card8, // opcode.Major
+    pad1: x11.Card8,
+    length: x11.Card16,
+    window: x11.Window,
 };
 
 pub const QueryExtensionRequest = struct {

@@ -5,6 +5,7 @@ pub const Major = struct {
     pub const create_window: x11.Card8 = 1;
     //pub const change_window_attributes: x11.Card8 = 2;
     //pub const get_window_attributes: x11.Card8 = 3;
+    pub const map_window: x11.Card8 = 8;
     pub const get_geometry: x11.Card8 = 14;
     pub const intern_atom: x11.Card8 = 16;
     pub const get_property: x11.Card8 = 20;

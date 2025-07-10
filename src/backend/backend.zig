@@ -1,32 +1,15 @@
 const std = @import("std");
 const BackendX11 = @import("BackendX11.zig");
-const BackendWayland = @import("BackendWayland.zig");
-const BackendDrm = @import("BackendDrm.zig");
+const Window = @import("../Window.zig");
 
 pub const Backend = union(enum) {
     x11: *BackendX11,
-    wayland: *BackendWayland,
-    drm: *BackendDrm,
 
     pub fn init_x11(allocator: std.mem.Allocator) !Backend {
         const x11 = try allocator.create(BackendX11);
         errdefer allocator.destroy(x11);
         x11.* = try .init(allocator);
         return .{ .x11 = x11 };
-    }
-
-    pub fn init_wayland(allocator: std.mem.Allocator) !Backend {
-        const wayland = try allocator.create(BackendWayland);
-        errdefer allocator.destroy(wayland);
-        wayland.* = .init();
-        return .{ .wayland = wayland };
-    }
-
-    pub fn init_drm(allocator: std.mem.Allocator) !Backend {
-        const drm = try allocator.create(BackendDrm);
-        errdefer allocator.destroy(drm);
-        drm.* = .init();
-        return .{ .drm = drm };
     }
 
     pub fn deinit(self: Backend, allocator: std.mem.Allocator) void {
@@ -63,6 +46,12 @@ pub const Backend = union(enum) {
     ) !void {
         return switch (self) {
             inline else => |item| item.import_fd(fd, size, width, height, stride, depth, bpp),
+        };
+    }
+
+    pub fn get_supported_modifiers(self: Backend, window: *Window, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {
+        return switch (self) {
+            inline else => |item| item.get_supported_modifiers(window, depth, bpp, modifiers),
         };
     }
 };

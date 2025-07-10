@@ -12,6 +12,7 @@ pub fn handle_request(request_context: RequestContext) !void {
         MinorOpcode.query_version => return query_version(request_context),
         MinorOpcode.open => return open(request_context),
         MinorOpcode.pixmap_from_buffer => return pixmap_from_buffer(request_context),
+        MinorOpcode.get_supported_modifiers => return get_supported_modifiers(request_context),
         else => {
             std.log.warn("Unimplemented dri3 request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
             const err = x11_error.Error{
@@ -81,7 +82,7 @@ fn validate_drm_auth(card_fd: std.posix.fd_t, render_fd: std.posix.fd_t) bool {
 fn open(request_context: RequestContext) !void {
     var req = try request_context.client.read_request(Dri3OpenRequest, request_context.allocator);
     defer req.deinit();
-    std.log.info("Dri3OpenRequest request: {s}", .{x11.stringify_fmt(req.request)});
+    std.log.info("Dri3Open request: {s}", .{x11.stringify_fmt(req.request)});
 
     // TODO: Use the request data (drawable, which should be the root window of the screen)
     // and provider.
@@ -152,10 +153,54 @@ fn pixmap_from_buffer(request_context: RequestContext) !void {
     //request_context.server.backend.pixmap_from_buffer(buffer_fd, req.request.);
 }
 
+fn get_supported_modifiers(request_context: RequestContext) !void {
+    var req = try request_context.client.read_request(Dri3GetSupportedModifiersRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("Dri3GetSupportedModifiers request: {s}", .{x11.stringify_fmt(req)});
+
+    const window = request_context.server.resource_manager.get_window(req.request.window) orelse {
+        const err = x11_error.Error{
+            .code = .window,
+            .sequence_number = request_context.sequence_number,
+            .value = @intFromEnum(req.request.window),
+            .minor_opcode = request_context.header.minor_opcode,
+            .major_opcode = request_context.header.major_opcode,
+        };
+        return request_context.client.write_error(&err);
+    };
+
+    // TODO: Handle screen as well
+    var modifiers_buf: [64]u64 = undefined;
+    const modifiers = request_context.server.backend.get_supported_modifiers(window, req.request.depth, req.request.bpp, &modifiers_buf) catch |err| switch (err) {
+        error.InvalidDepth, error.FailedToQueryDmaBufModifiers => {
+            const err_reply = x11_error.Error{
+                .code = .match,
+                .sequence_number = request_context.sequence_number,
+                .value = 0,
+                .minor_opcode = request_context.header.minor_opcode,
+                .major_opcode = request_context.header.major_opcode,
+            };
+            return request_context.client.write_error(&err_reply);
+        },
+    };
+
+    std.log.info("modifiers: {any}", .{modifiers});
+
+    var get_supported_modifiers_reply = Dri3GetSupportedModifiersReply{
+        .sequence_number = request_context.sequence_number,
+        .num_window_modifiers = @intCast(modifiers.len),
+        .num_screen_modifiers = @intCast(modifiers.len),
+        .window_modifiers = .{ .items = modifiers_buf[0..modifiers.len] },
+        .screen_modifiers = .{ .items = modifiers_buf[0..modifiers.len] },
+    };
+    try request_context.client.write_reply(&get_supported_modifiers_reply);
+}
+
 const MinorOpcode = struct {
     pub const query_version: x11.Card8 = 0;
     pub const open: x11.Card8 = 1;
     pub const pixmap_from_buffer: x11.Card8 = 2;
+    pub const get_supported_modifiers: x11.Card8 = 6;
 };
 
 const Dri3QueryExtensionRequest = struct {
@@ -204,4 +249,26 @@ const Dri3PixmapFromBufferRequest = struct {
     stride: x11.Card16,
     depth: x11.Card8,
     bpp: x11.Card8,
+};
+
+const Dri3GetSupportedModifiersRequest = struct {
+    major_opcode: x11.Card8, // opcode.Major
+    minor_opcode: x11.Card8, // MinorOpcode
+    length: x11.Card16,
+    window: x11.Window,
+    depth: x11.Card8,
+    bpp: x11.Card8,
+    pad1: x11.Card16,
+};
+
+const Dri3GetSupportedModifiersReply = struct {
+    type: reply.ReplyType = .reply,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16,
+    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+    num_window_modifiers: x11.Card32,
+    num_screen_modifiers: x11.Card32,
+    pad2: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
+    window_modifiers: x11.ListOf(x11.Card64, .{ .length_field = "num_window_modifiers" }),
+    screen_modifiers: x11.ListOf(x11.Card64, .{ .length_field = "num_screen_modifiers" }),
 };

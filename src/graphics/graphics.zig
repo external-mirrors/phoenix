@@ -66,6 +66,12 @@ pub const Graphics = union(enum) {
             inline else => |item| item.import_fd(fd, size, width, height, stride, depth, bpp),
         };
     }
+
+    pub fn get_supported_modifiers(self: Graphics, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {
+        return switch (self) {
+            inline else => |item| item.get_supported_modifiers(depth, bpp, modifiers),
+        };
+    }
 };
 
 // pub const GraphicsAsync = struct {

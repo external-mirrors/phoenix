@@ -2,6 +2,7 @@ const std = @import("std");
 const c = @import("../c.zig");
 const cstdlib = std.c;
 const graphics_imp = @import("../graphics/graphics.zig");
+const Window = @import("../Window.zig");
 
 const Self = @This();
 
@@ -90,4 +91,10 @@ pub fn import_fd(
     bpp: u8,
 ) !void {
     return self.graphics.import_fd(fd, size, width, height, stride, depth, bpp);
+}
+
+pub fn get_supported_modifiers(self: *Self, window: *Window, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {
+    _ = window;
+    // TODO: Do something with window
+    return self.graphics.get_supported_modifiers(depth, bpp, modifiers);
 }

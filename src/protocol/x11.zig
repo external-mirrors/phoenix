@@ -4,6 +4,7 @@ pub const native_endian = @import("builtin").target.cpu.arch.endian();
 pub const Card8 = u8;
 pub const Card16 = u16;
 pub const Card32 = u32;
+pub const Card64 = u64;
 
 pub const ListOfLengthType = enum {
     integer,
@@ -16,6 +17,7 @@ pub const ListOfOptions = struct {
     padding: u8 = 0,
 };
 
+// TODO: Use a different type in replies. In replies the items is never modified so it can be const
 pub fn ListOf(comptime T: type, comptime options: ListOfOptions) type {
     return struct {
         items: []T = &.{},

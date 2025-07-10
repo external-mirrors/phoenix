@@ -13,31 +13,33 @@ fn write_reply_fields(comptime T: type, reply: *const T, writer: anytype) !void 
         @compileError("Expected T to be a struct, got: " ++ @typeName(T) ++ " which is a " ++ @tagName(@typeInfo(T)));
 
     inline for (@typeInfo(T).@"struct".fields) |*field| {
-        switch (@typeInfo(field.type)) {
-            .@"enum" => |e| try writer.writeInt(e.tag_type, @intFromEnum(@field(reply, field.name)), x11.native_endian),
-            .int => |i| try writer.writeInt(@Type(.{ .int = i }), @field(reply, field.name), x11.native_endian),
-            .bool => try writer.writeInt(x11.Card8, if (@field(reply, field.name)) 1 else 0, x11.native_endian),
-            .@"struct" => {
-                if (@hasDecl(field.type, "get_options")) {
-                    try write_reply_list_of(field.type, &@field(reply, field.name), writer);
-                } else {
-                    const field_value = &@field(reply, field.name);
-                    try write_reply_fields(@TypeOf(field_value.*), field_value, writer);
-                }
-            },
-            .array => |*arr| {
-                switch (arr.child) {
-                    x11.Card8 => {
-                        const slice = @field(reply, field.name);
-                        for (slice) |element| {
-                            try writer.writeInt(@TypeOf(element), element, x11.native_endian);
-                        }
-                    },
-                    else => @compileError("Only x11.Card8 arrays are supported right now, got array of " ++ @typeName(arr.child)),
-                }
-            },
-            else => @compileError("Only enum, integer and struct types are supported in replies right now, got: " ++ @typeName(T) ++ "." ++ field.name ++ " which is a " ++ @tagName(@typeInfo(field.type))),
-        }
+        try write_reply_field(field.type, &@field(reply, field.name), writer);
+    }
+}
+
+fn write_reply_field(comptime FieldType: type, value: *const FieldType, writer: anytype) !void {
+    switch (@typeInfo(FieldType)) {
+        .@"enum" => |e| try writer.writeInt(e.tag_type, @intFromEnum(value.*), x11.native_endian),
+        .int => |i| try writer.writeInt(@Type(.{ .int = i }), value.*, x11.native_endian),
+        .bool => try writer.writeInt(x11.Card8, if (value.*) 1 else 0, x11.native_endian),
+        .@"struct" => {
+            if (@hasDecl(FieldType, "get_options")) {
+                try write_reply_list_of(FieldType, value, writer);
+            } else {
+                try write_reply_fields(FieldType, value, writer);
+            }
+        },
+        .array => |*arr| {
+            switch (arr.child) {
+                x11.Card8 => {
+                    for (value) |element| {
+                        try writer.writeInt(@TypeOf(element), element, x11.native_endian);
+                    }
+                },
+                else => @compileError("Only x11.Card8 arrays are supported right now, got array of " ++ @typeName(arr.child)),
+            }
+        },
+        else => @compileError("Only enum, integer and struct types are supported in replies right now, got: " ++ @tagName(@typeInfo(FieldType))),
     }
 }
 
@@ -46,15 +48,11 @@ fn write_reply_list_of(comptime T: type, list_of: *const T, writer: anytype) !vo
     const list_of_options = comptime T.get_options();
     if (list_of_options.length_field_type != .integer)
         @compileError("TODO: Support bitmask for ListOf length in reply");
-    switch (@typeInfo(element_type)) {
-        .@"enum", .int => try writer.writeAll(list_of.items),
-        .@"struct" => {
-            for (list_of.items) |*item| {
-                try write_reply_fields(@TypeOf(item.*), item, writer);
-            }
-        },
-        else => @compileError("Only enum, integer and struct types are supported as ListOf element types now, got: " ++ @typeName(element_type)),
+
+    for (list_of.items) |*item| {
+        try write_reply_field(element_type, item, writer);
     }
+
     // TODO: Calculate padding correctly by calculating how many bytes the above occupied, not length
     try writer.writeByteNTimes(0, x11.padding(list_of.items.len, list_of_options.padding));
 }

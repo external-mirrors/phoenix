@@ -37,6 +37,7 @@ const PFNEGLGETPLATFORMDISPLAYEXTPROC = *const fn (c.EGLenum, ?*anyopaque, [*c]c
 const PFNEGLQUERYDISPLAYATTRIBEXTPROC = *const fn (c.EGLDisplay, c.EGLint, [*c]c.EGLAttrib) callconv(.c) c.EGLBoolean;
 const PFNEGLQUERYDEVICESTRINGEXTPROC = *const fn (c.EGLDeviceEXT, c.EGLint) callconv(.c) [*c]const u8;
 const PFNGLEGLIMAGETARGETTEXTURE2DOESPROC = *const fn (c.GLenum, c.GLeglImageOES) callconv(.c) void;
+const PFNEGLQUERYDMABUFMODIFIERSEXTPROC = *const fn (c.EGLDisplay, c.EGLint, c.EGLint, [*c]c.EGLuint64KHR, [*c]c.EGLBoolean, [*c]c.EGLint) callconv(.c) c.EGLBoolean;
 
 egl_display: c.EGLDisplay,
 egl_surface: c.EGLSurface,
@@ -44,6 +45,7 @@ egl_context: c.EGLContext,
 dri_card_fd: std.posix.fd_t,
 
 glEGLImageTargetTexture2DOES: PFNGLEGLIMAGETARGETTEXTURE2DOESPROC,
+eglQueryDmaBufModifiersEXT: PFNEGLQUERYDMABUFMODIFIERSEXTPROC,
 
 pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplayType, window_id: c.EGLNativeWindowType, debug: bool) !Self {
     const context_attr = [_]c.EGLint{
@@ -59,8 +61,8 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
 
     const eglQueryDisplayAttribEXT: PFNEGLQUERYDISPLAYATTRIBEXTPROC = @ptrCast(c.eglGetProcAddress("eglQueryDisplayAttribEXT") orelse return error.FailedToResolveOpenglProc);
     const eglQueryDeviceStringEXT: PFNEGLQUERYDEVICESTRINGEXTPROC = @ptrCast(c.eglGetProcAddress("eglQueryDeviceStringEXT") orelse return error.FailedToResolveOpenglProc);
-
     const glEGLImageTargetTexture2DOES: PFNGLEGLIMAGETARGETTEXTURE2DOESPROC = @ptrCast(c.eglGetProcAddress("glEGLImageTargetTexture2DOES") orelse return error.FailedToResolveOpenglProc);
+    const eglQueryDmaBufModifiersEXT: PFNEGLQUERYDMABUFMODIFIERSEXTPROC = @ptrCast(c.eglGetProcAddress("eglQueryDmaBufModifiersEXT") orelse return error.FailedToResolveOpenglProc);
 
     const egl_display = eglGetPlatformDisplayEXT(platform, connection, &[_]c.EGLint{
         screen_type,
@@ -133,6 +135,7 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
         .dri_card_fd = dri_card_fd.?,
 
         .glEGLImageTargetTexture2DOES = glEGLImageTargetTexture2DOES,
+        .eglQueryDmaBufModifiersEXT = eglQueryDmaBufModifiersEXT,
     };
 }
 
@@ -179,9 +182,10 @@ pub fn import_fd(
     bpp: u8,
 ) !void {
     _ = size;
-    _ = bpp;
 
     var attr: [16]c.EGLAttrib = undefined;
+
+    std.log.info("depth: {d}, bpp: {d}", .{ depth, bpp });
 
     attr[0] = c.EGL_LINUX_DRM_FOURCC_EXT;
     attr[1] = try depth_to_fourcc(depth);
@@ -227,6 +231,15 @@ pub fn import_fd(
 
     // TODO:
     //_ = try std.Thread.spawn(.{}, Self.render_callback, .{ self, texture });
+}
+
+pub fn get_supported_modifiers(self: *Self, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {
+    _ = bpp;
+    const format = try depth_to_fourcc(depth);
+    var num_modifiers: c.EGLint = 0;
+    if (self.eglQueryDmaBufModifiersEXT(self.egl_display, @intCast(format), modifiers.len, @ptrCast(modifiers.ptr), c.EGL_FALSE, &num_modifiers) == c.EGL_FALSE or num_modifiers < 0)
+        return error.FailedToQueryDmaBufModifiers;
+    return modifiers[0..@intCast(num_modifiers)];
 }
 
 // fn render_callback(self: *Self, texture: c.GLuint) !void {
@@ -281,15 +294,18 @@ fn gl_debug_callback(
     // }
 }
 
+// TODO: Use bpp instead?
 fn depth_to_fourcc(depth: u8) !u32 {
+    // TODO: Support more depths
     switch (depth) {
-        15 => return fourcc('A', 'R', '1', '5'),
+        //8 => return fourcc('R', '8', ' ', ' '),
+        //15 => return fourcc('A', 'R', '1', '5'),
         16 => return fourcc('R', 'G', '1', '6'),
         24 => return fourcc('X', 'R', '2', '4'),
         30 => return fourcc('A', 'R', '3', '0'),
         32 => return fourcc('A', 'R', '2', '4'),
         else => {
-            std.log.err("Received unsupported depth {d}, expected 15, 16, 24, 30 or 32", .{depth});
+            std.log.err("Received unsupported depth {d}, expected 16, 24, 30 or 32", .{depth});
             return error.InvalidDepth;
         },
     }

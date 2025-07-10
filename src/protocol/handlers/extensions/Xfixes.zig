@@ -26,7 +26,7 @@ pub fn handle_request(request_context: RequestContext) !void {
 fn query_version(request_context: RequestContext) !void {
     var req = try request_context.client.read_request(XfixesQueryVersionRequest, request_context.allocator);
     defer req.deinit();
-    std.log.info("XfixesQueryVersionRequest request: {s}", .{x11.stringify_fmt(req.request)});
+    std.log.info("XfixesQueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
     var server_major_version: u32 = 6;
     var server_minor_version: u32 = 1;

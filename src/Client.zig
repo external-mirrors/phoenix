@@ -2,7 +2,7 @@ const std = @import("std");
 const Window = @import("Window.zig");
 const ResourceIdBaseManager = @import("ResourceIdBaseManager.zig");
 const ResourceManager = @import("ResourceManager.zig");
-const ReplyMessage = @import("ReplyMessage.zig");
+const message = @import("message.zig");
 const resource = @import("resource.zig");
 const request = @import("protocol/request.zig");
 const reply = @import("protocol/reply.zig");
@@ -12,25 +12,18 @@ const x11 = @import("protocol/x11.zig");
 const netutils = @import("netutils.zig");
 
 const Self = @This();
-const max_read_buffer_size: usize = 1 * 1024 * 1024; // 1mb. If the server doesn't dont manage to read the data fast enough then the client is forcefully disconnected
-// TODO: Use this
-//const max_write_buffer_size: usize = 2 * 1024 * 1024; // 2mb. Clients that dont consume data fast enough are forcefully disconnected
-const DataBuffer = std.fifo.LinearFifo(u8, .Dynamic);
-const ReplyMessageDataBuffer = std.fifo.LinearFifo(ReplyMessage, .Dynamic);
-
-const State = enum {
-    connecting,
-    connected,
-};
 
 allocator: std.mem.Allocator,
 connection: std.net.Server.Connection,
 state: State,
 read_buffer: DataBuffer,
 write_buffer: ReplyMessageDataBuffer,
+request_fds_buffer: RequestFdsBuffer,
 resource_id_base: u32,
 sequence_number: u16,
 resources: resource.ResourceHashMap,
+total_bytes_read: u64,
+total_request_bytes_read: u64,
 
 pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, allocator: std.mem.Allocator) Self {
     return .{
@@ -39,20 +32,32 @@ pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, alloca
         .state = .connecting,
         .read_buffer = .init(allocator),
         .write_buffer = .init(allocator),
+        .request_fds_buffer = .init(allocator),
         .resource_id_base = resource_id_base,
         .sequence_number = 1,
         .resources = .init(allocator),
+        .total_bytes_read = 0,
+        .total_request_bytes_read = 0,
     };
 }
 
 pub fn deinit(self: *Self, resource_manager: *ResourceManager) void {
     self.connection.stream.close();
+
     self.read_buffer.deinit();
+
     while (self.write_buffer.readableLength() > 0) {
         var reply_message = &self.write_buffer.buf[self.write_buffer.head];
-        reply_message.deinit(true);
+        reply_message.deinit();
+        self.write_buffer.discard(1);
     }
     self.write_buffer.deinit();
+
+    while (self.request_fds_buffer.readableLength() > 0) {
+        var request_fds = &self.request_fds_buffer.buf[self.request_fds_buffer.head];
+        request_fds.deinit();
+        self.request_fds_buffer.discard(1);
+    }
 
     var resources_it = self.resources.valueIterator();
     while (resources_it.next()) |res| {
@@ -67,30 +72,6 @@ pub fn is_owner_of_resource(self: *Self, resource_id: u32) bool {
     return (resource_id & ResourceIdBaseManager.resource_id_base_mask) == self.resource_id_base;
 }
 
-fn append_data_to_read_buffer(self: *Self, data: []const u8) !void {
-    if (self.read_buffer.count + data.len > max_read_buffer_size)
-        return error.ExceededClientMaxReadBufferSize;
-    return self.read_buffer.write(data);
-}
-
-// pub fn erase_data_front_read_buffer(self: *Self, size: usize) void {
-//     if (size >= self.read_buffer.readableLength()) {
-//         self.read_buffer.discard(self.read_buffer.readableLength());
-//     } else {
-//         self.read_buffer.discard(size);
-//     }
-// }
-
-// /// Clears the data and deallocates it (resizes to 0)
-// pub fn reset_read_buffer_data(self: *Self) void {
-//     self.read_buffer.discard(self.read_buffer.readableLength());
-//     self.read_buffer.shrink(0);
-// }
-
-// pub fn clear_read_buffer_data(self: *Self) void {
-//     self.read_buffer.discard(self.read_buffer.readableLength());
-// }
-
 pub fn read_buffer_data_size(self: *Self) usize {
     return self.read_buffer.readableLength();
 }
@@ -104,26 +85,41 @@ pub fn read_client_data_to_buffer(self: *Self) !void {
     // TODO: Write directly to read_buffer instead from connection.stream
     var read_buffer: [4096]u8 = undefined;
     while (true) {
-        // TODO: use readmsg instead
-        const bytes_read = self.connection.stream.read(&read_buffer) catch |err| switch (err) {
+        var recv_result = netutils.recvmsg(self.connection.stream.handle, &read_buffer) catch |err| switch (err) {
             error.WouldBlock => return,
             else => return err,
         };
 
-        if (bytes_read == 0)
+        if (recv_result.data.len == 0) {
+            recv_result.deinit();
             break;
+        }
 
-        std.log.info("Read {d} bytes from client {d}", .{ bytes_read, self.connection.stream.handle });
-        try self.append_data_to_read_buffer(read_buffer[0..bytes_read]);
+        try self.read_buffer.write(recv_result.data);
+        const total_bytes_read = self.total_bytes_read;
+        self.total_bytes_read += recv_result.data.len;
+        try self.append_read_fds(&recv_result, total_bytes_read);
     }
+}
+
+fn append_read_fds(self: *Self, recv_result: *const netutils.RecvMsgResult, total_bytes_read: u64) !void {
+    std.debug.assert(recv_result.num_fds <= 4);
+    if (recv_result.num_fds == 0)
+        return;
+
+    // TODO: Confirm if this is correct. We set the fds being received as relative to the number or bytes read,
+    // which assumes that when receiving fds we only receive one request in the same packet.
+    var request_fds = RequestFds.init(recv_result.get_fds(), total_bytes_read);
+    errdefer request_fds.deinit();
+    try self.request_fds_buffer.writeItem(request_fds);
 }
 
 pub fn write_buffer_to_client(self: *Self) !void {
     while (self.write_buffer.readableLength() > 0) {
         var reply_message = &self.write_buffer.buf[self.write_buffer.head];
-        var fds: [ReplyMessage.max_fds]std.posix.fd_t = undefined;
-        for (0..reply_message.num_fds) |i| {
-            fds[i] = reply_message.fds[i].fd;
+        var fds: [message.max_fds]std.posix.fd_t = undefined;
+        for (reply_message.fd_buf[0..reply_message.num_fds], 0..) |message_fd, i| {
+            fds[i] = message_fd.fd;
         }
 
         while (!reply_message.is_empty()) {
@@ -132,11 +128,11 @@ pub fn write_buffer_to_client(self: *Self) !void {
                 else => return err,
             };
 
-            reply_message.cleanup_fds();
             if (bytes_written == 0)
                 return;
 
-            std.log.info("Wrote {d} bytes to client {d}", .{ bytes_written, self.connection.stream.handle });
+            // TODO: Is this correct? we assume that all fds are sent if there was no error
+            reply_message.cleanup_fds();
             reply_message.discard(bytes_written);
         }
 
@@ -144,36 +140,72 @@ pub fn write_buffer_to_client(self: *Self) !void {
     }
 }
 
-pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator) !T {
-    return request.read_request(T, self.read_buffer.reader(), allocator);
+pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator) !message.Request(T) {
+    std.log.info("read_request: readable slice: {any}, total request bytes read: {d}, tt: {d}", .{
+        self.request_fds_buffer.readableSlice(0),
+        self.total_request_bytes_read,
+        if (self.request_fds_buffer.readableLength() > 0) self.request_fds_buffer.buf[self.request_fds_buffer.head].total_bytes_read else 0,
+    });
+    var request_fds: ?RequestFds = null;
+    if (self.request_fds_buffer.readableLength() > 0 and self.total_request_bytes_read >=
+        self.request_fds_buffer.buf[self.request_fds_buffer.head].total_bytes_read)
+    {
+        request_fds = self.request_fds_buffer.readItem();
+        std.log.info("has fds: {any}", .{request_fds});
+    }
+
+    errdefer if (request_fds) |*r| r.deinit();
+
+    const bytes_available_to_read_before = self.read_buffer.readableLength();
+    const req_data = try request.read_request(T, self.read_buffer.reader(), allocator);
+    const bytes_available_to_read_after = self.read_buffer.readableLength();
+    const bytes_read = bytes_available_to_read_before - bytes_available_to_read_after;
+    self.total_request_bytes_read += bytes_read;
+
+    return message.Request(T).init(&req_data, if (request_fds) |*r| r.get_fds() else &.{});
+}
+
+pub fn skip_read_bytes(self: *Self, num_bytes: usize) void {
+    const num_bytes_to_skip = @min(self.read_buffer.readableLength(), num_bytes);
+    self.read_buffer.discard(num_bytes_to_skip);
+    self.total_request_bytes_read += num_bytes_to_skip;
 }
 
 pub fn write_reply(self: *Self, reply_data: anytype) !void {
     return write_reply_with_fds(self, reply_data, &.{});
 }
 
-pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const ReplyMessage.ReplyMessageFd) !void {
+pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const message.Reply.MessageFd) !void {
     if (@typeInfo(@TypeOf(reply_data)) != .pointer)
         @compileError("Expected reply data to be a pointer");
 
-    var reply_message = ReplyMessage.init(fds, self.allocator);
-    errdefer reply_message.deinit(false);
+    var reply_message = message.Reply.init(fds, self.allocator);
+    errdefer {
+        reply_message.num_fds = 0;
+        reply_message.deinit();
+    }
     try reply.write_reply(@TypeOf(reply_data.*), reply_data, reply_message.writer());
     return self.write_buffer.writeItem(reply_message);
 }
 
 pub fn write_error(self: *Self, err: *const x11_error.Error) !void {
     std.log.info("Replying with error: {s}", .{x11.stringify_fmt(err)});
-    var reply_message = ReplyMessage.init(&.{}, self.allocator);
-    errdefer reply_message.deinit(false);
+    var reply_message = message.Reply.init(&.{}, self.allocator);
+    errdefer {
+        reply_message.num_fds = 0;
+        reply_message.deinit();
+    }
     try reply_message.data.appendSlice(std.mem.asBytes(err));
     return self.write_buffer.writeItem(reply_message);
 }
 
 pub fn write_event(self: *Self, ev: *const event.Event) !void {
     //std.log.info("Replying with event: {s}", .{x11.stringify_fmt(ev)});
-    var reply_message = ReplyMessage.init(&.{}, self.allocator);
-    errdefer reply_message.deinit(false);
+    var reply_message = message.Reply.init(&.{}, self.allocator);
+    errdefer {
+        reply_message.num_fds = 0;
+        reply_message.deinit();
+    }
     try reply_message.data.appendSlice(std.mem.asBytes(ev));
     return self.write_buffer.writeItem(reply_message);
 }
@@ -210,3 +242,44 @@ pub fn destroy_window(self: *Self, window: *Window) void {
     window.deinit();
     self.allocator.destroy(window);
 }
+
+// TODO: Use this
+//const max_read_buffer_size: usize = 1 * 1024 * 1024; // 1mb. If the server doesn't dont manage to read the data fast enough then the client is forcefully disconnected
+// TODO: Use this
+//const max_write_buffer_size: usize = 2 * 1024 * 1024; // 2mb. Clients that dont consume data fast enough are forcefully disconnected
+const DataBuffer = std.fifo.LinearFifo(u8, .Dynamic);
+const ReplyMessageDataBuffer = std.fifo.LinearFifo(message.Reply, .Dynamic);
+const RequestFdsBuffer = std.fifo.LinearFifo(RequestFds, .Dynamic);
+
+const State = enum {
+    connecting,
+    connected,
+};
+
+const RequestFds = struct {
+    fd_buf: [message.max_fds]std.posix.fd_t,
+    num_fds: u32,
+    total_bytes_read: u64,
+
+    pub fn init(fds: []const std.posix.fd_t, total_bytes_read: u64) RequestFds {
+        std.debug.assert(fds.len <= message.max_fds);
+        var result = RequestFds{
+            .fd_buf = undefined,
+            .num_fds = @intCast(fds.len),
+            .total_bytes_read = total_bytes_read,
+        };
+        @memcpy(result.fd_buf[0..fds.len], fds);
+        return result;
+    }
+
+    pub fn deinit(self: *RequestFds) void {
+        for (self.fd_buf[0..self.num_fds]) |fd| {
+            if (fd > 0)
+                std.posix.close(fd);
+        }
+    }
+
+    pub fn get_fds(self: *const RequestFds) []const std.posix.fd_t {
+        return self.fd_buf[0..self.num_fds];
+    }
+};

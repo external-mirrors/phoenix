@@ -24,14 +24,15 @@ pub fn handle_request(request_context: RequestContext) !void {
 }
 
 fn query_version(request_context: RequestContext) !void {
-    const query_version_request = try request_context.client.read_request(XfixesQueryVersionRequest, request_context.allocator);
-    std.log.info("XfixesQueryVersionRequest request: {s}", .{x11.stringify_fmt(query_version_request)});
+    var req = try request_context.client.read_request(XfixesQueryVersionRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("XfixesQueryVersionRequest request: {s}", .{x11.stringify_fmt(req.request)});
 
     var server_major_version: u32 = 6;
     var server_minor_version: u32 = 1;
-    if (query_version_request.major_version < server_major_version or (query_version_request.major_version == server_major_version and query_version_request.minor_version < server_minor_version)) {
-        server_major_version = query_version_request.major_version;
-        server_minor_version = query_version_request.minor_version;
+    if (req.request.major_version < server_major_version or (req.request.major_version == server_major_version and req.request.minor_version < server_minor_version)) {
+        server_major_version = req.request.major_version;
+        server_minor_version = req.request.minor_version;
     }
 
     var query_version_reply = XfixesQueryVersionReply{

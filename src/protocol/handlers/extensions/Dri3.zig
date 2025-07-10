@@ -11,6 +11,7 @@ pub fn handle_request(request_context: RequestContext) !void {
     switch (request_context.request_header.minor_opcode) {
         MinorOpcode.query_version => return query_version(request_context),
         MinorOpcode.open => return open(request_context),
+        MinorOpcode.pixmap_from_buffer => return pixmap_from_buffer(request_context),
         else => {
             std.log.warn("Unimplemented dri3 request: {d}:{d}", .{ request_context.request_header.major_opcode, request_context.request_header.minor_opcode });
             const err = x11_error.Error{
@@ -26,14 +27,15 @@ pub fn handle_request(request_context: RequestContext) !void {
 }
 
 fn query_version(request_context: RequestContext) !void {
-    const query_version_request = try request_context.client.read_request(Dri3QueryExtensionRequest, request_context.allocator);
-    std.log.info("DRI3QueryVersion request: {s}", .{x11.stringify_fmt(query_version_request)});
+    var req = try request_context.client.read_request(Dri3QueryExtensionRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("DRI3QueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
     var server_major_version: u32 = 1;
     var server_minor_version: u32 = 4;
-    if (query_version_request.major_version < server_major_version or (query_version_request.major_version == server_major_version and query_version_request.minor_version < server_minor_version)) {
-        server_major_version = query_version_request.major_version;
-        server_minor_version = query_version_request.minor_version;
+    if (req.request.major_version < server_major_version or (req.request.major_version == server_major_version and req.request.minor_version < server_minor_version)) {
+        server_major_version = req.request.major_version;
+        server_minor_version = req.request.minor_version;
     }
 
     var query_version_reply = Dri3QueryExtensionReply{
@@ -42,38 +44,6 @@ fn query_version(request_context: RequestContext) !void {
         .minor_version = server_minor_version,
     };
     try request_context.client.write_reply(&query_version_reply);
-}
-
-fn open(request_context: RequestContext) !void {
-    const open_request = try request_context.client.read_request(Dri3OpenRequest, request_context.allocator);
-    std.log.info("Dri3OpenRequest request: {s}", .{x11.stringify_fmt(open_request)});
-
-    // TODO: Use the request data (drawable, which should be the root window of the screen)
-    // and provider.
-
-    const card_fd = request_context.server.backend.get_drm_card_fd();
-
-    const render_path = c.drmGetRenderDeviceNameFromFd(card_fd) orelse return error.FailedToGetCardRenderPath;
-    defer std.c.free(render_path);
-
-    const render_fd = try std.posix.openZ(render_path, .{ .ACCMODE = .RDWR, .CLOEXEC = true }, 0);
-    errdefer std.posix.close(render_fd);
-
-    //const gbm = c.gbm_create_device(card_fd) orelse return error.GbmCreateDeviceFailed;
-    //_ = gbm;
-
-    if (!validate_drm_auth(card_fd, render_fd))
-        return error.DrmAuthFailed;
-
-    var open_reply = Dri3OpenReply{
-        .sequence_number = request_context.sequence_number,
-    };
-    try request_context.client.write_reply_with_fds(&open_reply, &.{
-        .{
-            .fd = render_fd,
-            .close_after_sent = true,
-        },
-    });
 }
 
 fn validate_drm_auth(card_fd: std.posix.fd_t, render_fd: std.posix.fd_t) bool {
@@ -108,9 +78,49 @@ fn validate_drm_auth(card_fd: std.posix.fd_t, render_fd: std.posix.fd_t) bool {
     return true;
 }
 
+fn open(request_context: RequestContext) !void {
+    var req = try request_context.client.read_request(Dri3OpenRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("Dri3OpenRequest request: {s}", .{x11.stringify_fmt(req.request)});
+
+    // TODO: Use the request data (drawable, which should be the root window of the screen)
+    // and provider.
+
+    const card_fd = request_context.server.backend.get_drm_card_fd();
+
+    const render_path = c.drmGetRenderDeviceNameFromFd(card_fd) orelse return error.FailedToGetCardRenderPath;
+    defer std.c.free(render_path);
+
+    const render_fd = try std.posix.openZ(render_path, .{ .ACCMODE = .RDWR, .CLOEXEC = true }, 0);
+    errdefer std.posix.close(render_fd);
+
+    //const gbm = c.gbm_create_device(card_fd) orelse return error.GbmCreateDeviceFailed;
+    //_ = gbm;
+
+    if (!validate_drm_auth(card_fd, render_fd))
+        return error.DrmAuthFailed;
+
+    var open_reply = Dri3OpenReply{
+        .sequence_number = request_context.sequence_number,
+    };
+    try request_context.client.write_reply_with_fds(&open_reply, &.{
+        .{
+            .fd = render_fd,
+            .close_after_sent = true,
+        },
+    });
+}
+
+fn pixmap_from_buffer(request_context: RequestContext) !void {
+    var req = try request_context.client.read_request(Dri3PixmapFromBufferRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("DRI3PixmapFromBuffer request: {s}", .{x11.stringify_fmt(req)});
+}
+
 const MinorOpcode = struct {
     pub const query_version: x11.Card8 = 0;
     pub const open: x11.Card8 = 1;
+    pub const pixmap_from_buffer: x11.Card8 = 2;
 };
 
 const Dri3QueryExtensionRequest = struct {
@@ -145,4 +155,18 @@ const Dri3OpenReply = struct {
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
     pad1: [24]x11.Card8 = [_]x11.Card8{0} ** 24,
+};
+
+const Dri3PixmapFromBufferRequest = struct {
+    major_opcode: x11.Card8, // opcode.Major
+    minor_opcode: x11.Card8, // MinorOpcode
+    length: x11.Card16,
+    pixmap: x11.Pixmap,
+    drawable: x11.Drawable,
+    size: x11.Card32,
+    width: x11.Card16,
+    height: x11.Card16,
+    stride: x11.Card16,
+    depth: x11.Card8,
+    bpp: x11.Card8,
 };

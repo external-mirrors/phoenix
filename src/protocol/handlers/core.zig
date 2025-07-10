@@ -34,15 +34,16 @@ pub fn handle_request(request_context: RequestContext) !void {
 
 // TODO: Handle all params properly
 fn create_window(request_context: RequestContext) !void {
-    const create_window_request = try request_context.client.read_request(CreateWindowRequest, request_context.allocator);
-    std.log.info("CreateWindow request: {s}", .{x11.stringify_fmt(create_window_request)});
+    var req = try request_context.client.read_request(CreateWindowRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("CreateWindow request: {s}", .{x11.stringify_fmt(req)});
 
-    const parent_window = request_context.server.resource_manager.get_window(create_window_request.parent) orelse {
-        std.log.err("Received invalid parent window {d} in CreateWindow request", .{create_window_request.parent});
+    const parent_window = request_context.server.resource_manager.get_window(req.request.parent) orelse {
+        std.log.err("Received invalid parent window {d} in CreateWindow request", .{req.request.parent});
         const err = x11_error.Error{
             .code = .window,
             .sequence_number = request_context.sequence_number,
-            .value = @intFromEnum(create_window_request.parent),
+            .value = @intFromEnum(req.request.parent),
             .minor_opcode = request_context.request_header.minor_opcode,
             .major_opcode = request_context.request_header.major_opcode,
         };
@@ -50,14 +51,14 @@ fn create_window(request_context: RequestContext) !void {
         return;
     };
 
-    const window = if (request_context.client.create_window(create_window_request.window, create_window_request.x, create_window_request.y, create_window_request.width, create_window_request.height, &request_context.server.resource_manager)) |window| window else |err| switch (err) {
+    const window = if (request_context.client.create_window(req.request.window, req.request.x, req.request.y, req.request.width, req.request.height, &request_context.server.resource_manager)) |window| window else |err| switch (err) {
         error.ResourceNotOwnedByClient => {
-            std.log.err("Received invalid window {d} in CreateWindow request which doesn't belong to the client", .{create_window_request.window});
+            std.log.err("Received invalid window {d} in CreateWindow request which doesn't belong to the client", .{req.request.window});
             // TODO: What type of error should actually be generated?
             const err_reply = x11_error.Error{
                 .code = .value,
                 .sequence_number = request_context.sequence_number,
-                .value = @intFromEnum(create_window_request.window),
+                .value = @intFromEnum(req.request.window),
                 .minor_opcode = request_context.request_header.minor_opcode,
                 .major_opcode = request_context.request_header.major_opcode,
             };
@@ -65,12 +66,12 @@ fn create_window(request_context: RequestContext) !void {
             return;
         },
         error.ResourceAlreadyExists => {
-            std.log.err("Received window {d} in CreateWindow request which already exists", .{create_window_request.window});
+            std.log.err("Received window {d} in CreateWindow request which already exists", .{req.request.window});
             // TODO: What type of error should actually be generated?
             const err_reply = x11_error.Error{
                 .code = .value,
                 .sequence_number = request_context.sequence_number,
-                .value = @intFromEnum(create_window_request.window),
+                .value = @intFromEnum(req.request.window),
                 .minor_opcode = request_context.request_header.minor_opcode,
                 .major_opcode = request_context.request_header.major_opcode,
             };
@@ -93,17 +94,17 @@ fn create_window(request_context: RequestContext) !void {
     _ = parent_window;
     _ = window;
 
-    const override_redirect = if (create_window_request.get_value(x11.Card8, "override_redirect") orelse 0 == 0) false else true;
+    const override_redirect = if (req.request.get_value(x11.Card8, "override_redirect") orelse 0 == 0) false else true;
     const create_notify_event = event.Event{
         .create_notify = .{
             .sequence_number = request_context.sequence_number,
-            .parent = create_window_request.parent,
-            .window = create_window_request.window,
-            .x = create_window_request.x,
-            .y = create_window_request.y,
-            .width = create_window_request.width,
-            .height = create_window_request.height,
-            .border_width = create_window_request.border_width,
+            .parent = req.request.parent,
+            .window = req.request.window,
+            .x = req.request.x,
+            .y = req.request.y,
+            .width = req.request.width,
+            .height = req.request.height,
+            .border_width = req.request.border_width,
             .override_redirect = override_redirect,
         },
     };
@@ -111,16 +112,17 @@ fn create_window(request_context: RequestContext) !void {
 }
 
 fn get_geometry(request_context: RequestContext) !void {
-    const get_geometry_request = try request_context.client.read_request(GetGeometryRequest, request_context.allocator);
-    std.log.info("GetGeometry request: {s}", .{x11.stringify_fmt(get_geometry_request)});
+    var req = try request_context.client.read_request(GetGeometryRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("GetGeometry request: {s}", .{x11.stringify_fmt(req.request)});
 
     // TODO: Support types other than window
-    const window = request_context.server.resource_manager.get_window(get_geometry_request.drawable.to_window()) orelse {
-        std.log.err("Received invalid drawable {d} in GetGeometry request", .{get_geometry_request.drawable});
+    const window = request_context.server.resource_manager.get_window(req.request.drawable.to_window()) orelse {
+        std.log.err("Received invalid drawable {d} in GetGeometry request", .{req.request.drawable});
         const err = x11_error.Error{
             .code = .drawable,
             .sequence_number = request_context.sequence_number,
-            .value = @intFromEnum(get_geometry_request.drawable),
+            .value = @intFromEnum(req.request.drawable),
             .minor_opcode = request_context.request_header.minor_opcode,
             .major_opcode = request_context.request_header.major_opcode,
         };
@@ -142,14 +144,15 @@ fn get_geometry(request_context: RequestContext) !void {
 }
 
 fn intern_atom(request_context: RequestContext) !void {
-    const intern_atom_request = try request_context.client.read_request(InternAtomRequest, request_context.allocator);
-    std.log.info("InternAtom request: {s}", .{x11.stringify_fmt(intern_atom_request)});
+    var req = try request_context.client.read_request(InternAtomRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("InternAtom request: {s}", .{x11.stringify_fmt(req.request)});
 
     var atom: x11.Atom = undefined;
-    if (intern_atom_request.only_if_exists) {
-        atom = if (request_context.server.atom_manager.get_atom_by_name(intern_atom_request.name.items)) |atom_id| atom_id else AtomManager.Predefined.none;
+    if (req.request.only_if_exists) {
+        atom = if (request_context.server.atom_manager.get_atom_by_name(req.request.name.items)) |atom_id| atom_id else AtomManager.Predefined.none;
     } else {
-        atom = if (request_context.server.atom_manager.get_atom_by_name_create_if_not_exists(intern_atom_request.name.items)) |atom_id| atom_id else |err| switch (err) {
+        atom = if (request_context.server.atom_manager.get_atom_by_name_create_if_not_exists(req.request.name.items)) |atom_id| atom_id else |err| switch (err) {
             error.OutOfMemory => {
                 const err_reply = x11_error.Error{
                     .code = .alloc,
@@ -173,15 +176,16 @@ fn intern_atom(request_context: RequestContext) !void {
 
 // TODO: Actually read the request values, handling them properly
 fn get_property(request_context: RequestContext) !void {
-    const get_property_request = try request_context.client.read_request(GetPropertyRequest, request_context.allocator);
-    std.log.info("GetProperty request: {s}", .{x11.stringify_fmt(get_property_request)});
+    var req = try request_context.client.read_request(GetPropertyRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("GetProperty request: {s}", .{x11.stringify_fmt(req.request)});
     // TODO: Error if running in security mode and the window is not owned by the client
-    const window = request_context.server.resource_manager.get_window(get_property_request.window) orelse {
-        std.log.err("Received invalid window {d} in GetProperty request", .{get_property_request.window});
+    const window = request_context.server.resource_manager.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in GetProperty request", .{req.request.window});
         const err = x11_error.Error{
             .code = .window,
             .sequence_number = request_context.sequence_number,
-            .value = @intFromEnum(get_property_request.window),
+            .value = @intFromEnum(req.request.window),
             .minor_opcode = request_context.request_header.minor_opcode,
             .major_opcode = request_context.request_header.major_opcode,
         };
@@ -189,12 +193,12 @@ fn get_property(request_context: RequestContext) !void {
         return;
     };
 
-    const property = window.get_property(get_property_request.property) orelse {
-        std.log.err("Received invalid property atom {d} in GetProperty request", .{get_property_request.property});
+    const property = window.get_property(req.request.property) orelse {
+        std.log.err("Received invalid property atom {d} in GetProperty request", .{req.request.property});
         const err = x11_error.Error{
             .code = .atom,
             .sequence_number = request_context.sequence_number,
-            .value = @intFromEnum(get_property_request.property),
+            .value = @intFromEnum(req.request.property),
             .minor_opcode = request_context.request_header.minor_opcode,
             .major_opcode = request_context.request_header.major_opcode,
         };
@@ -203,11 +207,11 @@ fn get_property(request_context: RequestContext) !void {
     };
 
     // TODO: Handle this properly
-    if (std.meta.activeTag(property.*) == .string8 and get_property_request.type == AtomManager.Predefined.string) {
+    if (std.meta.activeTag(property.*) == .string8 and req.request.type == AtomManager.Predefined.string) {
         // TODO: Properly set bytes_after and all that crap
         var get_property_reply = GetPropertyCard8Reply{
             .sequence_number = request_context.sequence_number,
-            .type = get_property_request.type,
+            .type = req.request.type,
             .bytes_after = 0,
             .data = .{ .items = property.string8.items },
         };
@@ -231,8 +235,9 @@ fn create_gc(_: RequestContext) !void {
 }
 
 fn query_extension(request_context: RequestContext) !void {
-    const query_extension_request = try request_context.client.read_request(QueryExtensionRequest, request_context.allocator);
-    std.log.info("QueryExtension request: {s}", .{x11.stringify_fmt(query_extension_request)});
+    var req = try request_context.client.read_request(QueryExtensionRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("QueryExtension request: {s}", .{x11.stringify_fmt(req.request)});
 
     var query_extension_reply = QueryExtensionReply{
         .sequence_number = request_context.sequence_number,
@@ -242,13 +247,13 @@ fn query_extension(request_context: RequestContext) !void {
         .first_error = 0,
     };
 
-    if (std.mem.eql(u8, query_extension_request.name.items, "DRI3")) {
+    if (std.mem.eql(u8, req.request.name.items, "DRI3")) {
         query_extension_reply.present = true;
         query_extension_reply.major_opcode = opcode.Major.dri3;
-    } else if (std.mem.eql(u8, query_extension_request.name.items, "XFIXES")) {
+    } else if (std.mem.eql(u8, req.request.name.items, "XFIXES")) {
         query_extension_reply.present = true;
         query_extension_reply.major_opcode = opcode.Major.xfixes;
-    } else if (std.mem.eql(u8, query_extension_request.name.items, "Present")) {
+    } else if (std.mem.eql(u8, req.request.name.items, "Present")) {
         query_extension_reply.present = true;
         query_extension_reply.major_opcode = opcode.Major.present;
     }

@@ -18,11 +18,12 @@ pub fn handle_client_connect(client: *Client, root_window: *Window, allocator: s
     const connection_request_header: *const request.ConnectionSetupRequestHeader = @alignCast(@ptrCast(client_data.ptr));
     if (client.read_buffer_data_size() < connection_request_header.total_size())
         return false;
-    const connection_setup_request = try client.read_request(request.ConnectionSetupRequest, allocator);
+    var req = try client.read_request(request.ConnectionSetupRequest, allocator);
+    defer req.deinit();
 
-    std.log.info("auth_protocol_name_length: {s}", .{connection_setup_request.auth_protocol_name.items});
-    std.log.info("auth_protocol_data_length: {s} (len: {d})", .{ std.fmt.fmtSliceHexLower(connection_setup_request.auth_protocol_data.items), connection_setup_request.auth_protocol_data.items.len });
-    std.log.info("Connection setup request: {}", .{x11.stringify_fmt(connection_setup_request)});
+    std.log.info("auth_protocol_name_length: {s}", .{req.request.auth_protocol_name.items});
+    std.log.info("auth_protocol_data_length: {s} (len: {d})", .{ std.fmt.fmtSliceHexLower(req.request.auth_protocol_data.items), req.request.auth_protocol_data.items.len });
+    std.log.info("Connection setup request: {}", .{x11.stringify_fmt(req)});
 
     var vendor_buf: [32]x11.Card8 = undefined;
     const ven = std.fmt.bufPrint(&vendor_buf, "{s}", .{vendor}) catch unreachable;

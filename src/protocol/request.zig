@@ -86,10 +86,11 @@ pub const ConnectionSetupRequest = struct {
     auth_protocol_name: x11.String8("auth_protocol_name_length"),
     auth_protocol_data: x11.String8("auth_protocol_data_length"),
 
-    pub fn deinit(self: *ConnectionSetupRequest, allocator: std.mem.Allocator) void {
-        allocator.free(self.auth_protocol_name.items);
-        allocator.free(self.auth_protocol_data.items);
-    }
+    // TODO:
+    // pub fn deinit(self: *ConnectionSetupRequest, allocator: std.mem.Allocator) void {
+    //     allocator.free(self.auth_protocol_name.items);
+    //     allocator.free(self.auth_protocol_data.items);
+    // }
 };
 
 pub const RequestHeader = extern struct {

@@ -66,7 +66,7 @@ pub const Class = enum(Card16) {
     input_only = 2,
 };
 
-pub const Pixmap = enum(Card16) {
+pub const Pixmap = enum(Card32) {
     _,
 };
 

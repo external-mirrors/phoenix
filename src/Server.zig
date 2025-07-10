@@ -267,7 +267,7 @@ fn handle_client_request(self: *Self, client: *Client) !bool {
     } else if (bytes_read < request_header_length) {
         // TODO: Output error to client, once all requests have a handler
         std.log.info("Handler read {d} bytes which is less than request header length {d}, skipping the extra bytes", .{ bytes_read, request_header_length });
-        try client.read_buffer.reader().skipBytes(request_header_length - bytes_read, .{});
+        client.skip_read_bytes(request_header_length - bytes_read);
     }
 
     try client.write_buffer_to_client();

@@ -138,8 +138,18 @@ pub fn recvmsg(socket: std.posix.socket_t, data: []u8) !RecvMsgResult {
 
     const bytes_read = try posix_recvmsg(socket, &msghdr, std.posix.MSG.DONTWAIT);
 
+    const cmsg: *cmsghdr = @ptrCast(&cmsgbuf);
     const cmsghdr_len = cmsg_align(@sizeOf(cmsghdr));
     var fds_buf = std.mem.bytesAsSlice(std.posix.fd_t, cmsgbuf[@sizeOf(cmsghdr)..]);
-    const num_fds: usize = if (msghdr.controllen >= cmsghdr_len) (msghdr.controllen - cmsghdr_len) / @sizeOf(std.posix.fd_t) else 0;
+    var num_fds: usize = if (msghdr.controllen >= cmsghdr_len) (msghdr.controllen - cmsghdr_len) / @sizeOf(std.posix.fd_t) else 0;
+    if (num_fds > 0 and (cmsg.level != std.posix.SOL.SOCKET or cmsg.type != SCM_RIGHTS)) {
+        std.log.err("Received extra data in recvmsg that is not fds", .{});
+        num_fds = 0;
+    }
+
+    if (num_fds > 0) {
+        std.log.info("recvmsg fds: {any}, size: {d}", .{ fds_buf[0..num_fds], msghdr.controllen - cmsghdr_len });
+    }
+
     return RecvMsgResult.init(data[0..bytes_read], fds_buf[0..num_fds]);
 }

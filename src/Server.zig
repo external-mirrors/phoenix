@@ -126,7 +126,8 @@ pub fn run(self: *Self) void {
                     continue;
                 };
 
-                process_all_client_requests(self, client);
+                if(!process_all_client_requests(self, client))
+                    continue;
             } else if (epoll_event.events & std.os.linux.EPOLL.OUT != 0) {
                 var client = self.client_manager.get_client(epoll_event.data.fd) orelse {
                     std.log.err("Output data is ready for an unknown client: {d}", .{epoll_event.data.fd});
@@ -198,31 +199,31 @@ fn remove_client(self: *Self, client_fd: std.posix.socket_t) void {
     }
 }
 
-fn process_all_client_requests(self: *Self, client: *Client) void {
+fn process_all_client_requests(self: *Self, client: *Client) bool {
     while (true) {
         switch (client.state) {
             .connecting => {
                 const one_request_handled = ConnectionSetup.handle_client_connect(client, self.root_window, self.allocator) catch |err| {
                     std.log.err("Client connection setup failed: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
                     remove_client(self, client.connection.stream.handle);
-                    continue;
+                    return false;
                 };
 
                 if (one_request_handled) {
                     client.state = .connected;
                 } else {
-                    return;
+                    return true;
                 }
             },
             .connected => {
                 const one_request_handled = handle_client_request(self, client) catch |err| {
                     std.log.err("Client request handling failed: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
                     remove_client(self, client.connection.stream.handle);
-                    continue;
+                    return false;
                 };
 
                 if (!one_request_handled)
-                    return;
+                    return true;
             },
         }
     }
@@ -233,7 +234,7 @@ fn handle_client_request(self: *Self, client: *Client) !bool {
     // TODO: Byteswap
     const client_data = client.read_buffer_slice(@sizeOf(request.RequestHeader)) orelse return false;
     const request_header: *const request.RequestHeader = @alignCast(@ptrCast(client_data.ptr));
-    const request_header_length = request_header.length * 4;
+    const request_header_length = @as(u32, @intCast(request_header.length)) * 4;
     std.log.info("Got client data. Opcode: {d}:{d}, length: {d}", .{ request_header.major_opcode, request_header.minor_opcode, request_header_length });
     if (client.read_buffer_data_size() < request_header_length)
         return false;

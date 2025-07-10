@@ -1,6 +1,7 @@
 const std = @import("std");
 const BackendX11 = @import("BackendX11.zig");
 const Window = @import("../Window.zig");
+const graphics_imp = @import("../graphics/graphics.zig");
 
 pub const Backend = union(enum) {
     x11: *BackendX11,
@@ -34,18 +35,9 @@ pub const Backend = union(enum) {
         }
     }
 
-    pub fn import_fd(
-        self: Backend,
-        fd: std.posix.fd_t,
-        size: u32,
-        width: u16,
-        height: u16,
-        stride: u16,
-        depth: u8,
-        bpp: u8,
-    ) !void {
+    pub fn import_dmabuf(self: Backend, import: *const graphics_imp.DmabufImport) !void {
         return switch (self) {
-            inline else => |item| item.import_fd(fd, size, width, height, stride, depth, bpp),
+            inline else => |item| item.import_dmabuf(import),
         };
     }
 
@@ -61,18 +53,4 @@ test "x11" {
     const x11 = try Backend.init_x11(allocator);
     defer x11.deinit(allocator);
     try x11.create_window();
-}
-
-test "wayland" {
-    const allocator = std.testing.allocator;
-    const wayland = try Backend.init_wayland(allocator);
-    defer wayland.deinit(allocator);
-    try wayland.create_window();
-}
-
-test "drm" {
-    const allocator = std.testing.allocator;
-    const drm = try Backend.init_drm(allocator);
-    defer drm.deinit(allocator);
-    try drm.create_window();
 }

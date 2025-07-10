@@ -1,5 +1,6 @@
 const std = @import("std");
 const c = @import("../c.zig");
+const graphics_imp = @import("graphics.zig");
 
 const Self = @This();
 
@@ -171,47 +172,76 @@ pub fn display(self: *Self) void {
     _ = c.eglSwapBuffers(self.egl_display, self.egl_surface);
 }
 
-pub fn import_fd(
-    self: *Self,
-    fd: std.posix.fd_t,
-    size: u32,
-    width: u16,
-    height: u16,
-    stride: u16,
-    depth: u8,
-    bpp: u8,
-) !void {
-    _ = size;
+pub fn import_dmabuf(self: *Self, import: *const graphics_imp.DmabufImport) !void {
+    std.debug.assert(import.num_items <= drm_num_buf_attrs);
+    var attr: [64]c.EGLAttrib = undefined;
 
-    var attr: [16]c.EGLAttrib = undefined;
+    std.log.info("depth: {d}, bpp: {d}", .{ import.depth, import.bpp });
+    var attr_index: usize = 0;
 
-    std.log.info("depth: {d}, bpp: {d}", .{ depth, bpp });
+    attr[attr_index + 0] = c.EGL_LINUX_DRM_FOURCC_EXT;
+    attr[attr_index + 1] = try depth_to_fourcc(import.depth);
+    attr_index += 2;
 
-    attr[0] = c.EGL_LINUX_DRM_FOURCC_EXT;
-    attr[1] = try depth_to_fourcc(depth);
+    attr[attr_index + 0] = c.EGL_WIDTH;
+    attr[attr_index + 1] = import.width;
+    attr_index += 2;
 
-    attr[2] = c.EGL_WIDTH;
-    attr[3] = width;
+    attr[attr_index + 0] = c.EGL_HEIGHT;
+    attr[attr_index + 1] = import.height;
+    attr_index += 2;
 
-    attr[4] = c.EGL_HEIGHT;
-    attr[5] = height;
+    for (0..import.num_items) |i| {
+        attr[attr_index + 0] = plane_fd_attrs[i];
+        attr[attr_index + 1] = import.fd[i];
+        attr_index += 2;
 
-    attr[6] = c.EGL_DMA_BUF_PLANE0_FD_EXT;
-    attr[7] = fd;
+        attr[attr_index + 0] = plane_offset_attrs[i];
+        attr[attr_index + 1] = import.offset[i];
+        attr_index += 2;
 
-    attr[8] = c.EGL_DMA_BUF_PLANE0_OFFSET_EXT;
-    attr[9] = 0;
+        attr[attr_index + 0] = plane_pitch_attrs[i];
+        attr[attr_index + 1] = import.stride[i];
+        attr_index += 2;
 
-    attr[10] = c.EGL_DMA_BUF_PLANE0_PITCH_EXT;
-    attr[11] = stride;
+        if (import.modifier[i]) |mod| {
+            attr[attr_index + 0] = plane_modifier_lo_attrs[i];
+            attr[attr_index + 1] = @intCast(mod & 0xFFFFFFFF);
+            attr_index += 2;
 
-    attr[12] = c.EGL_NONE;
+            attr[attr_index + 0] = plane_modifier_hi_attrs[i];
+            attr[attr_index + 1] = @intCast(mod >> 32);
+            attr_index += 2;
+        }
 
-    // No modifiers available in request :(
+        var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+        var resolved_path_buf: [std.fs.max_path_bytes]u8 = undefined;
+
+        const path = try std.fmt.bufPrint(&path_buf, "/proc/self/fd/{d}", .{import.fd[i]});
+        const resolved_path = std.posix.readlink(path, &resolved_path_buf) catch "unknown";
+        std.log.info("import dmabuf: {d}: {s}", .{ import.fd[i], resolved_path });
+
+        std.log.info("import fd[{d}]: {d}, depth: {d}, width: {d}, height: {d}, offset: {d}, pitch: {d}, modifier: {any}", .{
+            i,
+            import.fd[i],
+            import.depth,
+            import.width,
+            import.height,
+            import.offset[i],
+            import.stride[i],
+            import.modifier[i],
+        });
+    }
+
+    attr[attr_index] = c.EGL_NONE;
 
     while (c.eglGetError() != c.EGL_SUCCESS) {}
     const image = c.eglCreateImage(self.egl_display, c.EGL_NO_CONTEXT, c.EGL_LINUX_DMA_BUF_EXT, null, @ptrCast(&attr));
-    defer _ = c.eglDestroyImage(self.egl_display, image);
+    std.log.info("egl error: {d}, image: {any}", .{ c.eglGetError(), image });
+    defer {
+        if (image != null)
+            _ = c.eglDestroyImage(self.egl_display, image);
+    }
     if (image == null or c.eglGetError() != c.EGL_SUCCESS)
         return error.FailedToImportFd;
 
@@ -314,3 +344,40 @@ fn depth_to_fourcc(depth: u8) !u32 {
 fn fourcc(a: u8, b: u8, cc: u8, d: u8) u32 {
     return @as(u32, a) | @as(u32, b) << 8 | @as(u32, cc) << 16 | @as(u32, d) << 24;
 }
+
+const drm_num_buf_attrs: usize = 4;
+
+const plane_fd_attrs: [drm_num_buf_attrs]u32 = .{
+    c.EGL_DMA_BUF_PLANE0_FD_EXT,
+    c.EGL_DMA_BUF_PLANE1_FD_EXT,
+    c.EGL_DMA_BUF_PLANE2_FD_EXT,
+    c.EGL_DMA_BUF_PLANE3_FD_EXT,
+};
+
+const plane_offset_attrs: [drm_num_buf_attrs]u32 = .{
+    c.EGL_DMA_BUF_PLANE0_OFFSET_EXT,
+    c.EGL_DMA_BUF_PLANE1_OFFSET_EXT,
+    c.EGL_DMA_BUF_PLANE2_OFFSET_EXT,
+    c.EGL_DMA_BUF_PLANE3_OFFSET_EXT,
+};
+
+const plane_pitch_attrs: [drm_num_buf_attrs]u32 = .{
+    c.EGL_DMA_BUF_PLANE0_PITCH_EXT,
+    c.EGL_DMA_BUF_PLANE1_PITCH_EXT,
+    c.EGL_DMA_BUF_PLANE2_PITCH_EXT,
+    c.EGL_DMA_BUF_PLANE3_PITCH_EXT,
+};
+
+const plane_modifier_lo_attrs: [drm_num_buf_attrs]u32 = .{
+    c.EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT,
+    c.EGL_DMA_BUF_PLANE1_MODIFIER_LO_EXT,
+    c.EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT,
+    c.EGL_DMA_BUF_PLANE3_MODIFIER_LO_EXT,
+};
+
+const plane_modifier_hi_attrs: [drm_num_buf_attrs]u32 = .{
+    c.EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT,
+    c.EGL_DMA_BUF_PLANE1_MODIFIER_HI_EXT,
+    c.EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT,
+    c.EGL_DMA_BUF_PLANE3_MODIFIER_HI_EXT,
+};

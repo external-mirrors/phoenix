@@ -80,17 +80,8 @@ pub fn create_window(self: *Self) !void {
     _ = self;
 }
 
-pub fn import_fd(
-    self: *Self,
-    fd: std.posix.fd_t,
-    size: u32,
-    width: u16,
-    height: u16,
-    stride: u16,
-    depth: u8,
-    bpp: u8,
-) !void {
-    return self.graphics.import_fd(fd, size, width, height, stride, depth, bpp);
+pub fn import_dmabuf(self: *Self, import: *const graphics_imp.DmabufImport) !void {
+    return self.graphics.import_dmabuf(import);
 }
 
 pub fn get_supported_modifiers(self: *Self, window: *Window, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {

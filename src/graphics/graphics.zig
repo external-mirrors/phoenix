@@ -52,18 +52,9 @@ pub const Graphics = union(enum) {
         }
     }
 
-    pub fn import_fd(
-        self: Graphics,
-        fd: std.posix.fd_t,
-        size: u32,
-        width: u16,
-        height: u16,
-        stride: u16,
-        depth: u8,
-        bpp: u8,
-    ) !void {
+    pub fn import_dmabuf(self: Graphics, import: *const DmabufImport) !void {
         return switch (self) {
-            inline else => |item| item.import_fd(fd, size, width, height, stride, depth, bpp),
+            inline else => |item| item.import_dmabuf(import),
         };
     }
 
@@ -72,6 +63,19 @@ pub const Graphics = union(enum) {
             inline else => |item| item.get_supported_modifiers(depth, bpp, modifiers),
         };
     }
+};
+
+pub const DmabufImport = struct {
+    fd: [4]std.posix.fd_t,
+    stride: [4]u32,
+    offset: [4]u32,
+    modifier: [4]?u64,
+    //size: u32,
+    width: u32,
+    height: u32,
+    depth: u8,
+    bpp: u8,
+    num_items: u32,
 };
 
 // pub const GraphicsAsync = struct {

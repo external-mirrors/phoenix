@@ -1,5 +1,6 @@
 const std = @import("std");
 const RequestContext = @import("../../../RequestContext.zig");
+const graphics = @import("../../../graphics/graphics.zig");
 const x11 = @import("../../x11.zig");
 const x11_error = @import("../../error.zig");
 const request = @import("../../request.zig");
@@ -13,6 +14,7 @@ pub fn handle_request(request_context: RequestContext) !void {
         MinorOpcode.open => return open(request_context),
         MinorOpcode.pixmap_from_buffer => return pixmap_from_buffer(request_context),
         MinorOpcode.get_supported_modifiers => return get_supported_modifiers(request_context),
+        MinorOpcode.pixmap_from_buffers => return pixmap_from_buffers(request_context),
         else => {
             std.log.warn("Unimplemented dri3 request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
             const err = x11_error.Error{
@@ -130,8 +132,10 @@ fn pixmap_from_buffer(request_context: RequestContext) !void {
     }
 
     const dmabuf_fd = read_fds[0];
-    errdefer std.posix.close(dmabuf_fd);
-    request_context.client.discard_read_fds(1);
+    defer {
+        std.posix.close(dmabuf_fd);
+        request_context.client.discard_read_fds(1);
+    }
 
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
     var resolved_path_buf: [std.fs.max_path_bytes]u8 = undefined;
@@ -140,17 +144,21 @@ fn pixmap_from_buffer(request_context: RequestContext) !void {
     const resolved_path = std.posix.readlink(path, &resolved_path_buf) catch "unknown";
     std.log.info("dmabuf: {d}: {s}", .{ dmabuf_fd, resolved_path });
 
-    try request_context.server.backend.import_fd(
-        dmabuf_fd,
-        req.request.size,
-        req.request.width,
-        req.request.height,
-        req.request.stride,
-        req.request.depth,
-        req.request.bpp,
-    );
-
-    //request_context.server.backend.pixmap_from_buffer(buffer_fd, req.request.);
+    const import_dmabuf = graphics.DmabufImport{
+        .fd = [_]std.posix.fd_t{ dmabuf_fd, 0, 0, 0 },
+        .stride = [_]u32{ req.request.stride, 0, 0, 0 },
+        .offset = [_]u32{ 0, 0, 0, 0 },
+        .modifier = [_]?u64{ null, null, null, null },
+        // TODO: Use size?
+        //.size = req.request.size,
+        .width = req.request.width,
+        .height = req.request.height,
+        .depth = req.request.depth,
+        .bpp = req.request.bpp,
+        .num_items = 1,
+    };
+    // TODO: associate this with the pixmap
+    try request_context.server.backend.import_dmabuf(&import_dmabuf);
 }
 
 fn get_supported_modifiers(request_context: RequestContext) !void {
@@ -196,11 +204,82 @@ fn get_supported_modifiers(request_context: RequestContext) !void {
     try request_context.client.write_reply(&get_supported_modifiers_reply);
 }
 
+fn pixmap_from_buffers(request_context: RequestContext) !void {
+    var req = try request_context.client.read_request(Dri3PixmapFromBuffersRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("Dri3PixmapFromBuffers request: {s}, fd: {d}", .{ x11.stringify_fmt(req), request_context.client.get_read_fds() });
+
+    const read_fds = request_context.client.get_read_fds();
+    if (read_fds.len < req.request.num_buffers) {
+        const err = x11_error.Error{
+            .code = .length,
+            .sequence_number = request_context.sequence_number,
+            .value = 0,
+            .minor_opcode = request_context.header.minor_opcode,
+            .major_opcode = request_context.header.major_opcode,
+        };
+        return request_context.client.write_error(&err);
+    }
+
+    const dmabuf_fds = read_fds[0..@min(4, req.request.num_buffers)];
+    defer {
+        for (dmabuf_fds) |dmabuf_fd| {
+            std.posix.close(dmabuf_fd);
+        }
+        request_context.client.discard_read_fds(req.request.num_buffers);
+    }
+
+    if (req.request.num_buffers > 4) {
+        const err = x11_error.Error{
+            .code = .length,
+            .sequence_number = request_context.sequence_number,
+            .value = 0,
+            .minor_opcode = request_context.header.minor_opcode,
+            .major_opcode = request_context.header.major_opcode,
+        };
+        return request_context.client.write_error(&err);
+    }
+
+    // TODO: Use size?
+    // const size = @mulWithOverflow(strides[i], req.request.height);
+    // if (size[1] != 0) {
+    //     const err = x11_error.Error{
+    //         .code = .value,
+    //         .sequence_number = request_context.sequence_number,
+    //         .value = 0,
+    //         .minor_opcode = request_context.header.minor_opcode,
+    //         .major_opcode = request_context.header.major_opcode,
+    //     };
+    //     return request_context.client.write_error(&err);
+    // }
+
+    const strides: [4]u32 = .{ req.request.stride0, req.request.stride1, req.request.stride2, req.request.stride3 };
+    const offsets: [4]u32 = .{ req.request.offset0, req.request.offset1, req.request.offset2, req.request.offset3 };
+
+    var import_dmabuf: graphics.DmabufImport = undefined;
+    import_dmabuf.width = req.request.width;
+    import_dmabuf.height = req.request.height;
+    import_dmabuf.depth = req.request.depth;
+    import_dmabuf.bpp = req.request.bpp;
+    import_dmabuf.num_items = @intCast(dmabuf_fds.len);
+
+    for (dmabuf_fds, 0..) |dmabuf_fd, i| {
+        import_dmabuf.fd[i] = dmabuf_fd;
+        import_dmabuf.stride[i] = strides[i];
+        import_dmabuf.offset[i] = offsets[i];
+        import_dmabuf.modifier[i] = req.request.modifier;
+    }
+
+    // TODO: associate this with the pixmap
+    try request_context.server.backend.import_dmabuf(&import_dmabuf);
+}
+
 const MinorOpcode = struct {
     pub const query_version: x11.Card8 = 0;
     pub const open: x11.Card8 = 1;
     pub const pixmap_from_buffer: x11.Card8 = 2;
     pub const get_supported_modifiers: x11.Card8 = 6;
+    pub const pixmap_from_buffers: x11.Card8 = 7;
 };
 
 const Dri3QueryExtensionRequest = struct {
@@ -271,4 +350,29 @@ const Dri3GetSupportedModifiersReply = struct {
     pad2: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
     window_modifiers: x11.ListOf(x11.Card64, .{ .length_field = "num_window_modifiers" }),
     screen_modifiers: x11.ListOf(x11.Card64, .{ .length_field = "num_screen_modifiers" }),
+};
+
+const Dri3PixmapFromBuffersRequest = struct {
+    major_opcode: x11.Card8, // opcode.Major
+    minor_opcode: x11.Card8, // MinorOpcode
+    length: x11.Card16,
+    pixmap: x11.Pixmap,
+    window: x11.Window,
+    num_buffers: x11.Card8,
+    pad1: x11.Card8,
+    pad2: x11.Card16,
+    width: x11.Card16,
+    height: x11.Card16,
+    stride0: x11.Card32,
+    offset0: x11.Card32,
+    stride1: x11.Card32,
+    offset1: x11.Card32,
+    stride2: x11.Card32,
+    offset2: x11.Card32,
+    stride3: x11.Card32,
+    offset3: x11.Card32,
+    depth: x11.Card8,
+    bpp: x11.Card8,
+    pad3: x11.Card16,
+    modifier: x11.Card64,
 };

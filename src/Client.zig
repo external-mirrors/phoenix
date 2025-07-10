@@ -17,13 +17,11 @@ allocator: std.mem.Allocator,
 connection: std.net.Server.Connection,
 state: State,
 read_buffer: DataBuffer,
+read_buffer_fds: RequestFdsBuffer,
 write_buffer: ReplyMessageDataBuffer,
-request_fds_buffer: RequestFdsBuffer,
 resource_id_base: u32,
 sequence_number: u16,
 resources: resource.ResourceHashMap,
-total_bytes_read: u64,
-total_request_bytes_read: u64,
 
 pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, allocator: std.mem.Allocator) Self {
     return .{
@@ -31,13 +29,11 @@ pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, alloca
         .connection = connection,
         .state = .connecting,
         .read_buffer = .init(allocator),
+        .read_buffer_fds = .init(allocator),
         .write_buffer = .init(allocator),
-        .request_fds_buffer = .init(allocator),
         .resource_id_base = resource_id_base,
         .sequence_number = 1,
         .resources = .init(allocator),
-        .total_bytes_read = 0,
-        .total_request_bytes_read = 0,
     };
 }
 
@@ -53,10 +49,11 @@ pub fn deinit(self: *Self, resource_manager: *ResourceManager) void {
     }
     self.write_buffer.deinit();
 
-    while (self.request_fds_buffer.readableLength() > 0) {
-        var request_fds = &self.request_fds_buffer.buf[self.request_fds_buffer.head];
-        request_fds.deinit();
-        self.request_fds_buffer.discard(1);
+    while (self.read_buffer_fds.readableLength() > 0) {
+        const read_fd = self.read_buffer_fds.buf[self.read_buffer_fds.head];
+        if(read_fd > 0)
+            std.posix.close(read_fd);
+        self.read_buffer_fds.discard(1);
     }
 
     var resources_it = self.resources.valueIterator();
@@ -95,23 +92,10 @@ pub fn read_client_data_to_buffer(self: *Self) !void {
             break;
         }
 
+        errdefer recv_result.deinit();
         try self.read_buffer.write(recv_result.data);
-        const total_bytes_read = self.total_bytes_read;
-        self.total_bytes_read += recv_result.data.len;
-        try self.append_read_fds(&recv_result, total_bytes_read);
+        try self.read_buffer_fds.write(recv_result.get_fds());
     }
-}
-
-fn append_read_fds(self: *Self, recv_result: *const netutils.RecvMsgResult, total_bytes_read: u64) !void {
-    std.debug.assert(recv_result.num_fds <= 4);
-    if (recv_result.num_fds == 0)
-        return;
-
-    // TODO: Confirm if this is correct. We set the fds being received as relative to the number or bytes read,
-    // which assumes that when receiving fds we only receive one request in the same packet.
-    var request_fds = RequestFds.init(recv_result.get_fds(), total_bytes_read);
-    errdefer request_fds.deinit();
-    try self.request_fds_buffer.writeItem(request_fds);
 }
 
 pub fn write_buffer_to_client(self: *Self) !void {
@@ -140,35 +124,18 @@ pub fn write_buffer_to_client(self: *Self) !void {
     }
 }
 
-pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator) !message.Request(T) {
-    std.log.info("read_request: readable slice: {any}, total request bytes read: {d}, tt: {d}", .{
-        self.request_fds_buffer.readableSlice(0),
-        self.total_request_bytes_read,
-        if (self.request_fds_buffer.readableLength() > 0) self.request_fds_buffer.buf[self.request_fds_buffer.head].total_bytes_read else 0,
-    });
-    var request_fds: ?RequestFds = null;
-    if (self.request_fds_buffer.readableLength() > 0 and self.total_request_bytes_read >=
-        self.request_fds_buffer.buf[self.request_fds_buffer.head].total_bytes_read)
-    {
-        request_fds = self.request_fds_buffer.readItem();
-        std.log.info("has fds: {any}", .{request_fds});
-    }
-
-    errdefer if (request_fds) |*r| r.deinit();
-
-    const bytes_available_to_read_before = self.read_buffer.readableLength();
-    const req_data = try request.read_request(T, self.read_buffer.reader(), allocator);
-    const bytes_available_to_read_after = self.read_buffer.readableLength();
-    const bytes_read = bytes_available_to_read_before - bytes_available_to_read_after;
-    self.total_request_bytes_read += bytes_read;
-
-    return message.Request(T).init(&req_data, if (request_fds) |*r| r.get_fds() else &.{});
-}
-
 pub fn skip_read_bytes(self: *Self, num_bytes: usize) void {
     const num_bytes_to_skip = @min(self.read_buffer.readableLength(), num_bytes);
     self.read_buffer.discard(num_bytes_to_skip);
-    self.total_request_bytes_read += num_bytes_to_skip;
+}
+
+pub fn get_read_fds(self: *Self) []const std.posix.fd_t {
+    return self.read_buffer_fds.readableSlice(0);
+}
+
+pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator) !message.Request(T) {
+    const req_data = try request.read_request(T, self.read_buffer.reader(), allocator);
+    return message.Request(T).init(&req_data);
 }
 
 pub fn write_reply(self: *Self, reply_data: anytype) !void {
@@ -249,37 +216,9 @@ pub fn destroy_window(self: *Self, window: *Window) void {
 //const max_write_buffer_size: usize = 2 * 1024 * 1024; // 2mb. Clients that dont consume data fast enough are forcefully disconnected
 const DataBuffer = std.fifo.LinearFifo(u8, .Dynamic);
 const ReplyMessageDataBuffer = std.fifo.LinearFifo(message.Reply, .Dynamic);
-const RequestFdsBuffer = std.fifo.LinearFifo(RequestFds, .Dynamic);
+const RequestFdsBuffer = std.fifo.LinearFifo(std.posix.fd_t, .Dynamic);
 
 const State = enum {
     connecting,
     connected,
-};
-
-const RequestFds = struct {
-    fd_buf: [message.max_fds]std.posix.fd_t,
-    num_fds: u32,
-    total_bytes_read: u64,
-
-    pub fn init(fds: []const std.posix.fd_t, total_bytes_read: u64) RequestFds {
-        std.debug.assert(fds.len <= message.max_fds);
-        var result = RequestFds{
-            .fd_buf = undefined,
-            .num_fds = @intCast(fds.len),
-            .total_bytes_read = total_bytes_read,
-        };
-        @memcpy(result.fd_buf[0..fds.len], fds);
-        return result;
-    }
-
-    pub fn deinit(self: *RequestFds) void {
-        for (self.fd_buf[0..self.num_fds]) |fd| {
-            if (fd > 0)
-                std.posix.close(fd);
-        }
-    }
-
-    pub fn get_fds(self: *const RequestFds) []const std.posix.fd_t {
-        return self.fd_buf[0..self.num_fds];
-    }
 };

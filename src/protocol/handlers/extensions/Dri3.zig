@@ -114,7 +114,7 @@ fn open(request_context: RequestContext) !void {
 fn pixmap_from_buffer(request_context: RequestContext) !void {
     var req = try request_context.client.read_request(Dri3PixmapFromBufferRequest, request_context.allocator);
     defer req.deinit();
-    std.log.info("DRI3PixmapFromBuffer request: {s}", .{x11.stringify_fmt(req)});
+    std.log.info("DRI3PixmapFromBuffer request: {s}, fd: {d}", .{ x11.stringify_fmt(req), request_context.client.get_read_fds() });
 }
 
 const MinorOpcode = struct {

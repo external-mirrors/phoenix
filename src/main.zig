@@ -9,13 +9,6 @@ pub fn main() !void {
 }
 
 test "all tests" {
-    _ = @import("protocol/x11.zig");
-    _ = @import("protocol/request.zig");
-    _ = @import("protocol/reply.zig");
-    _ = @import("protocol/error.zig");
-    _ = @import("protocol/event.zig");
-    _ = @import("protocol/handlers/core.zig");
-
     _ = @import("Server.zig");
     _ = @import("Client.zig");
     _ = @import("ClientManager.zig");
@@ -26,6 +19,19 @@ test "all tests" {
     _ = @import("RequestContext.zig");
     _ = @import("ConnectionSetup.zig");
     _ = @import("AtomManager.zig");
+    _ = @import("netutils.zig");
+    _ = @import("message.zig");
+
+    _ = @import("protocol/x11.zig");
+    _ = @import("protocol/request.zig");
+    _ = @import("protocol/reply.zig");
+    _ = @import("protocol/error.zig");
+    _ = @import("protocol/event.zig");
+    _ = @import("protocol/handlers/core.zig");
+    _ = @import("protocol/handlers/extensions.zig");
+    _ = @import("protocol/handlers/extensions/Dri3.zig");
+    _ = @import("protocol/handlers/extensions/Present.zig");
+    _ = @import("protocol/handlers/extensions/Xfixes.zig");
 
     _ = @import("backend/backend.zig");
     _ = @import("backend/BackendX11.zig");

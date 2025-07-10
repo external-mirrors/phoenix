@@ -7,30 +7,16 @@ pub fn Request(comptime RequestType: type) type {
         const Self = @This();
 
         request: RequestType,
-        fd_buf: [max_fds]std.posix.fd_t,
-        num_fds: u32,
 
-        /// |fds| can't be more than |max_fds| items
-        pub fn init(request: *const RequestType, fds: []const std.posix.fd_t) Self {
-            std.debug.assert(fds.len <= max_fds);
-            var result = Self{
+        pub fn init(request: *const RequestType) Self {
+            return .{
                 .request = request.*,
-                .fd_buf = undefined,
-                .num_fds = @intCast(fds.len),
             };
-            @memcpy(result.fd_buf[0..fds.len], fds);
-            return result;
         }
 
         pub fn deinit(self: *Self) void {
             if (@hasDecl(RequestType, "deinit"))
                 self.request.deinit();
-
-            for (self.fd_buf[0..self.num_fds]) |fd| {
-                if (fd > 0)
-                    std.posix.close(fd);
-            }
-            self.num_fds = 0;
         }
     };
 }

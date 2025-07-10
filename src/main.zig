@@ -1,11 +1,20 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const Server = @import("Server.zig");
 
 pub fn main() !void {
-    const allocator = std.heap.smp_allocator;
-    var server = try Server.init(allocator);
-    defer server.deinit();
-    server.run();
+    if (builtin.mode == .Debug) {
+        var gpa = std.heap.DebugAllocator(.{}){};
+        defer std.debug.assert(gpa.deinit() == .ok);
+
+        var server = try Server.init(gpa.allocator());
+        defer server.deinit();
+        server.run();
+    } else {
+        var server = try Server.init(std.heap.smp_allocator);
+        defer server.deinit();
+        server.run();
+    }
 }
 
 test "all tests" {

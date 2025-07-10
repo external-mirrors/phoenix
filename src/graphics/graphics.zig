@@ -51,7 +51,31 @@ pub const Graphics = union(enum) {
             inline else => |item| item.display(),
         }
     }
+
+    pub fn import_fd(
+        self: Graphics,
+        fd: std.posix.fd_t,
+        size: u32,
+        width: u16,
+        height: u16,
+        stride: u16,
+        depth: u8,
+        bpp: u8,
+    ) !void {
+        return switch (self) {
+            inline else => |item| item.import_fd(fd, size, width, height, stride, depth, bpp),
+        };
+    }
 };
+
+// pub const GraphicsAsync = struct {
+//     graphics: Graphics,
+//     message_queue: std.Mes
+// };
+
+// const MessageQueue = struct {
+//     std.fifo.LinearFifo(comptime T: type, comptime buffer_type: LinearFifoBufferType)
+// };
 
 // test "egl" {
 //     const allocator = std.testing.allocator;

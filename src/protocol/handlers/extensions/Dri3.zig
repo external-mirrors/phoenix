@@ -128,9 +128,26 @@ fn pixmap_from_buffer(request_context: RequestContext) !void {
         return request_context.client.write_error(&err);
     }
 
-    const buffer_fd = read_fds[0];
-    errdefer std.posix.close(buffer_fd);
+    const dmabuf_fd = read_fds[0];
+    errdefer std.posix.close(dmabuf_fd);
     request_context.client.discard_read_fds(1);
+
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var resolved_path_buf: [std.fs.max_path_bytes]u8 = undefined;
+
+    const path = try std.fmt.bufPrint(&path_buf, "/proc/self/fd/{d}", .{dmabuf_fd});
+    const resolved_path = std.posix.readlink(path, &resolved_path_buf) catch "unknown";
+    std.log.info("dmabuf: {d}: {s}", .{ dmabuf_fd, resolved_path });
+
+    try request_context.server.backend.import_fd(
+        dmabuf_fd,
+        req.request.size,
+        req.request.width,
+        req.request.height,
+        req.request.stride,
+        req.request.depth,
+        req.request.bpp,
+    );
 
     //request_context.server.backend.pixmap_from_buffer(buffer_fd, req.request.);
 }

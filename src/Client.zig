@@ -58,8 +58,7 @@ pub fn deinit(self: *Self, resource_manager: *ResourceManager) void {
 
     var resources_it = self.resources.valueIterator();
     while (resources_it.next()) |res| {
-        res.*.deinit(resource_manager);
-        self.allocator.destroy(res);
+        res.*.deinit(resource_manager, self.allocator);
     }
     self.resources.deinit();
 }

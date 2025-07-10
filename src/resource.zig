@@ -5,9 +5,12 @@ const ResourceManager = @import("ResourceManager.zig");
 pub const Resource = union(enum) {
     window: *Window,
 
-    pub fn deinit(self: Resource, resource_manager: *ResourceManager) void {
+    pub fn deinit(self: Resource, resource_manager: *ResourceManager, allocator: std.mem.Allocator) void {
         switch (self) {
-            inline else => |item| item.deinit(resource_manager),
+            inline else => |item| {
+                item.deinit(resource_manager);
+                allocator.destroy(item);
+            },
         }
     }
 };

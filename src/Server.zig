@@ -193,8 +193,8 @@ fn remove_client(self: *Self, client_fd: std.posix.socket_t) void {
     };
 
     if (self.client_manager.get_client(client_fd)) |client| {
-        _ = self.client_manager.remove_client(client_fd, &self.resource_manager);
         self.resource_id_base_manager.free(client.resource_id_base);
+        _ = self.client_manager.remove_client(client_fd, &self.resource_manager);
     }
 }
 
@@ -242,7 +242,7 @@ fn handle_client_request(self: *Self, client: *Client) !bool {
         .allocator = self.allocator,
         .client = client,
         .server = self,
-        .request_header = request_header,
+        .header = request_header,
         .sequence_number = client.next_sequence_number(),
     };
 

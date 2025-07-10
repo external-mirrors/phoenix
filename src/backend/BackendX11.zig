@@ -71,10 +71,23 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     self.connection = undefined;
 }
 
+pub fn get_drm_card_fd(self: *Self) std.posix.fd_t {
+    return self.graphics.get_dri_card_fd();
+}
+
 pub fn create_window(self: *Self) !void {
     _ = self;
 }
 
-pub fn get_drm_card_fd(self: *Self) std.posix.fd_t {
-    return self.graphics.get_dri_card_fd();
+pub fn import_fd(
+    self: *Self,
+    fd: std.posix.fd_t,
+    size: u32,
+    width: u16,
+    height: u16,
+    stride: u16,
+    depth: u8,
+    bpp: u8,
+) !void {
+    return self.graphics.import_fd(fd, size, width, height, stride, depth, bpp);
 }

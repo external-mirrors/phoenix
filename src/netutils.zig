@@ -143,22 +143,3 @@ pub fn recvmsg(socket: std.posix.socket_t, data: []u8) !RecvMsgResult {
     const num_fds: usize = if (msghdr.controllen >= cmsghdr_len) (msghdr.controllen - cmsghdr_len) / @sizeOf(std.posix.fd_t) else 0;
     return RecvMsgResult.init(data[0..bytes_read], fds_buf[0..num_fds]);
 }
-
-fn list_process_fds() !void {
-    var dir = try std.fs.openDirAbsolute("/proc/self/fd", .{ .iterate = true });
-    defer dir.close();
-
-    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-    var realpath_buf: [std.fs.max_path_bytes]u8 = undefined;
-
-    var it = dir.iterate();
-    while (try it.next()) |file| {
-        const path = try std.fmt.bufPrint(&path_buf, "{s}/{s}", .{ "/proc/self/fd", file.name });
-        const realpath = std.posix.readlink(path, &realpath_buf) catch "unknown";
-        std.debug.print("file: {s}, realpath: {s}\n", .{ path, realpath });
-    }
-}
-
-test "list_process_fds" {
-    try list_process_fds();
-}

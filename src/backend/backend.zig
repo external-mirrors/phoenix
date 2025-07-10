@@ -50,6 +50,21 @@ pub const Backend = union(enum) {
             inline else => |item| return item.create_window(),
         }
     }
+
+    pub fn import_fd(
+        self: Backend,
+        fd: std.posix.fd_t,
+        size: u32,
+        width: u16,
+        height: u16,
+        stride: u16,
+        depth: u8,
+        bpp: u8,
+    ) !void {
+        return switch (self) {
+            inline else => |item| item.import_fd(fd, size, width, height, stride, depth, bpp),
+        };
+    }
 };
 
 test "x11" {

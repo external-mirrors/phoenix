@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const max_fds = 4;
+pub const max_fds = 16;
 
 pub fn Request(comptime RequestType: type) type {
     return struct {

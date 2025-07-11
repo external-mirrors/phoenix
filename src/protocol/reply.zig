@@ -57,14 +57,16 @@ fn write_reply_list_of(comptime T: type, list_of: *const T, writer: anytype) !vo
     try writer.writeByteNTimes(0, x11.padding(list_of.items.len, list_of_options.padding));
 }
 
+const unit_size: u32 = 4;
+
 fn reply_set_length_fields_root(comptime T: type, reply: *T) void {
     if (@hasField(T, "header") or @hasField(T, "length")) {
         const header_size = if (T == ConnectionSetupAcceptReply) @sizeOf(ReplyHeader) else @sizeOf(GenericReply);
         const struct_length_without_header = @max(0, calculate_reply_length_bytes(T, reply) - header_size);
         if (@hasField(T, "header")) {
-            reply.header.length = @intCast(struct_length_without_header / 4);
+            reply.header.length = @intCast(struct_length_without_header / unit_size);
         } else if (@hasField(T, "length")) {
-            reply.length = @intCast(struct_length_without_header / 4);
+            reply.length = @intCast(struct_length_without_header / unit_size);
         }
     }
     reply_set_length_fields(T, reply);

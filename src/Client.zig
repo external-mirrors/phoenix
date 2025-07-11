@@ -129,11 +129,17 @@ pub fn skip_read_bytes(self: *Self, num_bytes: usize) void {
 }
 
 pub fn get_read_fds(self: *Self) []const std.posix.fd_t {
-    return self.read_buffer_fds.readableSlice(0);
+    return self.read_buffer_fds.readableSliceOfLen(self.read_buffer_fds.readableLength());
 }
 
-pub fn discard_read_fds(self: *Self, num_fds: usize) void {
-    self.read_buffer_fds.discard(@min(self.read_buffer_fds.readableLength(), num_fds));
+pub fn discard_and_close_read_fds(self: *Self, num_fds: usize) void {
+    const num_fds_to_cleanup = @min(self.read_buffer_fds.readableLength(), num_fds);
+    for (0..num_fds_to_cleanup) |_| {
+        const fd = self.read_buffer_fds.buf[self.read_buffer_fds.head];
+        if (fd > 0)
+            std.posix.close(fd);
+        self.read_buffer_fds.discard(1);
+    }
 }
 
 pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator) !message.Request(T) {

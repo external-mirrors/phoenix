@@ -126,7 +126,7 @@ pub fn run(self: *Self) void {
                     continue;
                 };
 
-                if(!process_all_client_requests(self, client))
+                if (!process_all_client_requests(self, client))
                     continue;
             } else if (epoll_event.events & std.os.linux.EPOLL.OUT != 0) {
                 var client = self.client_manager.get_client(epoll_event.data.fd) orelse {
@@ -229,12 +229,14 @@ fn process_all_client_requests(self: *Self, client: *Client) bool {
     }
 }
 
+const unit_size: u32 = 4;
+
 /// Returns true if there was enough data from the client to handle the request
 fn handle_client_request(self: *Self, client: *Client) !bool {
     // TODO: Byteswap
     const client_data = client.read_buffer_slice(@sizeOf(request.RequestHeader)) orelse return false;
     const request_header: *const request.RequestHeader = @alignCast(@ptrCast(client_data.ptr));
-    const request_header_length = @as(u32, @intCast(request_header.length)) * 4;
+    const request_header_length = @as(u32, @intCast(request_header.length)) * unit_size;
     std.log.info("Got client data. Opcode: {d}:{d}, length: {d}", .{ request_header.major_opcode, request_header.minor_opcode, request_header_length });
     if (client.read_buffer_data_size() < request_header_length)
         return false;

@@ -13,6 +13,7 @@ pub fn handle_request(request_context: RequestContext) !void {
         MinorOpcode.query_version => return query_version(request_context),
         MinorOpcode.open => return open(request_context),
         MinorOpcode.pixmap_from_buffer => return pixmap_from_buffer(request_context),
+        MinorOpcode.fence_from_fd => return fence_from_fd(request_context),
         MinorOpcode.get_supported_modifiers => return get_supported_modifiers(request_context),
         MinorOpcode.pixmap_from_buffers => return pixmap_from_buffers(request_context),
         else => {
@@ -132,10 +133,7 @@ fn pixmap_from_buffer(request_context: RequestContext) !void {
     }
 
     const dmabuf_fd = read_fds[0];
-    defer {
-        std.posix.close(dmabuf_fd);
-        request_context.client.discard_read_fds(1);
-    }
+    defer request_context.client.discard_and_close_read_fds(1);
 
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
     var resolved_path_buf: [std.fs.max_path_bytes]u8 = undefined;
@@ -159,6 +157,30 @@ fn pixmap_from_buffer(request_context: RequestContext) !void {
     };
     // TODO: associate this with the pixmap
     try request_context.server.backend.import_dmabuf(&import_dmabuf);
+}
+
+fn fence_from_fd(request_context: RequestContext) !void {
+    var req = try request_context.client.read_request(Dri3FenceFromFdRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("Dri3FenceFromFd request: {s}, fd: {d}", .{ x11.stringify_fmt(req), request_context.client.get_read_fds() });
+
+    const read_fds = request_context.client.get_read_fds();
+    if (read_fds.len < 1) {
+        const err = x11_error.Error{
+            .code = .length,
+            .sequence_number = request_context.sequence_number,
+            .value = 0,
+            .minor_opcode = request_context.header.minor_opcode,
+            .major_opcode = request_context.header.major_opcode,
+        };
+        return request_context.client.write_error(&err);
+    }
+
+    const dmabuf_fd = read_fds[0];
+    defer request_context.client.discard_and_close_read_fds(1);
+    _ = dmabuf_fd;
+
+    // TODO: Implement
 }
 
 fn get_supported_modifiers(request_context: RequestContext) !void {
@@ -222,12 +244,7 @@ fn pixmap_from_buffers(request_context: RequestContext) !void {
     }
 
     const dmabuf_fds = read_fds[0..@min(4, req.request.num_buffers)];
-    defer {
-        for (dmabuf_fds) |dmabuf_fd| {
-            std.posix.close(dmabuf_fd);
-        }
-        request_context.client.discard_read_fds(req.request.num_buffers);
-    }
+    defer request_context.client.discard_and_close_read_fds(req.request.num_buffers);
 
     if (req.request.num_buffers > 4) {
         const err = x11_error.Error{
@@ -278,6 +295,7 @@ const MinorOpcode = struct {
     pub const query_version: x11.Card8 = 0;
     pub const open: x11.Card8 = 1;
     pub const pixmap_from_buffer: x11.Card8 = 2;
+    pub const fence_from_fd: x11.Card8 = 4;
     pub const get_supported_modifiers: x11.Card8 = 6;
     pub const pixmap_from_buffers: x11.Card8 = 7;
 };
@@ -314,6 +332,7 @@ const Dri3OpenReply = struct {
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
     pad1: [24]x11.Card8 = [_]x11.Card8{0} ** 24,
+    // device: Fd,
 };
 
 const Dri3PixmapFromBufferRequest = struct {
@@ -328,6 +347,19 @@ const Dri3PixmapFromBufferRequest = struct {
     stride: x11.Card16,
     depth: x11.Card8,
     bpp: x11.Card8,
+    // buffer: Fd,
+};
+
+const Dri3FenceFromFdRequest = struct {
+    major_opcode: x11.Card8, // opcode.Major
+    minor_opcode: x11.Card8, // MinorOpcode
+    length: x11.Card16,
+    drawable: x11.Drawable,
+    fence: x11.Card32,
+    initially_triggered: bool,
+    pad1: x11.Card8,
+    pad2: x11.Card16,
+    // fence_fd: Fd,
 };
 
 const Dri3GetSupportedModifiersRequest = struct {
@@ -375,4 +407,5 @@ const Dri3PixmapFromBuffersRequest = struct {
     bpp: x11.Card8,
     pad3: x11.Card16,
     modifier: x11.Card64,
+    // buffers: x11.ListOf(Fd, .{ .length_field = "num_buffers" }),
 };

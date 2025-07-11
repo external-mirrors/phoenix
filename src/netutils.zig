@@ -2,18 +2,28 @@ const std = @import("std");
 
 pub const RecvMsgResult = struct {
     data: []const u8, // Reference
-    fd_buf: [4]std.posix.fd_t,
+    fd_buf: [16]std.posix.fd_t,
     num_fds: u32,
 
     /// Stores a reference to |data|
     pub fn init(data: []const u8, fds: []const std.posix.fd_t) RecvMsgResult {
-        std.debug.assert(fds.len <= 4);
+        std.debug.assert(fds.len <= 16);
         var result = RecvMsgResult{
             .data = data,
             .fd_buf = undefined,
             .num_fds = @intCast(fds.len),
         };
-        @memcpy(result.fd_buf[0..fds.len], fds);
+
+        // TODO: Why do some of these fds have the value -1431655766 (0xffffffffaaaaaaaa)?
+        var num_valid_fds: u32 = 0;
+        for (fds) |fd| {
+            if (fd > 0) {
+                result.fd_buf[num_valid_fds] = fd;
+                num_valid_fds += 1;
+            }
+        }
+        result.num_fds = num_valid_fds;
+
         return result;
     }
 
@@ -49,10 +59,10 @@ inline fn cmsg_len(size: usize) usize {
     return cmsg_align(@sizeOf(cmsghdr)) + size;
 }
 
-/// Can only send max 4 fds
+/// Can only send max 16 fds
 pub fn sendmsg(socket: std.posix.socket_t, data_to_send: []const u8, fds_to_send: []std.posix.fd_t) !usize {
-    std.debug.assert(fds_to_send.len <= 4);
-    var cmsgbuf: [cmsg_space(@sizeOf(std.posix.fd_t) * 4)]u8 align(@alignOf(cmsghdr)) = undefined;
+    std.debug.assert(fds_to_send.len <= 16);
+    var cmsgbuf: [cmsg_space(@sizeOf(std.posix.fd_t) * 16)]u8 align(@alignOf(cmsghdr)) = undefined;
     var cmsg: *cmsghdr = @ptrCast(&cmsgbuf);
     cmsg.level = std.posix.SOL.SOCKET;
     cmsg.type = SCM_RIGHTS;
@@ -115,9 +125,9 @@ fn posix_recvmsg(socket: std.posix.socket_t, msghdr: *std.c.msghdr, flags: u32) 
     }
 }
 
-/// Can only receive max 4 fds
+/// Can only receive max 16 fds
 pub fn recvmsg(socket: std.posix.socket_t, data: []u8) !RecvMsgResult {
-    var cmsgbuf: [cmsg_space(@sizeOf(std.posix.fd_t) * 4)]u8 align(@alignOf(cmsghdr)) = undefined;
+    var cmsgbuf: [cmsg_space(@sizeOf(std.posix.fd_t) * 16)]u8 align(@alignOf(cmsghdr)) = undefined;
 
     var iov = [_]std.posix.iovec{
         .{

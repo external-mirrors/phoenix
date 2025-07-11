@@ -30,6 +30,7 @@ test "all tests" {
     _ = @import("AtomManager.zig");
     _ = @import("netutils.zig");
     _ = @import("message.zig");
+    _ = @import("xshmfence.zig");
 
     _ = @import("protocol/x11.zig");
     _ = @import("protocol/request.zig");

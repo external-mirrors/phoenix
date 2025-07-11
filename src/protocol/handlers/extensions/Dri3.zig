@@ -5,6 +5,7 @@ const x11 = @import("../../x11.zig");
 const x11_error = @import("../../error.zig");
 const request = @import("../../request.zig");
 const reply = @import("../../reply.zig");
+const xshmfence = @import("../../../xshmfence.zig");
 const c = @import("../../../c.zig");
 
 pub fn handle_request(request_context: RequestContext) !void {
@@ -176,9 +177,21 @@ fn fence_from_fd(request_context: RequestContext) !void {
         return request_context.client.write_error(&err);
     }
 
-    const dmabuf_fd = read_fds[0];
+    const fence_fd = read_fds[0];
     defer request_context.client.discard_and_close_read_fds(1);
-    _ = dmabuf_fd;
+
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var resolved_path_buf: [std.fs.max_path_bytes]u8 = undefined;
+
+    const path = try std.fmt.bufPrint(&path_buf, "/proc/self/fd/{d}", .{fence_fd});
+    const resolved_path = std.posix.readlink(path, &resolved_path_buf) catch "unknown";
+    std.log.info("fence: {d}: {s}", .{ fence_fd, resolved_path });
+
+    // TODO: Use it properly
+    var fence = try xshmfence.xshmfence.create_from_fd(fence_fd);
+    defer fence.destroy();
+
+    _ = fence.trigger();
 
     // TODO: Implement
 }

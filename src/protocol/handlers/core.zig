@@ -16,7 +16,9 @@ pub fn handle_request(request_context: RequestContext) !void {
         opcode.Major.map_window => return map_window(request_context),
         opcode.Major.get_geometry => return get_geometry(request_context),
         opcode.Major.intern_atom => return intern_atom(request_context),
+        opcode.Major.change_property => return change_property(request_context),
         opcode.Major.get_property => return get_property(request_context),
+        opcode.Major.get_input_focus => return get_input_focus(request_context),
         opcode.Major.create_gc => return create_gc(request_context),
         opcode.Major.query_extension => return query_extension(request_context),
         else => {
@@ -177,6 +179,10 @@ fn intern_atom(request_context: RequestContext) !void {
     try request_context.client.write_reply(&intern_atom_reply);
 }
 
+fn change_property(_: RequestContext) !void {
+    // TODO: Implement
+}
+
 // TODO: Actually read the request values, handling them properly
 fn get_property(request_context: RequestContext) !void {
     var req = try request_context.client.read_request(GetPropertyRequest, request_context.allocator);
@@ -228,6 +234,19 @@ fn get_property(request_context: RequestContext) !void {
         };
         return request_context.client.write_error(&err);
     }
+}
+
+fn get_input_focus(request_context: RequestContext) !void {
+    var req = try request_context.client.read_request(GetInputFocusRequest, request_context.allocator);
+    defer req.deinit();
+
+    // TODO: Implement properly
+    var rep = GetInputFocusReply{
+        .revert_to = .pointer_root,
+        .sequence_number = request_context.sequence_number,
+        .focused_window = request_context.server.root_window.window_id,
+    };
+    try request_context.client.write_reply(&rep);
 }
 
 fn create_gc(_: RequestContext) !void {
@@ -330,11 +349,35 @@ const CreateWindowRequest = struct {
     }
 };
 
+const window_none: x11.Window = 0;
+const window_pointer_root: x11.Window = 1;
+
+const RevertTo = enum(x11.Card8) {
+    none = 0,
+    pointer_root = 1,
+    parent = 2,
+};
+
 const MapWindowRequest = struct {
     opcode: x11.Card8, // opcode.Major
     pad1: x11.Card8,
     length: x11.Card16,
     window: x11.Window,
+};
+
+const GetInputFocusRequest = struct {
+    opcode: x11.Card8, // opcode.Major
+    pad1: x11.Card8,
+    length: x11.Card16,
+};
+
+const GetInputFocusReply = struct {
+    reply_type: reply.ReplyType = .reply,
+    revert_to: RevertTo,
+    sequence_number: x11.Card16,
+    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+    focused_window: x11.Window,
+    pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
 };
 
 const QueryExtensionRequest = struct {

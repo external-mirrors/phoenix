@@ -68,6 +68,8 @@ fn reply_set_length_fields_root(comptime T: type, reply: *T) void {
         } else if (@hasField(T, "length")) {
             reply.length = @intCast(struct_length_without_header / unit_size);
         }
+    } else {
+        @compileError("Reply struct " ++ @typeName(T) ++ " is missing header and length fields, it needs either one of them");
     }
     reply_set_length_fields(T, reply);
 }

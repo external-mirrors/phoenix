@@ -87,11 +87,6 @@ pub const Provider = enum(Card32) {
 
 pub const Timestamp = Card32;
 
-pub const any_property_type: Atom = 0;
-pub const none: u32 = 0;
-pub const parent_relative: u32 = 0;
-pub const copy_from_parent: u32 = 0;
-
 pub const PropertyValue = union(enum) {
     string8: std.ArrayList(Card8),
     card16_list: std.ArrayList(Card16),

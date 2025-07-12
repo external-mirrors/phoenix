@@ -9,6 +9,7 @@ pub fn handle_request(request_context: RequestContext) !void {
     std.log.warn("Handling xfixes request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
     switch (request_context.header.minor_opcode) {
         MinorOpcode.query_version => return query_version(request_context),
+        MinorOpcode.create_region => return create_region(request_context),
         else => {
             std.log.warn("Unimplemented xfixes request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
             const err = x11_error.Error{
@@ -43,9 +44,14 @@ fn query_version(request_context: RequestContext) !void {
     try request_context.client.write_reply(&query_version_reply);
 }
 
+fn create_region(_: RequestContext) !void {
+    // TODO: Implement
+}
+
 const MinorOpcode = struct {
     pub const query_version: x11.Card8 = 0;
     pub const open: x11.Card8 = 1;
+    pub const create_region: x11.Card8 = 5;
 };
 
 pub const Region = enum(x11.Card32) {

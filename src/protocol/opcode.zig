@@ -8,7 +8,9 @@ pub const Major = struct {
     pub const map_window: x11.Card8 = 8;
     pub const get_geometry: x11.Card8 = 14;
     pub const intern_atom: x11.Card8 = 16;
+    pub const change_property: x11.Card8 = 18;
     pub const get_property: x11.Card8 = 20;
+    pub const get_input_focus: x11.Card8 = 43;
     pub const create_gc: x11.Card8 = 55;
     pub const query_extension: x11.Card8 = 98;
 

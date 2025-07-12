@@ -61,7 +61,7 @@ fn present_pixmap(request_context: RequestContext) !void {
         .sequence_number = request_context.sequence_number,
         .kind = .pixmap,
         .mode = .suboptimal_copy,
-        .event_id = @enumFromInt(0),
+        .event_id = @enumFromInt(0x00100001),
         .window = req.request.window,
         .serial = req.request.serial,
         .ust = 0,
@@ -82,6 +82,16 @@ fn present_pixmap(request_context: RequestContext) !void {
         };
         try request_context.client.write_event_extension(&complete_event_notify);
     }
+
+    var idle_notify_event = PresentIdleNotifyEvent{
+        .sequence_number = request_context.sequence_number,
+        .event_id = @enumFromInt(0x00100001),
+        .window = req.request.window,
+        .serial = req.request.serial,
+        .pixmap = req.request.pixmap,
+        .idle_fence = req.request.idle_fence,
+    };
+    try request_context.client.write_event_extension(&idle_notify_event);
 }
 
 fn select_input(request_context: RequestContext) !void {
@@ -241,5 +251,23 @@ const PresentCompleteNotifyEvent = extern struct {
 
     comptime {
         std.debug.assert(@sizeOf(@This()) == 40);
+    }
+};
+
+const PresentIdleNotifyEvent = extern struct {
+    code: event.EventCode = .xge,
+    present_extension_opcode: x11.Card8 = opcode.Major.present,
+    sequence_number: x11.Card16,
+    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+    present_event_code: PresentEventCode = .idle_notify,
+    pad1: x11.Card16 = 0,
+    event_id: PresentEventId,
+    window: x11.Window,
+    serial: x11.Card32,
+    pixmap: x11.Pixmap,
+    idle_fence: SyncFence,
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
     }
 };

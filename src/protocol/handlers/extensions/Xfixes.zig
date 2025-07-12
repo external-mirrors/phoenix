@@ -48,6 +48,10 @@ const MinorOpcode = struct {
     pub const open: x11.Card8 = 1;
 };
 
+pub const Region = enum(x11.Card32) {
+    _,
+};
+
 const XfixesQueryVersionRequest = struct {
     major_opcode: x11.Card8, // opcode.Major
     minor_opcode: x11.Card8, // MinorOpcode

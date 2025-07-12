@@ -191,7 +191,15 @@ fn fence_from_fd(request_context: RequestContext) !void {
     var fence = try xshmfence.xshmfence.create_from_fd(fence_fd);
     defer fence.destroy();
 
-    _ = fence.trigger();
+    // _ = try std.Thread.spawn(.{}, struct {
+    //     pub fn lol(zz: *xshmfence.xshmfence) void {
+    //         while (true) {
+    //             std.debug.print("trigger xshmfence!\n", .{});
+    //             _ = zz.trigger();
+    //             std.Thread.sleep(1 * std.time.ns_per_s);
+    //         }
+    //     }
+    // }.lol, .{fence});
 
     // TODO: Implement
 }

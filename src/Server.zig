@@ -229,14 +229,12 @@ fn process_all_client_requests(self: *Self, client: *Client) bool {
     }
 }
 
-const unit_size: u32 = 4;
-
 /// Returns true if there was enough data from the client to handle the request
 fn handle_client_request(self: *Self, client: *Client) !bool {
     // TODO: Byteswap
     const client_data = client.read_buffer_slice(@sizeOf(request.RequestHeader)) orelse return false;
     const request_header: *const request.RequestHeader = @alignCast(@ptrCast(client_data.ptr));
-    const request_header_length = @as(u32, @intCast(request_header.length)) * unit_size;
+    const request_header_length = request_header.get_length_in_bytes();
     std.log.info("Got client data. Opcode: {d}:{d}, length: {d}", .{ request_header.major_opcode, request_header.minor_opcode, request_header_length });
     if (client.read_buffer_data_size() < request_header_length)
         return false;

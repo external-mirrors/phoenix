@@ -105,6 +105,7 @@ fn create_window(request_context: RequestContext) !void {
             .override_redirect = override_redirect,
         },
     };
+    // TODO: Instead of writing event to client, write to all clients that select input
     try request_context.client.write_event(&create_notify_event);
 }
 
@@ -260,7 +261,7 @@ fn query_extension(request_context: RequestContext) !void {
     try request_context.client.write_reply(&query_extension_reply);
 }
 
-pub const ValueMask = packed struct(x11.Card32) {
+const ValueMask = packed struct(x11.Card32) {
     background_pixmap: bool,
     background_pixel: bool,
     border_pixmap: bool,
@@ -302,7 +303,7 @@ pub const ValueMask = packed struct(x11.Card32) {
     }
 };
 
-pub const CreateWindowRequest = struct {
+const CreateWindowRequest = struct {
     opcode: x11.Card8, // opcode.Major
     depth: x11.Card8,
     length: x11.Card16,
@@ -329,14 +330,14 @@ pub const CreateWindowRequest = struct {
     }
 };
 
-pub const MapWindowRequest = struct {
+const MapWindowRequest = struct {
     opcode: x11.Card8, // opcode.Major
     pad1: x11.Card8,
     length: x11.Card16,
     window: x11.Window,
 };
 
-pub const QueryExtensionRequest = struct {
+const QueryExtensionRequest = struct {
     opcode: x11.Card8, // opcode.Major
     pad1: x11.Card8,
     length: x11.Card16,
@@ -357,7 +358,7 @@ const QueryExtensionReply = struct {
     pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
 };
 
-pub const GetPropertyRequest = struct {
+const GetPropertyRequest = struct {
     opcode: x11.Card8, // opcode.Major
     delete: bool,
     length: x11.Card16, // 6

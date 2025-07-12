@@ -9,6 +9,7 @@ pub const Card64 = u64;
 pub const ListOfLengthType = enum {
     integer,
     bitmask, // The length is specified by the number of bits set
+    request_remainder, // The size is calculated by the request length field minus the size of all items before this item
 };
 
 pub const ListOfOptions = struct {

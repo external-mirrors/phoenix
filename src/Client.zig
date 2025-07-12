@@ -179,6 +179,10 @@ pub fn write_event(self: *Self, ev: *const event.Event) !void {
     return self.write_buffer.write(std.mem.asBytes(ev));
 }
 
+pub fn write_event_extension(self: *Self, ev: anytype) !void {
+    return self.write_reply(ev);
+}
+
 pub fn next_sequence_number(self: *Self) u16 {
     const sequence = self.sequence_number;
     self.sequence_number +%= 1;
@@ -211,6 +215,8 @@ pub fn destroy_window(self: *Self, window: *Window) void {
     window.deinit();
     self.allocator.destroy(window);
 }
+
+//pub fn select_input(self: *Self, event_id: u32, window: *Window, )
 
 // TODO: Use this
 //const max_read_buffer_size: usize = 1 * 1024 * 1024; // 1mb. If the server doesn't dont manage to read the data fast enough then the client is forcefully disconnected

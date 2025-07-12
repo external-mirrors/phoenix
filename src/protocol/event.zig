@@ -7,6 +7,7 @@ pub const EventCode = enum(x11.Card8) {
     button_press = 4,
     button_release = 5,
     create_notify = 16,
+    xge = 35,
 };
 
 pub const KeyButMask = packed struct(x11.Card16) {

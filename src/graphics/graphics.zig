@@ -15,7 +15,7 @@ pub const Graphics = union(enum) {
     ) !Graphics {
         const egl = try allocator.create(GraphicsEgl);
         errdefer allocator.destroy(egl);
-        egl.* = try .init(platform, screen_type, connection, window_id, debug);
+        egl.* = try .init(platform, screen_type, connection, window_id, debug, allocator);
         return .{ .egl = egl };
     }
 
@@ -43,6 +43,12 @@ pub const Graphics = union(enum) {
     pub fn clear(self: Graphics) void {
         switch (self) {
             inline else => |item| item.clear(),
+        }
+    }
+
+    pub fn render(self: Graphics) void {
+        switch (self) {
+            inline else => |item| item.render(),
         }
     }
 

@@ -45,10 +45,12 @@ egl_surface: c.EGLSurface,
 egl_context: c.EGLContext,
 dri_card_fd: std.posix.fd_t,
 
+textures: std.ArrayList(c.GLuint),
+
 glEGLImageTargetTexture2DOES: PFNGLEGLIMAGETARGETTEXTURE2DOESPROC,
 eglQueryDmaBufModifiersEXT: PFNEGLQUERYDMABUFMODIFIERSEXTPROC,
 
-pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplayType, window_id: c.EGLNativeWindowType, debug: bool) !Self {
+pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplayType, window_id: c.EGLNativeWindowType, debug: bool, allocator: std.mem.Allocator) !Self {
     const context_attr = [_]c.EGLint{
         c.EGL_CONTEXT_MAJOR_VERSION,                           required_egl_major,
         c.EGL_CONTEXT_MINOR_VERSION,                           required_egl_minor,
@@ -135,12 +137,16 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
         .egl_context = egl_context,
         .dri_card_fd = dri_card_fd.?,
 
+        .textures = .init(allocator),
+
         .glEGLImageTargetTexture2DOES = glEGLImageTargetTexture2DOES,
         .eglQueryDmaBufModifiersEXT = eglQueryDmaBufModifiersEXT,
     };
 }
 
 pub fn deinit(self: *Self) void {
+    c.glDeleteTextures(@intCast(self.textures.items.len), self.textures.items.ptr);
+    self.textures.deinit();
     std.posix.close(self.dri_card_fd);
     _ = c.eglMakeCurrent(self.egl_display, null, null, null);
     _ = c.eglDestroyContext(self.egl_display, self.egl_context);
@@ -248,6 +254,7 @@ pub fn import_dmabuf(self: *Self, import: *const graphics_imp.DmabufImport) !voi
     // TODO: Do this properly
     while (c.glGetError() != 0) {}
     var texture: c.GLuint = 0;
+    errdefer c.glDeleteTextures(1, &texture);
     c.glGenTextures(1, &texture);
     c.glBindTexture(c.GL_TEXTURE_2D, texture);
     c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, c.GL_LINEAR);
@@ -255,6 +262,8 @@ pub fn import_dmabuf(self: *Self, import: *const graphics_imp.DmabufImport) !voi
     self.glEGLImageTargetTexture2DOES(c.GL_TEXTURE_2D, image);
     std.log.info("success: {d}, texture: {d}, egl error: {d}", .{ c.glGetError(), texture, c.eglGetError() });
     c.glBindTexture(c.GL_TEXTURE_2D, 0);
+
+    try self.textures.append(texture);
 
     //if (c.eglMakeCurrent(self.egl_display, null, null, null) == c.EGL_FALSE)
     //    return error.FailedToMakeEglContextCurrent;
@@ -272,35 +281,32 @@ pub fn get_supported_modifiers(self: *Self, depth: u8, bpp: u8, modifiers: *[64]
     return modifiers[0..@intCast(num_modifiers)];
 }
 
-// fn render_callback(self: *Self, texture: c.GLuint) !void {
-//     if (c.eglMakeCurrent(self.egl_display, self.egl_surface, self.egl_surface, self.egl_context) == c.EGL_FALSE)
-//         return error.FailedToMakeEglContextCurrent;
+pub fn render(self: *Self) void {
+    self.clear();
+    for (self.textures.items) |texture| {
+        c.glBindTexture(c.GL_TEXTURE_2D, texture);
+        //std.log.info("texture: {d}", .{texture});
 
-//     while (true) {
-//         self.clear();
-//         c.glBindTexture(c.GL_TEXTURE_2D, texture);
-//         //std.log.info("texture: {d}", .{texture});
+        // TODO: Move out of loop
+        c.glBegin(c.GL_QUADS);
+        {
+            c.glTexCoord2f(0.0, 0.0);
+            c.glVertex2f(-0.5, -0.5);
 
-//         c.glBegin(c.GL_QUADS);
-//         {
-//             c.glTexCoord2f(0.0, 0.0);
-//             c.glVertex2f(-0.5, -0.5);
+            c.glTexCoord2f(1.0, 0.0);
+            c.glVertex2f(0.5, -0.5);
 
-//             c.glTexCoord2f(1.0, 0.0);
-//             c.glVertex2f(0.5, -0.5);
+            c.glTexCoord2f(1.0, 1.0);
+            c.glVertex2f(0.5, 0.5);
 
-//             c.glTexCoord2f(1.0, 1.0);
-//             c.glVertex2f(0.5, 0.5);
-
-//             c.glTexCoord2f(0.0, 1.0);
-//             c.glVertex2f(-0.5, 0.5);
-//         }
-//         c.glEnd();
-
-//         c.glBindTexture(c.GL_TEXTURE_2D, 0);
-//         self.display();
-//     }
-// }
+            c.glTexCoord2f(0.0, 1.0);
+            c.glVertex2f(-0.5, 0.5);
+        }
+        c.glEnd();
+    }
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    self.display();
+}
 
 fn gl_debug_callback(
     source: c.GLenum,

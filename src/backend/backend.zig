@@ -46,6 +46,12 @@ pub const Backend = union(enum) {
             inline else => |item| item.get_supported_modifiers(window, depth, bpp, modifiers),
         };
     }
+
+    pub fn draw(self: Backend) void {
+        return switch (self) {
+            inline else => |item| item.draw(),
+        };
+    }
 };
 
 test "x11" {

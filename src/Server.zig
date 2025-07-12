@@ -96,7 +96,8 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn run(self: *Self) void {
-    const poll_timeout_ms: u32 = 500;
+    // TODO: Increase this to 500
+    const poll_timeout_ms: u32 = 100;
     var running = true;
 
     while (running) {
@@ -156,6 +157,9 @@ pub fn run(self: *Self) void {
                 }
             }
         }
+
+        // TODO: Remove this and instead do the rendering in a separate thread of process
+        self.backend.draw();
     }
 }
 

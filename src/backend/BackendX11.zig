@@ -89,3 +89,9 @@ pub fn get_supported_modifiers(self: *Self, window: *Window, depth: u8, bpp: u8,
     // TODO: Do something with window
     return self.graphics.get_supported_modifiers(depth, bpp, modifiers);
 }
+
+pub fn draw(self: *Self) void {
+    self.graphics.clear();
+    self.graphics.render();
+    self.graphics.display();
+}

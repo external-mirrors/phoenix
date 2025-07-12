@@ -1,5 +1,6 @@
 const std = @import("std");
 const x11 = @import("x11.zig");
+const ConnectionSetup = @import("../ConnectionSetup.zig");
 
 // TODO: Byteswap
 pub fn write_reply(comptime T: type, reply: *T, writer: anytype) !void {
@@ -60,14 +61,10 @@ fn write_reply_list_of(comptime T: type, list_of: *const T, writer: anytype) !vo
 const unit_size: u32 = 4;
 
 fn reply_set_length_fields_root(comptime T: type, reply: *T) void {
-    if (@hasField(T, "header") or @hasField(T, "length")) {
-        const header_size = if (T == ConnectionSetupAcceptReply) @sizeOf(ReplyHeader) else @sizeOf(GenericReply);
+    if (@hasField(T, "length")) {
+        const header_size = if (T == ConnectionSetup.ConnectionSetupAcceptReply) @sizeOf(ReplyHeader) else @sizeOf(GenericReply);
         const struct_length_without_header = @max(0, calculate_reply_length_bytes(T, reply) - header_size);
-        if (@hasField(T, "header")) {
-            reply.header.length = @intCast(struct_length_without_header / unit_size);
-        } else if (@hasField(T, "length")) {
-            reply.length = @intCast(struct_length_without_header / unit_size);
-        }
+        reply.length = @intCast(struct_length_without_header / unit_size);
     } else {
         @compileError("Reply struct " ++ @typeName(T) ++ " is missing header and length fields, it needs either one of them");
     }
@@ -150,87 +147,6 @@ fn calculate_reply_length_bytes_list_of(comptime T: type, list_of: *const T) i32
     return size;
 }
 
-pub const ReplyStatus = enum(x11.Card8) {
-    failed = 0,
-    success = 1,
-    authenticate = 2,
-};
-
-pub const ImageByteOrder = enum(x11.Card8) {
-    lsb_first = 0,
-    msg_first = 1,
-};
-
-pub const BitmapFormatBitOrder = enum(x11.Card8) {
-    least_significant,
-    most_significant,
-};
-
-pub const PixmapFormat = struct {
-    depth: x11.Card8,
-    bits_per_pixel: x11.Card8,
-    scanline_pad: x11.Card8,
-    pad1: x11.Card8 = 0,
-    pad2: x11.Card8 = 0,
-    pad3: x11.Card8 = 0,
-    pad4: x11.Card8 = 0,
-    pad5: x11.Card8 = 0,
-};
-
-pub const BackingStores = enum(x11.Card8) {
-    never = 0,
-    when_mapped = 1,
-    always = 2,
-};
-
-pub const VisualClass = enum(x11.Card8) {
-    static_gray = 0,
-    gray_scale = 1,
-    static_color = 2,
-    pseudo_color = 3,
-    true_color = 4,
-    direct_color = 5,
-};
-
-pub const VisualType = struct {
-    visual: x11.VisualId,
-    class: VisualClass,
-    bits_per_rgb_value: x11.Card8,
-    colormap_entries: x11.Card16,
-    red_mask: x11.Card32,
-    green_mask: x11.Card32,
-    blue_mask: x11.Card32,
-    pad1: x11.Card32 = 0,
-};
-
-pub const Depth = struct {
-    depth: x11.Card8,
-    pad1: x11.Card8 = 0,
-    num_visual_types: x11.Card16 = 0,
-    pad2: x11.Card32 = 0,
-    visual_types: x11.ListOf(VisualType, .{ .length_field = "num_visual_types" }),
-};
-
-pub const Screen = struct {
-    root_window: x11.Window,
-    colormap: x11.Colormap,
-    white_pixel: x11.Card32,
-    black_pixel: x11.Card32,
-    current_input_masks: x11.Card32,
-    width_pixels: x11.Card16,
-    height_pixels: x11.Card16,
-    width_mm: x11.Card16,
-    height_mm: x11.Card16,
-    min_installed_colormaps: x11.Card16,
-    max_installed_colormaps: x11.Card16,
-    root_visual: x11.VisualId,
-    backing_stores: BackingStores,
-    save_unders: bool,
-    root_depth: x11.Card8,
-    num_allowed_depths: x11.Card8 = 0,
-    allowed_depths: x11.ListOf(Depth, .{ .length_field = "num_allowed_depths" }),
-};
-
 pub const ReplyType = enum(x11.Card8) {
     err = 0,
     reply = 1,
@@ -251,40 +167,6 @@ pub const GenericReply = extern struct {
     comptime {
         std.debug.assert(@sizeOf(@This()) == 32);
     }
-};
-
-pub const ConnectionSetupReplyHeader = extern struct {
-    status: ReplyStatus = .success,
-    pad1: x11.Card8 = 0,
-    protocol_major_version: x11.Card16 = 28000, // TODO:
-    protocol_minor_version: x11.Card16 = 0, // TODO:
-    length: x11.Card16 = 0, // This is automatically updated with the size of the reply
-
-    comptime {
-        std.debug.assert(@sizeOf(@This()) == 8);
-    }
-};
-
-pub const ConnectionSetupAcceptReply = struct {
-    header: ConnectionSetupReplyHeader = .{},
-    release_number: x11.Card32,
-    resource_id_base: x11.Card32,
-    resource_id_mask: x11.Card32,
-    motion_buffer_size: x11.Card32,
-    length_of_vendor: x11.Card16 = 0,
-    maximum_request_length: x11.Card16, // TODO: x11.Card32 for big-request?
-    num_screens: x11.Card8 = 0,
-    num_pixmap_formats: x11.Card8 = 0,
-    image_byte_order: ImageByteOrder,
-    bitmap_format_bit_order: BitmapFormatBitOrder,
-    bitmap_format_scanline_unit: x11.Card8,
-    bitmap_format_scanline_pad: x11.Card8,
-    min_keycode: x11.KeyCode,
-    max_keycode: x11.KeyCode,
-    pad1: x11.Card32 = 0,
-    vendor: x11.String8("length_of_vendor"),
-    pixmap_formats: x11.ListOf(PixmapFormat, .{ .length_field = "num_pixmap_formats" }),
-    screens: x11.ListOf(Screen, .{ .length_field = "num_screens" }),
 };
 
 pub const ReplyHeader = extern struct {

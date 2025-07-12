@@ -4,3 +4,4 @@ Support BIG-REQUESTS extension.
 Use auth if there is one added in xauthority file for the path (X1 is $USER/unix:1)
     and validate client connection against it. Right now we accept all connections.
 Use epoll equivalent on other OS'.
+Move protocol definition and request/reply handling to a separate repository as it can also be used for a zig native x11 client.

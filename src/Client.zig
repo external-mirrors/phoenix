@@ -16,9 +16,13 @@ const Self = @This();
 allocator: std.mem.Allocator,
 connection: std.net.Server.Connection,
 state: State,
+
 read_buffer: DataBuffer,
+write_buffer: DataBuffer,
+
 read_buffer_fds: RequestFdsBuffer,
-write_buffer: ReplyMessageDataBuffer,
+write_buffer_fds: ReplyFdsBuffer,
+
 resource_id_base: u32,
 sequence_number: u16,
 resources: resource.ResourceHashMap,
@@ -28,9 +32,13 @@ pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, alloca
         .allocator = allocator,
         .connection = connection,
         .state = .connecting,
+
         .read_buffer = .init(allocator),
-        .read_buffer_fds = .init(allocator),
         .write_buffer = .init(allocator),
+
+        .read_buffer_fds = .init(allocator),
+        .write_buffer_fds = .init(allocator),
+
         .resource_id_base = resource_id_base,
         .sequence_number = 1,
         .resources = .init(allocator),
@@ -41,12 +49,6 @@ pub fn deinit(self: *Self, resource_manager: *ResourceManager) void {
     self.connection.stream.close();
 
     self.read_buffer.deinit();
-
-    while (self.write_buffer.readableLength() > 0) {
-        var reply_message = &self.write_buffer.buf[self.write_buffer.head];
-        reply_message.deinit();
-        self.write_buffer.discard(1);
-    }
     self.write_buffer.deinit();
 
     while (self.read_buffer_fds.readableLength() > 0) {
@@ -54,6 +56,12 @@ pub fn deinit(self: *Self, resource_manager: *ResourceManager) void {
         if (read_fd > 0)
             std.posix.close(read_fd);
         self.read_buffer_fds.discard(1);
+    }
+
+    while (self.write_buffer_fds.readableLength() > 0) {
+        const reply_fd = self.write_buffer_fds.buf[self.write_buffer_fds.head];
+        reply_fd.deinit();
+        self.write_buffer_fds.discard(1);
     }
 
     var resources_it = self.resources.valueIterator();
@@ -93,33 +101,34 @@ pub fn read_client_data_to_buffer(self: *Self) !void {
 
         errdefer recv_result.deinit();
         try self.read_buffer.write(recv_result.data);
+        // TODO: If this fails but not the above then we need to discard data from the write end, how?
         try self.read_buffer_fds.write(recv_result.get_fds());
     }
 }
 
 pub fn write_buffer_to_client(self: *Self) !void {
+    var fd_buf: [netutils.max_fds]std.posix.fd_t = undefined;
     while (self.write_buffer.readableLength() > 0) {
-        var reply_message = &self.write_buffer.buf[self.write_buffer.head];
-        var fds: [message.max_fds]std.posix.fd_t = undefined;
-        for (reply_message.fd_buf[0..reply_message.num_fds], 0..) |message_fd, i| {
-            fds[i] = message_fd.fd;
+        const write_buffer = self.write_buffer.readableSliceOfLen(self.write_buffer.readableLength());
+        const reply_fds = self.write_buffer_fds.readableSliceOfLen(@min(self.write_buffer_fds.readableLength(), fd_buf.len));
+        for (reply_fds, 0..) |reply_fd, i| {
+            fd_buf[i] = reply_fd.fd;
         }
+        const fds = fd_buf[0..reply_fds.len];
 
-        while (!reply_message.is_empty()) {
-            const bytes_written = netutils.sendmsg(self.connection.stream.handle, reply_message.slice(), fds[0..reply_message.num_fds]) catch |err| switch (err) {
-                error.WouldBlock => return,
-                else => return err,
-            };
+        const bytes_written = netutils.sendmsg(self.connection.stream.handle, write_buffer, fds) catch |err| switch (err) {
+            error.WouldBlock => return,
+            else => return err,
+        };
 
-            if (bytes_written == 0)
-                return;
-
-            // TODO: Is this correct? we assume that all fds are sent if there was no error
-            reply_message.cleanup_fds();
-            reply_message.discard(bytes_written);
+        self.write_buffer.discard(bytes_written);
+        for (reply_fds) |reply_fd| {
+            reply_fd.deinit();
         }
+        self.write_buffer_fds.discard(reply_fds.len);
 
-        self.write_buffer.discard(1);
+        if (bytes_written == 0)
+            return;
     }
 }
 
@@ -151,39 +160,23 @@ pub fn write_reply(self: *Self, reply_data: anytype) !void {
     return write_reply_with_fds(self, reply_data, &.{});
 }
 
-pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const message.Reply.MessageFd) !void {
+pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const message.ReplyFd) !void {
     if (@typeInfo(@TypeOf(reply_data)) != .pointer)
         @compileError("Expected reply data to be a pointer");
 
-    var reply_message = message.Reply.init(fds, self.allocator);
-    errdefer {
-        reply_message.num_fds = 0;
-        reply_message.deinit();
-    }
-    try reply.write_reply(@TypeOf(reply_data.*), reply_data, reply_message.writer());
-    return self.write_buffer.writeItem(reply_message);
+    try reply.write_reply(@TypeOf(reply_data.*), reply_data, self.write_buffer.writer());
+    // TODO: If this fails but not the above then we need to discard data from the write end, how?
+    try self.write_buffer_fds.write(fds);
 }
 
 pub fn write_error(self: *Self, err: *const x11_error.Error) !void {
     std.log.info("Replying with error: {s}", .{x11.stringify_fmt(err)});
-    var reply_message = message.Reply.init(&.{}, self.allocator);
-    errdefer {
-        reply_message.num_fds = 0;
-        reply_message.deinit();
-    }
-    try reply_message.data.appendSlice(std.mem.asBytes(err));
-    return self.write_buffer.writeItem(reply_message);
+    return self.write_buffer.write(std.mem.asBytes(err));
 }
 
 pub fn write_event(self: *Self, ev: *const event.Event) !void {
     //std.log.info("Replying with event: {s}", .{x11.stringify_fmt(ev)});
-    var reply_message = message.Reply.init(&.{}, self.allocator);
-    errdefer {
-        reply_message.num_fds = 0;
-        reply_message.deinit();
-    }
-    try reply_message.data.appendSlice(std.mem.asBytes(ev));
-    return self.write_buffer.writeItem(reply_message);
+    return self.write_buffer.write(std.mem.asBytes(ev));
 }
 
 pub fn next_sequence_number(self: *Self) u16 {
@@ -224,8 +217,8 @@ pub fn destroy_window(self: *Self, window: *Window) void {
 // TODO: Use this
 //const max_write_buffer_size: usize = 2 * 1024 * 1024; // 2mb. Clients that dont consume data fast enough are forcefully disconnected
 const DataBuffer = std.fifo.LinearFifo(u8, .Dynamic);
-const ReplyMessageDataBuffer = std.fifo.LinearFifo(message.Reply, .Dynamic);
 const RequestFdsBuffer = std.fifo.LinearFifo(std.posix.fd_t, .Dynamic);
+const ReplyFdsBuffer = std.fifo.LinearFifo(message.ReplyFd, .Dynamic);
 
 const State = enum {
     connecting,

@@ -56,6 +56,16 @@ fn present_pixmap(request_context: RequestContext) !void {
 
     // TODO: Implement properly
 
+    var idle_notify_event = PresentIdleNotifyEvent{
+        .sequence_number = request_context.sequence_number,
+        .event_id = @enumFromInt(0x00100001),
+        .window = req.request.window,
+        .serial = req.request.serial,
+        .pixmap = req.request.pixmap,
+        .idle_fence = req.request.idle_fence,
+    };
+    try request_context.client.write_event_extension(&idle_notify_event);
+
     // TODO: Only send event to clients that select input (PresentSelectInput)
     var complete_event = PresentCompleteNotifyEvent{
         .sequence_number = request_context.sequence_number,
@@ -82,16 +92,6 @@ fn present_pixmap(request_context: RequestContext) !void {
         };
         try request_context.client.write_event_extension(&complete_event_notify);
     }
-
-    var idle_notify_event = PresentIdleNotifyEvent{
-        .sequence_number = request_context.sequence_number,
-        .event_id = @enumFromInt(0x00100001),
-        .window = req.request.window,
-        .serial = req.request.serial,
-        .pixmap = req.request.pixmap,
-        .idle_fence = req.request.idle_fence,
-    };
-    try request_context.client.write_event_extension(&idle_notify_event);
 }
 
 fn select_input(request_context: RequestContext) !void {

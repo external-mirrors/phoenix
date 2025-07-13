@@ -70,7 +70,7 @@ fn create_window(request_context: RequestContext) !void {
             std.log.err("Received window {d} in CreateWindow request which already exists", .{req.request.window});
             // TODO: What type of error should actually be generated?
             const err_reply = x11_error.Error{
-                .code = .value,
+                .code = .id_choice,
                 .sequence_number = request_context.sequence_number,
                 .value = @intFromEnum(req.request.window),
                 .minor_opcode = request_context.header.minor_opcode,

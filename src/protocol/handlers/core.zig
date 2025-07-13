@@ -23,14 +23,7 @@ pub fn handle_request(request_context: RequestContext) !void {
         opcode.Major.query_extension => return query_extension(request_context),
         else => {
             std.log.warn("Unimplemented core request: {d}", .{request_context.header.major_opcode});
-            const err = x11_error.Error{
-                .code = .implementation,
-                .sequence_number = request_context.sequence_number,
-                .value = 0,
-                .minor_opcode = request_context.header.minor_opcode,
-                .major_opcode = request_context.header.major_opcode,
-            };
-            return request_context.client.write_error(&err);
+            return request_context.client.write_error(request_context, .implementation, 0);
         },
     }
 }
@@ -43,50 +36,22 @@ fn create_window(request_context: RequestContext) !void {
 
     const parent_window = request_context.server.resource_manager.get_window(req.request.parent) orelse {
         std.log.err("Received invalid parent window {d} in CreateWindow request", .{req.request.parent});
-        const err = x11_error.Error{
-            .code = .window,
-            .sequence_number = request_context.sequence_number,
-            .value = @intFromEnum(req.request.parent),
-            .minor_opcode = request_context.header.minor_opcode,
-            .major_opcode = request_context.header.major_opcode,
-        };
-        return request_context.client.write_error(&err);
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.parent));
     };
 
     const window = if (request_context.client.create_window(req.request.window, req.request.x, req.request.y, req.request.width, req.request.height, &request_context.server.resource_manager)) |window| window else |err| switch (err) {
         error.ResourceNotOwnedByClient => {
             std.log.err("Received invalid window {d} in CreateWindow request which doesn't belong to the client", .{req.request.window});
             // TODO: What type of error should actually be generated?
-            const err_reply = x11_error.Error{
-                .code = .value,
-                .sequence_number = request_context.sequence_number,
-                .value = @intFromEnum(req.request.window),
-                .minor_opcode = request_context.header.minor_opcode,
-                .major_opcode = request_context.header.major_opcode,
-            };
-            return request_context.client.write_error(&err_reply);
+            return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.window));
         },
         error.ResourceAlreadyExists => {
             std.log.err("Received window {d} in CreateWindow request which already exists", .{req.request.window});
             // TODO: What type of error should actually be generated?
-            const err_reply = x11_error.Error{
-                .code = .id_choice,
-                .sequence_number = request_context.sequence_number,
-                .value = @intFromEnum(req.request.window),
-                .minor_opcode = request_context.header.minor_opcode,
-                .major_opcode = request_context.header.major_opcode,
-            };
-            return request_context.client.write_error(&err_reply);
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.window));
         },
         error.OutOfMemory => {
-            const err_reply = x11_error.Error{
-                .code = .alloc,
-                .sequence_number = request_context.sequence_number,
-                .value = 0,
-                .minor_opcode = request_context.header.minor_opcode,
-                .major_opcode = request_context.header.major_opcode,
-            };
-            return request_context.client.write_error(&err_reply);
+            return request_context.client.write_error(request_context, .alloc, 0);
         },
     };
 
@@ -126,14 +91,7 @@ fn get_geometry(request_context: RequestContext) !void {
     // TODO: Support types other than window
     const window = request_context.server.resource_manager.get_window(req.request.drawable.to_window()) orelse {
         std.log.err("Received invalid drawable {d} in GetGeometry request", .{req.request.drawable});
-        const err = x11_error.Error{
-            .code = .drawable,
-            .sequence_number = request_context.sequence_number,
-            .value = @intFromEnum(req.request.drawable),
-            .minor_opcode = request_context.header.minor_opcode,
-            .major_opcode = request_context.header.major_opcode,
-        };
-        return request_context.client.write_error(&err);
+        return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.drawable));
     };
 
     var get_geometry_reply = GetGeometryReply{
@@ -159,16 +117,7 @@ fn intern_atom(request_context: RequestContext) !void {
         atom = if (request_context.server.atom_manager.get_atom_by_name(req.request.name.items)) |atom_id| atom_id else AtomManager.Predefined.none;
     } else {
         atom = if (request_context.server.atom_manager.get_atom_by_name_create_if_not_exists(req.request.name.items)) |atom_id| atom_id else |err| switch (err) {
-            error.OutOfMemory => {
-                const err_reply = x11_error.Error{
-                    .code = .alloc,
-                    .sequence_number = request_context.sequence_number,
-                    .value = 0,
-                    .minor_opcode = request_context.header.minor_opcode,
-                    .major_opcode = request_context.header.major_opcode,
-                };
-                return request_context.client.write_error(&err_reply);
-            },
+            error.OutOfMemory => return request_context.client.write_error(request_context, .alloc, 0),
         };
     }
 
@@ -191,26 +140,12 @@ fn get_property(request_context: RequestContext) !void {
     // TODO: Error if running in security mode and the window is not owned by the client
     const window = request_context.server.resource_manager.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in GetProperty request", .{req.request.window});
-        const err = x11_error.Error{
-            .code = .window,
-            .sequence_number = request_context.sequence_number,
-            .value = @intFromEnum(req.request.window),
-            .minor_opcode = request_context.header.minor_opcode,
-            .major_opcode = request_context.header.major_opcode,
-        };
-        return request_context.client.write_error(&err);
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
 
     const property = window.get_property(req.request.property) orelse {
         std.log.err("Received invalid property atom {d} in GetProperty request", .{req.request.property});
-        const err = x11_error.Error{
-            .code = .atom,
-            .sequence_number = request_context.sequence_number,
-            .value = @intFromEnum(req.request.property),
-            .minor_opcode = request_context.header.minor_opcode,
-            .major_opcode = request_context.header.major_opcode,
-        };
-        return request_context.client.write_error(&err);
+        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.property));
     };
 
     // TODO: Handle this properly
@@ -225,14 +160,7 @@ fn get_property(request_context: RequestContext) !void {
         try request_context.client.write_reply(&get_property_reply);
     } else {
         // TODO: Proper error
-        const err = x11_error.Error{
-            .code = .implementation,
-            .sequence_number = request_context.sequence_number,
-            .value = 0,
-            .minor_opcode = request_context.header.minor_opcode,
-            .major_opcode = request_context.header.major_opcode,
-        };
-        return request_context.client.write_error(&err);
+        return request_context.client.write_error(request_context, .implementation, 0);
     }
 }
 

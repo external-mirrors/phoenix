@@ -17,14 +17,7 @@ pub fn handle_request(request_context: RequestContext) !void {
         MinorOpcode.select_input => return select_input(request_context),
         else => {
             std.log.warn("Unimplemented present request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
-            const err = x11_error.Error{
-                .code = .implementation,
-                .sequence_number = request_context.sequence_number,
-                .value = 0,
-                .minor_opcode = request_context.header.minor_opcode,
-                .major_opcode = request_context.header.major_opcode,
-            };
-            return request_context.client.write_error(&err);
+            return request_context.client.write_error(request_context, .implementation, 0);
         },
     }
 }
@@ -100,14 +93,7 @@ fn select_input(request_context: RequestContext) !void {
     std.log.info("PresentSelectInput request: {s}", .{x11.stringify_fmt(req.request)});
 
     if (!request_context.client.is_owner_of_resource(@intFromEnum(req.request.event_id))) {
-        const err = x11_error.Error{
-            .code = .access,
-            .sequence_number = request_context.sequence_number,
-            .value = 0,
-            .minor_opcode = request_context.header.minor_opcode,
-            .major_opcode = request_context.header.major_opcode,
-        };
-        return request_context.client.write_error(&err);
+        return request_context.client.write_error(request_context, .access, 0);
     }
 
     // TODO: Implement

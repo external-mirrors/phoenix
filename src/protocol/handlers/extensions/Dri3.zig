@@ -19,14 +19,7 @@ pub fn handle_request(request_context: RequestContext) !void {
         MinorOpcode.pixmap_from_buffers => return pixmap_from_buffers(request_context),
         else => {
             std.log.warn("Unimplemented dri3 request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
-            const err = x11_error.Error{
-                .code = .implementation,
-                .sequence_number = request_context.sequence_number,
-                .value = 0,
-                .minor_opcode = request_context.header.minor_opcode,
-                .major_opcode = request_context.header.major_opcode,
-            };
-            return request_context.client.write_error(&err);
+            return request_context.client.write_error(request_context, .implementation, 0);
         },
     }
 }
@@ -123,14 +116,7 @@ fn pixmap_from_buffer(request_context: RequestContext) !void {
 
     const read_fds = request_context.client.get_read_fds();
     if (read_fds.len < 1) {
-        const err = x11_error.Error{
-            .code = .length,
-            .sequence_number = request_context.sequence_number,
-            .value = 0,
-            .minor_opcode = request_context.header.minor_opcode,
-            .major_opcode = request_context.header.major_opcode,
-        };
-        return request_context.client.write_error(&err);
+        return request_context.client.write_error(request_context, .length, 0);
     }
 
     const dmabuf_fd = read_fds[0];
@@ -167,14 +153,7 @@ fn fence_from_fd(request_context: RequestContext) !void {
 
     const read_fds = request_context.client.get_read_fds();
     if (read_fds.len < 1) {
-        const err = x11_error.Error{
-            .code = .length,
-            .sequence_number = request_context.sequence_number,
-            .value = 0,
-            .minor_opcode = request_context.header.minor_opcode,
-            .major_opcode = request_context.header.major_opcode,
-        };
-        return request_context.client.write_error(&err);
+        return request_context.client.write_error(request_context, .length, 0);
     }
 
     const fence_fd = read_fds[0];
@@ -210,28 +189,14 @@ fn get_supported_modifiers(request_context: RequestContext) !void {
     std.log.info("Dri3GetSupportedModifiers request: {s}", .{x11.stringify_fmt(req)});
 
     const window = request_context.server.resource_manager.get_window(req.request.window) orelse {
-        const err = x11_error.Error{
-            .code = .window,
-            .sequence_number = request_context.sequence_number,
-            .value = @intFromEnum(req.request.window),
-            .minor_opcode = request_context.header.minor_opcode,
-            .major_opcode = request_context.header.major_opcode,
-        };
-        return request_context.client.write_error(&err);
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
 
     // TODO: Handle screen as well
     var modifiers_buf: [64]u64 = undefined;
     const modifiers = request_context.server.backend.get_supported_modifiers(window, req.request.depth, req.request.bpp, &modifiers_buf) catch |err| switch (err) {
         error.InvalidDepth, error.FailedToQueryDmaBufModifiers => {
-            const err_reply = x11_error.Error{
-                .code = .match,
-                .sequence_number = request_context.sequence_number,
-                .value = 0,
-                .minor_opcode = request_context.header.minor_opcode,
-                .major_opcode = request_context.header.major_opcode,
-            };
-            return request_context.client.write_error(&err_reply);
+            return request_context.client.write_error(request_context, .match, 0);
         },
     };
 
@@ -254,28 +219,14 @@ fn pixmap_from_buffers(request_context: RequestContext) !void {
 
     const read_fds = request_context.client.get_read_fds();
     if (read_fds.len < req.request.num_buffers) {
-        const err = x11_error.Error{
-            .code = .length,
-            .sequence_number = request_context.sequence_number,
-            .value = 0,
-            .minor_opcode = request_context.header.minor_opcode,
-            .major_opcode = request_context.header.major_opcode,
-        };
-        return request_context.client.write_error(&err);
+        return request_context.client.write_error(request_context, .length, 0);
     }
 
     const dmabuf_fds = read_fds[0..@min(4, req.request.num_buffers)];
     defer request_context.client.discard_and_close_read_fds(req.request.num_buffers);
 
     if (req.request.num_buffers > 4) {
-        const err = x11_error.Error{
-            .code = .length,
-            .sequence_number = request_context.sequence_number,
-            .value = 0,
-            .minor_opcode = request_context.header.minor_opcode,
-            .major_opcode = request_context.header.major_opcode,
-        };
-        return request_context.client.write_error(&err);
+        return request_context.client.write_error(request_context, .length, 0);
     }
 
     // TODO: Use size?

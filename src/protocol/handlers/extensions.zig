@@ -15,14 +15,7 @@ pub fn handle_request(request_context: RequestContext) !void {
         opcode.Major.present => return Present.handle_request(request_context),
         else => {
             std.log.warn("Unimplemented extension request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
-            const err = x11_error.Error{
-                .code = .implementation,
-                .sequence_number = request_context.sequence_number,
-                .value = 0,
-                .minor_opcode = request_context.header.minor_opcode,
-                .major_opcode = request_context.header.major_opcode,
-            };
-            return request_context.client.write_error(&err);
+            return request_context.client.write_error(request_context, .implementation, 0);
         },
     }
 }

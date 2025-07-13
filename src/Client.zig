@@ -10,6 +10,7 @@ const x11_error = @import("protocol/error.zig");
 const event = @import("protocol/event.zig");
 const x11 = @import("protocol/x11.zig");
 const netutils = @import("netutils.zig");
+const RequestContext = @import("RequestContext.zig");
 
 const Self = @This();
 
@@ -169,9 +170,16 @@ pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const messa
     try self.write_buffer_fds.write(fds);
 }
 
-pub fn write_error(self: *Self, err: *const x11_error.Error) !void {
-    std.log.info("Replying with error: {s}", .{x11.stringify_fmt(err)});
-    return self.write_buffer.write(std.mem.asBytes(err));
+pub fn write_error(self: *Self, request_context: RequestContext, error_type: x11_error.ErrorType, value: x11.Card32) !void {
+    const err_reply = x11_error.Error{
+        .code = error_type,
+        .sequence_number = request_context.sequence_number,
+        .value = value,
+        .minor_opcode = request_context.header.minor_opcode,
+        .major_opcode = request_context.header.major_opcode,
+    };
+    std.log.info("Replying with error: {s}", .{x11.stringify_fmt(err_reply)});
+    return self.write_buffer.write(std.mem.asBytes(&err_reply));
 }
 
 pub fn write_event(self: *Self, ev: *const event.Event) !void {

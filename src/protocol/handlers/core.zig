@@ -8,6 +8,7 @@ const event = @import("../event.zig");
 const x11_error = @import("../error.zig");
 const resource = @import("../../resource.zig");
 const AtomManager = @import("../../AtomManager.zig");
+const Window = @import("../../Window.zig");
 
 pub fn handle_request(request_context: RequestContext) !void {
     std.log.info("Handling core request: {d}", .{request_context.header.major_opcode});
@@ -39,7 +40,17 @@ fn create_window(request_context: RequestContext) !void {
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.parent));
     };
 
-    const window = if (request_context.client.create_window(req.request.window, req.request.x, req.request.y, req.request.width, req.request.height, &request_context.server.resource_manager)) |window| window else |err| switch (err) {
+    const window = if (Window.create(
+        parent_window,
+        req.request.window,
+        req.request.x,
+        req.request.y,
+        req.request.width,
+        req.request.height,
+        request_context.client,
+        &request_context.server.resource_manager,
+        request_context.allocator,
+    )) |window| window else |err| switch (err) {
         error.ResourceNotOwnedByClient => {
             std.log.err("Received invalid window {d} in CreateWindow request which doesn't belong to the client", .{req.request.window});
             // TODO: What type of error should actually be generated?
@@ -55,7 +66,6 @@ fn create_window(request_context: RequestContext) !void {
         },
     };
 
-    _ = parent_window;
     _ = window;
 
     const override_redirect = if (req.request.get_value(x11.Card8, "override_redirect") orelse 0 == 0) false else true;
@@ -117,7 +127,8 @@ fn intern_atom(request_context: RequestContext) !void {
         atom = if (request_context.server.atom_manager.get_atom_by_name(req.request.name.items)) |atom_id| atom_id else AtomManager.Predefined.none;
     } else {
         atom = if (request_context.server.atom_manager.get_atom_by_name_create_if_not_exists(req.request.name.items)) |atom_id| atom_id else |err| switch (err) {
-            error.OutOfMemory => return request_context.client.write_error(request_context, .alloc, 0),
+            error.OutOfMemory, error.TooManyAtoms => return request_context.client.write_error(request_context, .alloc, 0),
+            error.NameTooLong => return request_context.client.write_error(request_context, .value, 0),
         };
     }
 

@@ -28,6 +28,8 @@ resource_id_base: u32,
 sequence_number: u16,
 resources: resource.ResourceHashMap,
 
+deleting_self: bool,
+
 pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, allocator: std.mem.Allocator) Self {
     return .{
         .allocator = allocator,
@@ -43,10 +45,14 @@ pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, alloca
         .resource_id_base = resource_id_base,
         .sequence_number = 1,
         .resources = .init(allocator),
+
+        .deleting_self = false,
     };
 }
 
 pub fn deinit(self: *Self, resource_manager: *ResourceManager) void {
+    self.deleting_self = true;
+
     self.connection.stream.close();
 
     self.read_buffer.deinit();
@@ -67,7 +73,7 @@ pub fn deinit(self: *Self, resource_manager: *ResourceManager) void {
 
     var resources_it = self.resources.valueIterator();
     while (resources_it.next()) |res| {
-        res.*.deinit(resource_manager, self.allocator);
+        res.*.deinit(resource_manager);
     }
     self.resources.deinit();
 }
@@ -199,29 +205,22 @@ pub fn next_sequence_number(self: *Self) u16 {
     return sequence;
 }
 
-/// Returns a reference to the created window. The ownership is with this client
-pub fn create_window(self: *Self, window_id: x11.Window, x: i32, y: i32, width: i32, height: i32, resource_manager: *ResourceManager) !*Window {
-    if (@intFromEnum(window_id) & ResourceIdBaseManager.resource_id_base_mask != self.resource_id_base)
+pub fn add_window(self: *Self, window: *Window) !void {
+    if (!self.is_owner_of_resource(@intFromEnum(window.window_id)))
         return error.ResourceNotOwnedByClient;
 
-    const new_window = try self.allocator.create(Window);
-    new_window.* = Window.init(window_id, x, y, width, height, self.allocator);
-    errdefer self.allocator.destroy(new_window);
-
-    const result = try self.resources.getOrPut(@intFromEnum(window_id));
+    const result = try self.resources.getOrPut(@intFromEnum(window.window_id));
     if (result.found_existing)
         return error.ResourceAlreadyExists;
 
-    result.value_ptr.* = .{ .window = new_window };
-    errdefer _ = self.resources.remove(@intFromEnum(window_id));
-    try resource_manager.add_window(new_window);
-    return new_window;
+    result.value_ptr.* = .{ .window = window };
 }
 
-pub fn destroy_window(self: *Self, window: *Window) void {
-    self.resources.remove(window.window_id);
-    window.deinit();
-    self.allocator.destroy(window);
+pub fn remove_window(self: *Self, window: *Window) void {
+    if (self.deleting_self)
+        return;
+
+    _ = self.resources.remove(@intFromEnum(window.window_id));
 }
 
 //pub fn select_input(self: *Self, event_id: u32, window: *Window, )

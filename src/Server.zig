@@ -70,7 +70,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
 
     const root_window_id: x11.Window = @enumFromInt(0x3b2 | root_client.resource_id_base);
     // TODO:
-    var root_window = try root_client.create_window(root_window_id, 0, 0, 3840, 2160, &resource_manager);
+    var root_window = try Window.create(null, root_window_id, 0, 0, 3840, 2160, root_client, &resource_manager, allocator);
     try root_window.set_property_string8(AtomManager.Predefined.resource_manager, "*background:\t#222222");
 
     return .{

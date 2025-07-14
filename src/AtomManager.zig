@@ -3,6 +3,9 @@ const x11 = @import("protocol/x11.zig");
 
 const Self = @This();
 
+const name_max_length: usize = 256;
+const max_num_atoms: usize = 262144;
+
 pub const Predefined = struct {
     pub const none: x11.Atom = @enumFromInt(0);
     pub const primary: x11.Atom = @enumFromInt(1);
@@ -119,6 +122,12 @@ pub fn get_atom_by_name(self: *Self, name: []const u8) ?x11.Atom {
 pub fn get_atom_by_name_create_if_not_exists(self: *Self, name: []const u8) !x11.Atom {
     if (self.get_atom_by_name(name)) |atom|
         return atom;
+
+    if(name.len > name_max_length)
+        return error.NameTooLong;
+
+    if(self.atoms.items.len + 1 > max_num_atoms)
+        return error.TooManyAtoms;
 
     const atom_name = try self.allocator.dupe(u8, name);
     errdefer self.allocator.free(atom_name);

@@ -36,12 +36,12 @@ fn query_version(request_context: RequestContext) !void {
         server_minor_version = req.request.minor_version;
     }
 
-    var query_version_reply = Dri3QueryExtensionReply{
+    var rep = Dri3QueryExtensionReply{
         .sequence_number = request_context.sequence_number,
         .major_version = server_major_version,
         .minor_version = server_minor_version,
     };
-    try request_context.client.write_reply(&query_version_reply);
+    try request_context.client.write_reply(&rep);
 }
 
 fn validate_drm_auth(card_fd: std.posix.fd_t, render_fd: std.posix.fd_t) bool {
@@ -202,14 +202,14 @@ fn get_supported_modifiers(request_context: RequestContext) !void {
 
     std.log.info("modifiers: {any}", .{modifiers});
 
-    var get_supported_modifiers_reply = Dri3GetSupportedModifiersReply{
+    var rep = Dri3GetSupportedModifiersReply{
         .sequence_number = request_context.sequence_number,
         .num_window_modifiers = @intCast(modifiers.len),
         .num_screen_modifiers = @intCast(modifiers.len),
         .window_modifiers = .{ .items = modifiers_buf[0..modifiers.len] },
         .screen_modifiers = .{ .items = modifiers_buf[0..modifiers.len] },
     };
-    try request_context.client.write_reply(&get_supported_modifiers_reply);
+    try request_context.client.write_reply(&rep);
 }
 
 fn pixmap_from_buffers(request_context: RequestContext) !void {

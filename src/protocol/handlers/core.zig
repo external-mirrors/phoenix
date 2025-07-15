@@ -104,7 +104,7 @@ fn get_geometry(request_context: RequestContext) !void {
         return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.drawable));
     };
 
-    var get_geometry_reply = GetGeometryReply{
+    var rep = GetGeometryReply{
         .depth = 32, // TODO: Use real value
         .sequence_number = request_context.sequence_number,
         .root = request_context.server.root_window.window_id,
@@ -114,7 +114,7 @@ fn get_geometry(request_context: RequestContext) !void {
         .height = @intCast(window.height),
         .border_width = 1, // TODO: Use real value
     };
-    try request_context.client.write_reply(&get_geometry_reply);
+    try request_context.client.write_reply(&rep);
 }
 
 fn intern_atom(request_context: RequestContext) !void {
@@ -132,11 +132,11 @@ fn intern_atom(request_context: RequestContext) !void {
         };
     }
 
-    var intern_atom_reply = InternAtomReply{
+    var rep = InternAtomReply{
         .sequence_number = request_context.sequence_number,
         .atom = atom,
     };
-    try request_context.client.write_reply(&intern_atom_reply);
+    try request_context.client.write_reply(&rep);
 }
 
 fn change_property(_: RequestContext) !void {
@@ -162,13 +162,13 @@ fn get_property(request_context: RequestContext) !void {
     // TODO: Handle this properly
     if (std.meta.activeTag(property.*) == .string8 and req.request.type == AtomManager.Predefined.string) {
         // TODO: Properly set bytes_after and all that crap
-        var get_property_reply = GetPropertyCard8Reply{
+        var rep = GetPropertyCard8Reply{
             .sequence_number = request_context.sequence_number,
             .type = req.request.type,
             .bytes_after = 0,
             .data = .{ .items = property.string8.items },
         };
-        try request_context.client.write_reply(&get_property_reply);
+        try request_context.client.write_reply(&rep);
     } else {
         // TODO: Proper error
         return request_context.client.write_error(request_context, .implementation, 0);
@@ -197,7 +197,7 @@ fn query_extension(request_context: RequestContext) !void {
     defer req.deinit();
     std.log.info("QueryExtension request: {s}", .{x11.stringify_fmt(req.request)});
 
-    var query_extension_reply = QueryExtensionReply{
+    var rep = QueryExtensionReply{
         .sequence_number = request_context.sequence_number,
         .present = false,
         .major_opcode = 0,
@@ -206,17 +206,17 @@ fn query_extension(request_context: RequestContext) !void {
     };
 
     if (std.mem.eql(u8, req.request.name.items, "DRI3")) {
-        query_extension_reply.present = true;
-        query_extension_reply.major_opcode = opcode.Major.dri3;
+        rep.present = true;
+        rep.major_opcode = opcode.Major.dri3;
     } else if (std.mem.eql(u8, req.request.name.items, "XFIXES")) {
-        query_extension_reply.present = true;
-        query_extension_reply.major_opcode = opcode.Major.xfixes;
+        rep.present = true;
+        rep.major_opcode = opcode.Major.xfixes;
     } else if (std.mem.eql(u8, req.request.name.items, "Present")) {
-        query_extension_reply.present = true;
-        query_extension_reply.major_opcode = opcode.Major.present;
+        rep.present = true;
+        rep.major_opcode = opcode.Major.present;
     }
 
-    try request_context.client.write_reply(&query_extension_reply);
+    try request_context.client.write_reply(&rep);
 }
 
 const ValueMask = packed struct(x11.Card32) {

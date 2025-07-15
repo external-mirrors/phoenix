@@ -13,12 +13,13 @@ const root_visual: x11.VisualId = @enumFromInt(0x21);
 
 /// Returns true if there was enough data from the client to handle the request
 pub fn handle_client_connect(client: *Client, root_window: *Window, allocator: std.mem.Allocator) !bool {
-    const client_data = client.read_buffer_slice(@sizeOf(request.ConnectionSetupRequest)) orelse return false;
+    const client_data = client.read_buffer_slice(@sizeOf(ConnectionSetupRequest)) orelse return false;
     // TODO: byteswap
-    const connection_request_header: *const request.ConnectionSetupRequestHeader = @alignCast(@ptrCast(client_data.ptr));
+    const connection_request_header: *const ConnectionSetupRequestHeader = @alignCast(@ptrCast(client_data.ptr));
     if (client.read_buffer_data_size() < connection_request_header.total_size())
         return false;
-    var req = try client.read_request(request.ConnectionSetupRequest, allocator);
+
+    var req = try client.read_request(ConnectionSetupRequest, allocator);
     defer req.deinit();
 
     std.log.info("auth_protocol_name_length: {s}", .{req.request.auth_protocol_name.items});
@@ -74,7 +75,7 @@ pub fn handle_client_connect(client: *Client, root_window: *Window, allocator: s
         .allowed_depths = .{ .items = &depths },
     }};
 
-    var accept_reply = ConnectionSetupAcceptReply{
+    var rep = ConnectionSetupAcceptReply{
         .release_number = 10000000,
         .resource_id_base = client.resource_id_base,
         .resource_id_mask = ResourceIdBaseManager.resource_id_mask,
@@ -92,10 +93,53 @@ pub fn handle_client_connect(client: *Client, root_window: *Window, allocator: s
     };
 
     // TODO: Make sure writer doesn't write too much data, or disconnect the client if it does
-    try client.write_reply(&accept_reply);
+    try client.write_reply(&rep);
     try client.write_buffer_to_client();
     return true;
 }
+
+const ConnectionSetupRequestByteOrder = enum(x11.Card8) {
+    big = 'B',
+    little = 'l',
+};
+
+const ConnectionSetupRequestHeader = extern struct {
+    byte_order: x11.Card8,
+    pad1: x11.Card8,
+    protocol_major_version: x11.Card16,
+    protocol_minor_version: x11.Card16,
+    auth_protocol_name_length: x11.Card16,
+    auth_protocol_data_length: x11.Card16,
+    pad2: x11.Card16,
+
+    pub fn total_size(self: *const ConnectionSetupRequestHeader) usize {
+        return @sizeOf(ConnectionSetupRequestHeader) +
+            self.auth_protocol_name_length + x11.padding(self.auth_protocol_name_length, 4) +
+            self.auth_protocol_data_length + x11.padding(self.auth_protocol_data_length, 4);
+    }
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 12);
+    }
+};
+
+const ConnectionSetupRequest = struct {
+    byte_order: ConnectionSetupRequestByteOrder,
+    pad1: x11.Card8,
+    protocol_major_version: x11.Card16,
+    protocol_minor_version: x11.Card16,
+    auth_protocol_name_length: x11.Card16,
+    auth_protocol_data_length: x11.Card16,
+    pad2: x11.Card16,
+    auth_protocol_name: x11.String8("auth_protocol_name_length"),
+    auth_protocol_data: x11.String8("auth_protocol_data_length"),
+
+    // TODO:
+    // pub fn deinit(self: *ConnectionSetupRequest, allocator: std.mem.Allocator) void {
+    //     allocator.free(self.auth_protocol_name.items);
+    //     allocator.free(self.auth_protocol_data.items);
+    // }
+};
 
 const ConnectionReplyStatus = enum(x11.Card8) {
     failed = 0,

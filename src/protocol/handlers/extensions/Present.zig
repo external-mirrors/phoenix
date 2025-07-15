@@ -34,12 +34,12 @@ fn query_version(request_context: RequestContext) !void {
         server_minor_version = req.request.minor_version;
     }
 
-    var query_version_reply = PresentQueryVersionReply{
+    var rep = PresentQueryVersionReply{
         .sequence_number = request_context.sequence_number,
         .major_version = server_major_version,
         .minor_version = server_minor_version,
     };
-    try request_context.client.write_reply(&query_version_reply);
+    try request_context.client.write_reply(&rep);
 }
 
 fn present_pixmap(request_context: RequestContext) !void {

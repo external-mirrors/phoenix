@@ -88,49 +88,6 @@ fn read_request_with_size_calculation(comptime T: type, reader: anytype, request
     return request;
 }
 
-pub const ConnectionSetupRequestByteOrder = enum(x11.Card8) {
-    big = 'B',
-    little = 'l',
-};
-
-pub const ConnectionSetupRequestHeader = extern struct {
-    byte_order: x11.Card8,
-    pad1: x11.Card8,
-    protocol_major_version: x11.Card16,
-    protocol_minor_version: x11.Card16,
-    auth_protocol_name_length: x11.Card16,
-    auth_protocol_data_length: x11.Card16,
-    pad2: x11.Card16,
-
-    pub fn total_size(self: *const ConnectionSetupRequestHeader) usize {
-        return @sizeOf(ConnectionSetupRequestHeader) +
-            self.auth_protocol_name_length + x11.padding(self.auth_protocol_name_length, 4) +
-            self.auth_protocol_data_length + x11.padding(self.auth_protocol_data_length, 4);
-    }
-
-    comptime {
-        std.debug.assert(@sizeOf(@This()) == 12);
-    }
-};
-
-pub const ConnectionSetupRequest = struct {
-    byte_order: ConnectionSetupRequestByteOrder,
-    pad1: x11.Card8,
-    protocol_major_version: x11.Card16,
-    protocol_minor_version: x11.Card16,
-    auth_protocol_name_length: x11.Card16,
-    auth_protocol_data_length: x11.Card16,
-    pad2: x11.Card16,
-    auth_protocol_name: x11.String8("auth_protocol_name_length"),
-    auth_protocol_data: x11.String8("auth_protocol_data_length"),
-
-    // TODO:
-    // pub fn deinit(self: *ConnectionSetupRequest, allocator: std.mem.Allocator) void {
-    //     allocator.free(self.auth_protocol_name.items);
-    //     allocator.free(self.auth_protocol_data.items);
-    // }
-};
-
 pub const RequestHeader = extern struct {
     major_opcode: x11.Card8,
     minor_opcode: x11.Card8,

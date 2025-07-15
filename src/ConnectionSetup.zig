@@ -13,10 +13,9 @@ const root_visual: x11.VisualId = @enumFromInt(0x21);
 
 /// Returns true if there was enough data from the client to handle the request
 pub fn handle_client_connect(client: *Client, root_window: *Window, allocator: std.mem.Allocator) !bool {
-    const client_data = client.read_buffer_slice(@sizeOf(ConnectionSetupRequest)) orelse return false;
     // TODO: byteswap
-    const connection_request_header: *const ConnectionSetupRequestHeader = @alignCast(@ptrCast(client_data.ptr));
-    if (client.read_buffer_data_size() < connection_request_header.total_size())
+    const connection_setup_request_header = client.peek_read_buffer(ConnectionSetupRequestHeader) orelse return false;
+    if (client.read_buffer_data_size() < connection_setup_request_header.total_size())
         return false;
 
     var req = try client.read_request(ConnectionSetupRequest, allocator);

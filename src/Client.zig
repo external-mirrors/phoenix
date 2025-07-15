@@ -88,8 +88,13 @@ pub fn read_buffer_data_size(self: *Self) usize {
 }
 
 /// Returns null if the size requested is larger than the read buffer
-pub fn read_buffer_slice(self: *Self, size: usize) ?[]const u8 {
-    return if (size <= self.read_buffer.readableLength()) self.read_buffer.readableSliceOfLen(size) else null;
+pub fn peek_read_buffer(self: *Self, comptime T: type) ?T {
+    if (@sizeOf(T) > self.read_buffer.readableLength())
+        return null;
+
+    var data: T = undefined;
+    @memcpy(std.mem.bytesAsSlice(u8, std.mem.asBytes(&data)), self.read_buffer.readableSliceOfLen(@sizeOf(T)));
+    return data;
 }
 
 pub fn read_client_data_to_buffer(self: *Self) !void {

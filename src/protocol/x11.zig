@@ -33,9 +33,13 @@ pub fn ListOf(comptime T: type, comptime options: ListOfOptions) type {
     };
 }
 
+pub const String8Options = struct {
+    length_field: []const u8,
+};
+
 /// Automatically adds the padding (4) after the string
-pub fn String8(length_field: []const u8) type {
-    return ListOf(Card8, .{ .length_field = length_field, .padding = 4 });
+pub fn String8(comptime options: String8Options) type {
+    return ListOf(Card8, .{ .length_field = options.length_field, .padding = 4 });
 }
 
 pub const KeyCode = enum(Card8) {

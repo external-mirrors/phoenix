@@ -131,8 +131,8 @@ const ConnectionSetupRequest = struct {
     auth_protocol_name_length: x11.Card16,
     auth_protocol_data_length: x11.Card16,
     pad2: x11.Card16,
-    auth_protocol_name: x11.String8("auth_protocol_name_length"),
-    auth_protocol_data: x11.String8("auth_protocol_data_length"),
+    auth_protocol_name: x11.String8(.{ .length_field = "auth_protocol_name_length" }),
+    auth_protocol_data: x11.String8(.{ .length_field = "auth_protocol_data_length" }),
 
     // TODO:
     // pub fn deinit(self: *ConnectionSetupRequest, allocator: std.mem.Allocator) void {
@@ -243,7 +243,7 @@ pub const ConnectionSetupAcceptReply = struct {
     min_keycode: x11.KeyCode,
     max_keycode: x11.KeyCode,
     pad2: x11.Card32 = 0,
-    vendor: x11.String8("length_of_vendor"),
+    vendor: x11.String8(.{ .length_field = "length_of_vendor" }),
     pixmap_formats: x11.ListOf(PixmapFormat, .{ .length_field = "num_pixmap_formats" }),
     screens: x11.ListOf(Screen, .{ .length_field = "num_screens" }),
 };

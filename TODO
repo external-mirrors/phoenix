@@ -8,3 +8,4 @@ Move protocol definition and request/reply handling to a separate repository as 
 Implement xc-misc extension, might be needed in practice for gtk/qt applications that spam new resources every frame.
 Use composition by default, but if any application gets the overlay window with GetCompositeOverlayWindow then turn it off until the composite overlay window is released.
 Maybe break x11 protocol standard and use the top 3 bits in resource id?
+Handle error.InvalidEnumTag in request.read_request using std.meta.intToEnum. It should return an x11 .value error.

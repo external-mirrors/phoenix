@@ -325,7 +325,7 @@ const QueryExtensionRequest = struct {
     length: x11.Card16,
     length_of_name: x11.Card16,
     pad2: x11.Card16,
-    name: x11.String8("length_of_name"),
+    name: x11.String8(.{ .length_field = "length_of_name" }),
 };
 
 const QueryExtensionReply = struct {
@@ -396,7 +396,7 @@ const InternAtomRequest = struct {
     length: x11.Card16,
     length_of_name: x11.Card16,
     pad1: x11.Card16,
-    name: x11.String8("length_of_name"),
+    name: x11.String8(.{ .length_field = "length_of_name" }),
 };
 
 const InternAtomReply = struct {

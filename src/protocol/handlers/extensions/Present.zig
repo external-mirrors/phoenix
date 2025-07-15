@@ -51,7 +51,7 @@ fn present_pixmap(request_context: RequestContext) !void {
 
     var idle_notify_event = PresentIdleNotifyEvent{
         .sequence_number = request_context.sequence_number,
-        .event_id = @enumFromInt(0x00100001),
+        .event_id = @enumFromInt(0x00400001),
         .window = req.request.window,
         .serial = req.request.serial,
         .pixmap = req.request.pixmap,
@@ -64,7 +64,7 @@ fn present_pixmap(request_context: RequestContext) !void {
         .sequence_number = request_context.sequence_number,
         .kind = .pixmap,
         .mode = .suboptimal_copy,
-        .event_id = @enumFromInt(0x00100001),
+        .event_id = @enumFromInt(0x00400001),
         .window = req.request.window,
         .serial = req.request.serial,
         .ust = 0,
@@ -77,7 +77,7 @@ fn present_pixmap(request_context: RequestContext) !void {
             .sequence_number = request_context.sequence_number,
             .kind = .pixmap,
             .mode = .suboptimal_copy,
-            .event_id = @enumFromInt(0x00100001),
+            .event_id = @enumFromInt(0x00400001),
             .window = notify.window,
             .serial = notify.serial,
             .ust = 0,

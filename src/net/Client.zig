@@ -79,8 +79,8 @@ pub fn deinit(self: *Self) void {
 }
 
 // Unused right now, but this will be used similarly to how xace works
-pub fn is_owner_of_resource(self: *Self, resource_id: u32) bool {
-    return (resource_id & xph.ResourceIdBaseManager.resource_id_base_mask) == self.resource_id_base;
+pub fn is_owner_of_resource(self: *Self, resource_id: x11.ResourceId) bool {
+    return (resource_id.to_int() & xph.ResourceIdBaseManager.resource_id_base_mask) == self.resource_id_base;
 }
 
 pub fn read_buffer_data_size(self: *Self) usize {
@@ -215,15 +215,16 @@ pub fn next_sequence_number(self: *Self) u16 {
 }
 
 pub fn add_window(self: *Self, window: *xph.Window) !void {
-    if (!self.is_owner_of_resource(@intFromEnum(window.id)))
+    const window_id = window.id.to_id();
+    if (!self.is_owner_of_resource(window_id))
         return error.ResourceNotOwnedByClient;
 
-    const result = try self.resources.getOrPut(@intFromEnum(window.id));
+    const result = try self.resources.getOrPut(window_id);
     if (result.found_existing)
         return error.ResourceAlreadyExists;
 
     result.value_ptr.* = .{ .window = window };
-    errdefer _ = self.resources.remove(@intFromEnum(window.id));
+    errdefer _ = self.resources.remove(window_id);
 }
 
 pub fn add_event_context(self: *Self, event_context: xph.EventContext) !void {
@@ -238,18 +239,16 @@ pub fn add_event_context(self: *Self, event_context: xph.EventContext) !void {
     errdefer _ = self.resources.remove(event_context.id);
 }
 
-pub fn remove_resource(self: *Self, id: u32) void {
+pub fn remove_resource(self: *Self, id: x11.ResourceId) void {
     if (self.deleting_self)
         return;
 
     _ = self.resources.remove(id);
 }
 
-pub fn get_resource(self: *Self, id: u32) ?xph.Resource {
+pub fn get_resource(self: *Self, id: x11.ResourceId) ?xph.Resource {
     return self.resources.get(id);
 }
-
-//pub fn select_input(self: *Self, event_id: u32, window: *Window, )
 
 // TODO: Use this
 //const max_read_buffer_size: usize = 1 * 1024 * 1024; // 1mb. If the server doesn't dont manage to read the data fast enough then the client is forcefully disconnected

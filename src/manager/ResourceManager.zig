@@ -18,7 +18,7 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn add_window(self: *Self, window: *xph.Window) !void {
-    const result = try self.resources.getOrPut(@intFromEnum(window.id));
+    const result = try self.resources.getOrPut(window.id.to_id());
     std.debug.assert(!result.found_existing);
     result.value_ptr.* = .{ .window = window };
 }
@@ -30,18 +30,18 @@ pub fn add_event_context(self: *Self, event_context: xph.EventContext) !void {
 }
 
 pub fn get_window(self: *Self, window_id: x11.Window) ?*xph.Window {
-    if (self.resources.get(@intFromEnum(window_id))) |res| {
+    if (self.resources.get(window_id.to_id())) |res| {
         return if (std.meta.activeTag(res) == .window) res.window else null;
     } else {
         return null;
     }
 }
 
-pub fn get_resource(self: *Self, id: u32) ?xph.Resource {
+pub fn get_resource(self: *Self, id: x11.ResourceId) ?xph.Resource {
     return self.resources.get(id);
 }
 
-pub fn remove_resource(self: *Self, id: u32) void {
+pub fn remove_resource(self: *Self, id: x11.ResourceId) void {
     _ = self.resources.remove(id);
 }
 

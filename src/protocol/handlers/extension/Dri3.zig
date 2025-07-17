@@ -5,17 +5,22 @@ const c = xph.c;
 
 pub fn handle_request(request_context: xph.RequestContext) !void {
     std.log.warn("Handling dri3 request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
-    switch (request_context.header.minor_opcode) {
-        MinorOpcode.query_version => return query_version(request_context),
-        MinorOpcode.open => return open(request_context),
-        MinorOpcode.pixmap_from_buffer => return pixmap_from_buffer(request_context),
-        MinorOpcode.fence_from_fd => return fence_from_fd(request_context),
-        MinorOpcode.get_supported_modifiers => return get_supported_modifiers(request_context),
-        MinorOpcode.pixmap_from_buffers => return pixmap_from_buffers(request_context),
-        else => {
+
+    // TODO: Remove
+    const minor_opcode = std.meta.intToEnum(MinorOpcode, request_context.header.minor_opcode) catch |err| switch (err) {
+        error.InvalidEnumTag => {
             std.log.warn("Unimplemented dri3 request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
             return request_context.client.write_error(request_context, .implementation, 0);
         },
+    };
+
+    switch (minor_opcode) {
+        .query_version => return query_version(request_context),
+        .open => return open(request_context),
+        .pixmap_from_buffer => return pixmap_from_buffer(request_context),
+        .fence_from_fd => return fence_from_fd(request_context),
+        .get_supported_modifiers => return get_supported_modifiers(request_context),
+        .pixmap_from_buffers => return pixmap_from_buffers(request_context),
     }
 }
 
@@ -260,13 +265,13 @@ fn pixmap_from_buffers(request_context: xph.RequestContext) !void {
     try request_context.server.display.import_dmabuf(&import_dmabuf);
 }
 
-const MinorOpcode = struct {
-    pub const query_version: x11.Card8 = 0;
-    pub const open: x11.Card8 = 1;
-    pub const pixmap_from_buffer: x11.Card8 = 2;
-    pub const fence_from_fd: x11.Card8 = 4;
-    pub const get_supported_modifiers: x11.Card8 = 6;
-    pub const pixmap_from_buffers: x11.Card8 = 7;
+const MinorOpcode = enum(x11.Card8) {
+    query_version = 0,
+    open = 1,
+    pixmap_from_buffer = 2,
+    fence_from_fd = 4,
+    get_supported_modifiers = 6,
+    pixmap_from_buffers = 7,
 };
 
 const Dri3QueryExtensionRequest = struct {

@@ -6,14 +6,19 @@ const x11 = xph.x11;
 
 pub fn handle_request(request_context: xph.RequestContext) !void {
     std.log.warn("Handling present request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
-    switch (request_context.header.minor_opcode) {
-        MinorOpcode.query_version => return query_version(request_context),
-        MinorOpcode.present_pixmap => return present_pixmap(request_context),
-        MinorOpcode.select_input => return select_input(request_context),
-        else => {
+
+    // TODO: Remove
+    const minor_opcode = std.meta.intToEnum(MinorOpcode, request_context.header.minor_opcode) catch |err| switch (err) {
+        error.InvalidEnumTag => {
             std.log.warn("Unimplemented present request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
             return request_context.client.write_error(request_context, .implementation, 0);
         },
+    };
+
+    switch (minor_opcode) {
+        .query_version => return query_version(request_context),
+        .present_pixmap => return present_pixmap(request_context),
+        .select_input => return select_input(request_context),
     }
 }
 
@@ -96,21 +101,22 @@ fn select_input(request_context: xph.RequestContext) !void {
     defer req.deinit();
     std.log.info("PresentSelectInput request: {s}", .{x11.stringify_fmt(req.request)});
 
-    if (request_context.client.get_resource(@intFromEnum(req.request.event_id))) |resource| {
+    const event_id = req.request.event_id.to_id();
+    if (request_context.client.get_resource(event_id)) |resource| {
         if (std.meta.activeTag(resource) != .event_context)
-            return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.event_id));
+            return request_context.client.write_error(request_context, .value, event_id.to_int());
 
         if (req.request.window != resource.event_context.window.id)
             return request_context.client.write_error(request_context, .match, 0);
 
         if (req.request.event_mask.is_empty()) {
-            request_context.client.remove_resource(@intFromEnum(req.request.event_id));
-            request_context.server.resource_manager.remove_resource(@intFromEnum(req.request.event_id));
-            resource.event_context.window.remove_extension_event_listener(request_context.client, xph.opcode.Major.present);
+            request_context.client.remove_resource(event_id);
+            request_context.server.resource_manager.remove_resource(event_id);
+            resource.event_context.window.remove_extension_event_listener(request_context.client, .present);
             return;
         }
 
-        resource.event_context.window.modify_extension_event_listener(request_context.client, xph.opcode.Major.present, @bitCast(req.request.event_mask));
+        resource.event_context.window.modify_extension_event_listener(request_context.client, .present, @bitCast(req.request.event_mask));
         return;
     } else {
         const window = request_context.server.resource_manager.get_window(req.request.window) orelse {
@@ -121,7 +127,7 @@ fn select_input(request_context: xph.RequestContext) !void {
         if (req.request.event_mask.is_empty())
             return;
 
-        const event_context = xph.EventContext{ .id = @intFromEnum(req.request.event_id), .window = window };
+        const event_context = xph.EventContext{ .id = event_id, .window = window };
 
         try request_context.client.add_event_context(event_context);
         errdefer request_context.client.remove_resource(event_context.id);
@@ -129,15 +135,15 @@ fn select_input(request_context: xph.RequestContext) !void {
         try request_context.server.resource_manager.add_event_context(event_context);
         errdefer request_context.server.resource_manager.remove_resource(event_context.id);
 
-        try window.add_extension_event_listener(request_context.client, event_context.id, xph.opcode.Major.present, @bitCast(req.request.event_mask));
-        errdefer window.remove_extension_event_listener(request_context.client, xph.opcode.Major.present);
+        try window.add_extension_event_listener(request_context.client, event_context.id, .present, @bitCast(req.request.event_mask));
+        errdefer window.remove_extension_event_listener(request_context.client, .present);
     }
 }
 
-const MinorOpcode = struct {
-    pub const query_version: x11.Card8 = 0;
-    pub const present_pixmap: x11.Card8 = 1;
-    pub const select_input: x11.Card8 = 3;
+const MinorOpcode = enum(x11.Card8) {
+    query_version = 0,
+    present_pixmap = 1,
+    select_input = 3,
 };
 
 const SyncFence = enum(x11.Card32) {
@@ -200,6 +206,10 @@ const PresentEventCode = enum(x11.Card16) {
 
 const PresentEventId = enum(x11.Card32) {
     _,
+
+    pub fn to_id(self: PresentEventId) x11.ResourceId {
+        return @enumFromInt(@intFromEnum(self));
+    }
 };
 
 const PresentCompleteKind = enum(x11.Card8) {
@@ -265,7 +275,7 @@ const PresentSelectInputRequest = struct {
 
 const PresentCompleteNotifyEvent = extern struct {
     code: xph.event.EventCode = .xge,
-    present_extension_opcode: x11.Card8 = xph.opcode.Major.present,
+    present_extension_opcode: xph.opcode.Major = .present,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
     present_event_code: PresentEventCode = .complete_notify,
@@ -277,13 +287,9 @@ const PresentCompleteNotifyEvent = extern struct {
     ust: x11.Card64,
     msc: x11.Card64,
 
-    pub fn get_extension_major_opcode(self: *const PresentCompleteNotifyEvent) x11.Card8 {
+    pub fn get_extension_major_opcode(self: *const PresentCompleteNotifyEvent) xph.opcode.Major {
         _ = self;
         return xph.opcode.Major.present;
-    }
-
-    pub fn get_minor_opcode(self: *const PresentCompleteNotifyEvent) x11.Card8 {
-        return self.present_extension_opcode;
     }
 
     pub fn to_event_mask(self: *const PresentCompleteNotifyEvent) u32 {
@@ -300,7 +306,7 @@ const PresentCompleteNotifyEvent = extern struct {
 
 const PresentIdleNotifyEvent = extern struct {
     code: xph.event.EventCode = .xge,
-    present_extension_opcode: x11.Card8 = xph.opcode.Major.present,
+    present_extension_opcode: xph.opcode.Major = xph.opcode.Major.present,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
     present_event_code: PresentEventCode = .idle_notify,
@@ -311,13 +317,9 @@ const PresentIdleNotifyEvent = extern struct {
     pixmap: x11.Pixmap,
     idle_fence: SyncFence,
 
-    pub fn get_extension_major_opcode(self: *const PresentIdleNotifyEvent) x11.Card8 {
+    pub fn get_extension_major_opcode(self: *const PresentIdleNotifyEvent) xph.opcode.Major {
         _ = self;
-        return xph.opcode.Major.present;
-    }
-
-    pub fn get_minor_opcode(self: *const PresentIdleNotifyEvent) x11.Card8 {
-        return self.present_extension_opcode;
+        return .present;
     }
 
     pub fn to_event_mask(self: *const PresentIdleNotifyEvent) u32 {

@@ -61,7 +61,7 @@ pub fn destroy(self: *Self) void {
         child.destroy();
     }
 
-    self.client_owner.remove_resource(@intFromEnum(self.id));
+    self.client_owner.remove_resource(self.id.to_id());
 
     self.core_event_listeners.deinit();
     self.extension_event_listeners.deinit();
@@ -166,7 +166,7 @@ inline fn core_event_mask_matches_event_code(event_mask: xph.core.EventMask, eve
 }
 
 /// It's invalid to add multiple event listeners with the same event id
-pub fn add_extension_event_listener(self: *Self, client: *xph.Client, event_id: u32, extension_major_opcode: u8, event_mask: u32) !void {
+pub fn add_extension_event_listener(self: *Self, client: *xph.Client, event_id: x11.ResourceId, extension_major_opcode: xph.opcode.Major, event_mask: u32) !void {
     if (event_mask == 0)
         return;
 
@@ -182,7 +182,7 @@ pub fn add_extension_event_listener(self: *Self, client: *xph.Client, event_id: 
     errdefer _ = client.listening_to_windows.pop();
 }
 
-pub fn modify_extension_event_listener(self: *Self, client: *xph.Client, extension_major_opcode: u8, event_mask: u32) void {
+pub fn modify_extension_event_listener(self: *Self, client: *xph.Client, extension_major_opcode: xph.opcode.Major, event_mask: u32) void {
     for (self.extension_event_listeners.items) |*event_listener| {
         if (client == event_listener.client and extension_major_opcode == event_listener.extension_major_opcode) {
             event_listener.event_mask = event_mask;
@@ -191,7 +191,7 @@ pub fn modify_extension_event_listener(self: *Self, client: *xph.Client, extensi
     }
 }
 
-pub fn remove_extension_event_listener(self: *Self, client: *const xph.Client, extension_major_opcode: u8) void {
+pub fn remove_extension_event_listener(self: *Self, client: *const xph.Client, extension_major_opcode: xph.opcode.Major) void {
     for (self.extension_event_listeners.items, 0..) |*event_listener, i| {
         if (client == event_listener.client and extension_major_opcode == event_listener.extension_major_opcode) {
             _ = self.extension_event_listeners.orderedRemove(i);
@@ -205,13 +205,13 @@ pub fn write_extension_event_to_event_listeners(self: *const Self, ev: anytype) 
         @compileError("Expected event data to be a pointer");
 
     const extension_major_opcode = ev.get_extension_major_opcode();
-    const event_minor_opcode = ev.get_minor_opcode();
+    //const event_minor_opcode = ev.get_minor_opcode();
     const event_mask = ev.to_event_mask();
 
     std.log.info("write extension event to client, num listeners: {d}", .{self.extension_event_listeners.items.len});
     for (self.extension_event_listeners.items) |*event_listener| {
         if (event_listener.extension_major_opcode != extension_major_opcode) {
-            std.log.info("major opcode doesn't match: {d} vs {d}", .{ event_listener.extension_major_opcode, extension_major_opcode });
+            std.log.info("major opcode doesn't match: {s} vs {s}", .{ @tagName(event_listener.extension_major_opcode), @tagName(extension_major_opcode) });
             continue;
         }
 
@@ -220,13 +220,13 @@ pub fn write_extension_event_to_event_listeners(self: *const Self, ev: anytype) 
             continue;
         }
 
-        @field(ev, "event_id") = @enumFromInt(event_listener.event_id);
+        @field(ev, "event_id") = @enumFromInt(event_listener.event_id.to_int());
 
         event_listener.client.write_event_extension(ev) catch |err| {
             // TODO: What should be done if this happens? disconnect the client?
             std.log.err(
-                "Failed to write (buffer) extension event {d}:{d} to client {d}, error: {s}",
-                .{ @intFromEnum(xph.event.EventCode.xge), event_minor_opcode, event_listener.client.connection.stream.handle, @errorName(err) },
+                "Failed to write (buffer) extension event {d} to client {d}, error: {s}",
+                .{ @intFromEnum(xph.event.EventCode.xge), event_listener.client.connection.stream.handle, @errorName(err) },
             );
             continue;
         };
@@ -234,8 +234,8 @@ pub fn write_extension_event_to_event_listeners(self: *const Self, ev: anytype) 
         event_listener.client.flush_write_buffer() catch |err| {
             // TODO: What should be done if this happens? disconnect the client?
             std.log.err(
-                "Failed to write (flush) extension event {d}:{d} to client {d}, error: {s}",
-                .{ @intFromEnum(xph.event.EventCode.xge), event_minor_opcode, event_listener.client.connection.stream.handle, @errorName(err) },
+                "Failed to write (flush) extension event {d} to client {d}, error: {s}",
+                .{ @intFromEnum(xph.event.EventCode.xge), event_listener.client.connection.stream.handle, @errorName(err) },
             );
             continue;
         };
@@ -309,7 +309,7 @@ const CoreEventListener = struct {
 
 const ExtensionEventListener = struct {
     client: *xph.Client, // Reference
-    event_id: u32,
+    event_id: x11.ResourceId,
     event_mask: u32,
-    extension_major_opcode: u8,
+    extension_major_opcode: xph.opcode.Major,
 };

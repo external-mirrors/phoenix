@@ -4,13 +4,18 @@ const x11 = xph.x11;
 
 pub fn handle_request(request_context: xph.RequestContext) !void {
     std.log.warn("Handling xfixes request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
-    switch (request_context.header.minor_opcode) {
-        MinorOpcode.query_version => return query_version(request_context),
-        MinorOpcode.create_region => return create_region(request_context),
-        else => {
+
+    // TODO: Remove
+    const minor_opcode = std.meta.intToEnum(MinorOpcode, request_context.header.minor_opcode) catch |err| switch (err) {
+        error.InvalidEnumTag => {
             std.log.warn("Unimplemented xfixes request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
             return request_context.client.write_error(request_context, .implementation, 0);
         },
+    };
+
+    switch (minor_opcode) {
+        .query_version => return query_version(request_context),
+        .create_region => return create_region(request_context),
     }
 }
 
@@ -38,10 +43,9 @@ fn create_region(_: xph.RequestContext) !void {
     // TODO: Implement
 }
 
-const MinorOpcode = struct {
-    pub const query_version: x11.Card8 = 0;
-    pub const open: x11.Card8 = 1;
-    pub const create_region: x11.Card8 = 5;
+const MinorOpcode = enum(x11.Card8) {
+    query_version = 0,
+    create_region = 5,
 };
 
 pub const Region = enum(x11.Card32) {

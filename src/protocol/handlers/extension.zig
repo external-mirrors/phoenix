@@ -6,13 +6,18 @@ const Present = @import("extension/Present.zig");
 
 pub fn handle_request(request_context: xph.RequestContext) !void {
     std.log.warn("Handling extension request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
-    switch (request_context.header.major_opcode) {
-        xph.opcode.Major.dri3 => return Dri3.handle_request(request_context),
-        xph.opcode.Major.xfixes => return Xfixes.handle_request(request_context),
-        xph.opcode.Major.present => return Present.handle_request(request_context),
-        else => {
-            std.log.warn("Unimplemented extension request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
-            return request_context.client.write_error(request_context, .implementation, 0);
-        },
+
+    std.debug.assert(request_context.header.major_opcode > xph.opcode.core_opcode_max);
+    if (request_context.header.major_opcode > xph.opcode.extension_opcode_max) {
+        std.log.warn("Unimplemented extension request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
+        return request_context.client.write_error(request_context, .implementation, 0);
+    }
+
+    const major_opcode: xph.opcode.Major = @enumFromInt(request_context.header.major_opcode);
+    switch (major_opcode) {
+        .dri3 => return Dri3.handle_request(request_context),
+        .xfixes => return Xfixes.handle_request(request_context),
+        .present => return Present.handle_request(request_context),
+        else => unreachable,
     }
 }

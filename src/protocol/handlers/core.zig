@@ -4,20 +4,26 @@ const x11 = xph.x11;
 
 pub fn handle_request(request_context: xph.RequestContext) !void {
     std.log.info("Handling core request: {d}", .{request_context.header.major_opcode});
-    switch (request_context.header.major_opcode) {
-        xph.opcode.Major.create_window => return create_window(request_context),
-        xph.opcode.Major.map_window => return map_window(request_context),
-        xph.opcode.Major.get_geometry => return get_geometry(request_context),
-        xph.opcode.Major.intern_atom => return intern_atom(request_context),
-        xph.opcode.Major.change_property => return change_property(request_context),
-        xph.opcode.Major.get_property => return get_property(request_context),
-        xph.opcode.Major.get_input_focus => return get_input_focus(request_context),
-        xph.opcode.Major.create_gc => return create_gc(request_context),
-        xph.opcode.Major.query_extension => return query_extension(request_context),
-        else => {
+
+    // TODO: Remove
+    const major_opcode = std.meta.intToEnum(xph.opcode.Major, request_context.header.major_opcode) catch |err| switch (err) {
+        error.InvalidEnumTag => {
             std.log.warn("Unimplemented core request: {d}", .{request_context.header.major_opcode});
             return request_context.client.write_error(request_context, .implementation, 0);
         },
+    };
+
+    switch (major_opcode) {
+        .create_window => return create_window(request_context),
+        .map_window => return map_window(request_context),
+        .get_geometry => return get_geometry(request_context),
+        .intern_atom => return intern_atom(request_context),
+        .change_property => return change_property(request_context),
+        .get_property => return get_property(request_context),
+        .get_input_focus => return get_input_focus(request_context),
+        .create_gc => return create_gc(request_context),
+        .query_extension => return query_extension(request_context),
+        else => unreachable,
     }
 }
 
@@ -299,13 +305,13 @@ fn query_extension(request_context: xph.RequestContext) !void {
 
     if (std.mem.eql(u8, req.request.name.items, "DRI3")) {
         rep.present = true;
-        rep.major_opcode = xph.opcode.Major.dri3;
+        rep.major_opcode = @intFromEnum(xph.opcode.Major.dri3);
     } else if (std.mem.eql(u8, req.request.name.items, "XFIXES")) {
         rep.present = true;
-        rep.major_opcode = xph.opcode.Major.xfixes;
+        rep.major_opcode = @intFromEnum(xph.opcode.Major.xfixes);
     } else if (std.mem.eql(u8, req.request.name.items, "Present")) {
         rep.present = true;
-        rep.major_opcode = xph.opcode.Major.present;
+        rep.major_opcode = @intFromEnum(xph.opcode.Major.present);
     }
 
     try request_context.client.write_reply(&rep);

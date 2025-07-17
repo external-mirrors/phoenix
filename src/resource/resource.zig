@@ -1,5 +1,6 @@
 const std = @import("std");
 const xph = @import("../xphoenix.zig");
+const x11 = xph.x11;
 
 pub const Resource = union(enum) {
     window: *xph.Window,
@@ -13,12 +14,12 @@ pub const Resource = union(enum) {
     }
 };
 
-pub const ResourceHashMap = std.HashMap(u32, Resource, struct {
-    pub fn hash(_: @This(), key: u32) u64 {
-        return @intCast(key);
+pub const ResourceHashMap = std.HashMap(x11.ResourceId, Resource, struct {
+    pub fn hash(_: @This(), key: x11.ResourceId) u64 {
+        return @intCast(@intFromEnum(key));
     }
 
-    pub fn eql(_: @This(), a: u32, b: u32) bool {
+    pub fn eql(_: @This(), a: x11.ResourceId, b: x11.ResourceId) bool {
         return a == b;
     }
 }, std.hash_map.default_max_load_percentage);

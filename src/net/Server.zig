@@ -44,7 +44,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     errdefer atom_manager.deinit();
 
     var client_manager = xph.ClientManager.init(allocator);
-    errdefer client_manager.deinit(&resource_manager);
+    errdefer client_manager.deinit();
 
     const epoll_fd = try std.posix.epoll_create1(0);
     if (epoll_fd == -1) return error.FailedToCreateEpoll;
@@ -90,7 +90,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
 }
 
 pub fn deinit(self: *Self) void {
-    self.client_manager.deinit(&self.resource_manager);
+    self.client_manager.deinit();
     self.resource_manager.deinit();
     self.atom_manager.deinit();
     self.installed_colormaps.deinit();
@@ -125,10 +125,14 @@ fn create_root_window(root_client: *xph.Client, resource_manager: *xph.ResourceM
         .override_redirect = false,
     };
 
-    var root_window = try xph.Window.create(null, root_window_id, &window_attributes, root_client, resource_manager, allocator);
-    errdefer root_window.destroy(resource_manager);
+    var root_window = try xph.Window.create(null, root_window_id, &window_attributes, @bitCast(@as(u32, 0)), root_client, allocator);
+    errdefer root_window.destroy();
 
     try root_window.set_property_string8(xph.AtomManager.Predefined.resource_manager, "*background:\t#222222");
+
+    try resource_manager.add_window(root_window);
+    errdefer resource_manager.remove_resource(root_window.id);
+
     return root_window;
 }
 
@@ -172,7 +176,7 @@ pub fn run(self: *Self) void {
                     continue;
                 };
 
-                client.write_buffer_to_client() catch |err| {
+                client.flush_write_buffer() catch |err| {
                     std.log.err("Failed to write data to client: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
                     remove_client(self, client.connection.stream.handle);
                     continue;
@@ -242,7 +246,8 @@ fn remove_client(self: *Self, client_fd: std.posix.socket_t) void {
 
     if (self.client_manager.get_client(client_fd)) |client| {
         self.resource_id_base_manager.free(client.resource_id_base);
-        _ = self.client_manager.remove_client(client_fd, &self.resource_manager);
+        self.resource_manager.remove_resources_owned_by_client(client);
+        _ = self.client_manager.remove_client(client_fd);
     }
 }
 
@@ -301,7 +306,7 @@ fn handle_client_request(self: *Self, client: *xph.Client) !bool {
     } else if (request_header.major_opcode >= 1 and request_header.major_opcode <= xph.opcode.core_opcode_max) {
         try xph.core.handle_request(request_context);
     } else {
-        try xph.extensions.handle_request(request_context);
+        try xph.extension.handle_request(request_context);
     }
 
     const bytes_available_to_read_after = client.read_buffer_data_size();
@@ -317,7 +322,7 @@ fn handle_client_request(self: *Self, client: *xph.Client) !bool {
         client.skip_read_bytes(request_header_length - bytes_read);
     }
 
-    try client.write_buffer_to_client();
+    try client.flush_write_buffer();
     return true;
 }
 

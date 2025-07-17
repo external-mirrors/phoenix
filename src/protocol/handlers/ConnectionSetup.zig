@@ -23,7 +23,7 @@ pub fn handle_client_connect(server: *xph.Server, client: *xph.Client, root_wind
         };
 
         try client.write_reply(&rep);
-        try client.write_buffer_to_client();
+        try client.flush_write_buffer();
         return true;
     }
 
@@ -72,7 +72,7 @@ pub fn handle_client_connect(server: *xph.Server, client: *xph.Client, root_wind
     };
 
     var screens = [_]Screen{.{
-        .root_window = root_window.window_id,
+        .root_window = root_window.id,
         .colormap = screen_colormap.id,
         .white_pixel = 0x00ffffff,
         .black_pixel = 0x00000000,
@@ -108,7 +108,7 @@ pub fn handle_client_connect(server: *xph.Server, client: *xph.Client, root_wind
     };
 
     try client.write_reply(&rep);
-    try client.write_buffer_to_client();
+    try client.flush_write_buffer();
     return true;
 }
 

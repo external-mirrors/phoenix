@@ -3,10 +3,12 @@ const xph = @import("../xphoenix.zig");
 
 pub const Resource = union(enum) {
     window: *xph.Window,
+    event_context: xph.EventContext,
 
-    pub fn deinit(self: Resource, resource_manager: *xph.ResourceManager) void {
+    pub fn deinit(self: Resource) void {
         switch (self) {
-            inline else => |item| item.destroy(resource_manager),
+            .window => |item| item.destroy(),
+            .event_context => {},
         }
     }
 };

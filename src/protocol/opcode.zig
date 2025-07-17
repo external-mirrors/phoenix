@@ -14,7 +14,7 @@ pub const Major = struct {
     pub const create_gc: x11.Card8 = 55;
     pub const query_extension: x11.Card8 = 98;
 
-    // Extensions
+    // Extension
     pub const dri3: x11.Card8 = 128;
     pub const xfixes: x11.Card8 = 129;
     pub const present: x11.Card8 = 130;

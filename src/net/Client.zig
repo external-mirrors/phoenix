@@ -19,6 +19,8 @@ resource_id_base: u32,
 sequence_number: u16,
 resources: xph.ResourceHashMap,
 
+listening_to_windows: std.ArrayList(*xph.Window), // Reference
+
 deleting_self: bool,
 
 pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, allocator: std.mem.Allocator) Self {
@@ -37,11 +39,13 @@ pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, alloca
         .sequence_number = 1,
         .resources = .init(allocator),
 
+        .listening_to_windows = .init(allocator),
+
         .deleting_self = false,
     };
 }
 
-pub fn deinit(self: *Self, resource_manager: *xph.ResourceManager) void {
+pub fn deinit(self: *Self) void {
     self.deleting_self = true;
 
     self.connection.stream.close();
@@ -63,10 +67,15 @@ pub fn deinit(self: *Self, resource_manager: *xph.ResourceManager) void {
     }
 
     var resources_it = self.resources.valueIterator();
-    while (resources_it.next()) |res| {
-        res.*.deinit(resource_manager);
+    while (resources_it.next()) |res_val| {
+        res_val.*.deinit();
     }
     self.resources.deinit();
+
+    for (self.listening_to_windows.items) |window| {
+        window.remove_all_event_listeners_for_client(self);
+    }
+    self.listening_to_windows.deinit();
 }
 
 // Unused right now, but this will be used similarly to how xace works
@@ -109,7 +118,7 @@ pub fn read_client_data_to_buffer(self: *Self) !void {
     }
 }
 
-pub fn write_buffer_to_client(self: *Self) !void {
+pub fn flush_write_buffer(self: *Self) !void {
     var fd_buf: [netutils.max_fds]std.posix.fd_t = undefined;
     while (self.write_buffer.readableLength() > 0) {
         const write_buffer = self.write_buffer.readableSliceOfLen(self.write_buffer.readableLength());
@@ -185,11 +194,15 @@ pub fn write_error(self: *Self, request_context: xph.RequestContext, error_type:
 }
 
 pub fn write_event(self: *Self, ev: *const xph.event.Event) !void {
-    //std.log.info("Replying with event: {s}", .{x11.stringify_fmt(ev)});
+    std.log.info("Replying with event: {d}", .{@intFromEnum(ev.any.code)});
     return self.write_buffer.write(std.mem.asBytes(ev));
 }
 
 pub fn write_event_extension(self: *Self, ev: anytype) !void {
+    if (@typeInfo(@TypeOf(ev)) != .pointer)
+        @compileError("Expected event data to be a pointer");
+
+    std.log.info("Replying with event: {s}", .{x11.stringify_fmt(ev)});
     return self.write_reply(ev);
 }
 
@@ -202,21 +215,38 @@ pub fn next_sequence_number(self: *Self) u16 {
 }
 
 pub fn add_window(self: *Self, window: *xph.Window) !void {
-    if (!self.is_owner_of_resource(@intFromEnum(window.window_id)))
+    if (!self.is_owner_of_resource(@intFromEnum(window.id)))
         return error.ResourceNotOwnedByClient;
 
-    const result = try self.resources.getOrPut(@intFromEnum(window.window_id));
+    const result = try self.resources.getOrPut(@intFromEnum(window.id));
     if (result.found_existing)
         return error.ResourceAlreadyExists;
 
     result.value_ptr.* = .{ .window = window };
+    errdefer _ = self.resources.remove(@intFromEnum(window.id));
 }
 
-pub fn remove_window(self: *Self, window: *xph.Window) void {
+pub fn add_event_context(self: *Self, event_context: xph.EventContext) !void {
+    if (!self.is_owner_of_resource(event_context.id))
+        return error.ResourceNotOwnedByClient;
+
+    const result = try self.resources.getOrPut(event_context.id);
+    if (result.found_existing)
+        return error.ResourceAlreadyExists;
+
+    result.value_ptr.* = .{ .event_context = event_context };
+    errdefer _ = self.resources.remove(event_context.id);
+}
+
+pub fn remove_resource(self: *Self, id: u32) void {
     if (self.deleting_self)
         return;
 
-    _ = self.resources.remove(@intFromEnum(window.window_id));
+    _ = self.resources.remove(id);
+}
+
+pub fn get_resource(self: *Self, id: u32) ?xph.Resource {
+    return self.resources.get(id);
 }
 
 //pub fn select_input(self: *Self, event_id: u32, window: *Window, )

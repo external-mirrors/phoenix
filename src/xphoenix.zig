@@ -27,7 +27,7 @@ pub const x11 = @import("protocol/x11.zig");
 pub const ConnectionSetup = @import("protocol/handlers/ConnectionSetup.zig");
 pub const RequestContext = @import("protocol/handlers/RequestContext.zig");
 pub const core = @import("protocol/handlers/core.zig");
-pub const extensions = @import("protocol/handlers/extensions.zig");
+pub const extension = @import("protocol/handlers/extension.zig");
 pub const xshmfence = @import("protocol/xshmfence.zig");
 
 pub const Visual = @import("resource/Visual.zig");
@@ -36,6 +36,7 @@ pub const Cursor = @import("resource/Cursor.zig");
 pub const Drawable = @import("resource/Drawable.zig");
 pub const Pixmap = @import("resource/Pixmap.zig");
 pub const Window = @import("resource/Window.zig");
+pub const EventContext = @import("resource/EventContext.zig");
 pub const resource = @import("resource/resource.zig");
 pub const Resource = resource.Resource;
 pub const ResourceHashMap = resource.ResourceHashMap;

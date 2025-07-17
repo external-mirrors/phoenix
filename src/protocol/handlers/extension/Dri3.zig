@@ -224,6 +224,8 @@ fn pixmap_from_buffers(request_context: xph.RequestContext) !void {
         return request_context.client.write_error(request_context, .length, 0);
     }
 
+    // TODO: Actually create the pixmap and add it to resources
+
     // TODO: Use size?
     // const size = @mulWithOverflow(strides[i], req.request.height);
     // if (size[1] != 0) {

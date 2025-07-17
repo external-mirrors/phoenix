@@ -19,9 +19,9 @@ pub fn main() !void {
 
 test "all tests" {
     _ = @import("xphoenix.zig");
-    _ = @import("protocol/handlers/extensions/Dri3.zig");
-    _ = @import("protocol/handlers/extensions/Present.zig");
-    _ = @import("protocol/handlers/extensions/Randr.zig");
-    _ = @import("protocol/handlers/extensions/Render.zig");
-    _ = @import("protocol/handlers/extensions/Xfixes.zig");
+    _ = @import("protocol/handlers/extension/Dri3.zig");
+    _ = @import("protocol/handlers/extension/Present.zig");
+    _ = @import("protocol/handlers/extension/Randr.zig");
+    _ = @import("protocol/handlers/extension/Render.zig");
+    _ = @import("protocol/handlers/extension/Xfixes.zig");
 }

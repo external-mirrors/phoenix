@@ -104,6 +104,7 @@ fn create_window(request_context: xph.RequestContext) !void {
     const border_pixel = req.request.get_value(x11.Card32, "border_pixel") orelse 0;
     const save_under = if (req.request.get_value(x11.Card8, "save_under") orelse 0 == 0) false else true;
     const override_redirect = if (req.request.get_value(x11.Card8, "override_redirect") orelse 0 == 0) false else true;
+    const event_mask: EventMask = @bitCast(req.request.get_value(x11.Card32, "event_mask") orelse 0);
 
     const window_attributes = xph.Window.Attributes{
         .geometry = .{
@@ -130,12 +131,12 @@ fn create_window(request_context: xph.RequestContext) !void {
         .override_redirect = override_redirect,
     };
 
-    const window = if (xph.Window.create(
+    var window = if (xph.Window.create(
         parent_window,
         req.request.window,
         &window_attributes,
+        event_mask,
         request_context.client,
-        &request_context.server.resource_manager,
         request_context.allocator,
     )) |window| window else |err| switch (err) {
         error.ResourceNotOwnedByClient => {
@@ -151,9 +152,15 @@ fn create_window(request_context: xph.RequestContext) !void {
         error.OutOfMemory => {
             return request_context.client.write_error(request_context, .alloc, 0);
         },
+        error.ExclusiveEventListenerTaken => {
+            std.log.err("A client is already listening to exclusive events (ResizeRedirect, SubstructureRedirect, ButtonPress) on one of the parent windows", .{});
+            return request_context.client.write_error(request_context, .access, 0);
+        },
     };
+    errdefer window.destroy();
 
-    _ = window;
+    try request_context.server.resource_manager.add_window(window);
+    errdefer request_context.server.resource_manager.remove_resource(window.id);
 
     const create_notify_event = xph.event.Event{
         .create_notify = .{
@@ -168,8 +175,7 @@ fn create_window(request_context: xph.RequestContext) !void {
             .override_redirect = override_redirect,
         },
     };
-    // TODO: Instead of writing event to client, write to all clients that select input
-    try request_context.client.write_event(&create_notify_event);
+    window.write_core_event_to_event_listeners(&create_notify_event);
 }
 
 fn map_window(request_context: xph.RequestContext) !void {
@@ -193,7 +199,7 @@ fn get_geometry(request_context: xph.RequestContext) !void {
     var rep = GetGeometryReply{
         .depth = 32, // TODO: Use real value
         .sequence_number = request_context.sequence_number,
-        .root = request_context.server.root_window.window_id,
+        .root = request_context.server.root_window.id,
         .x = @intCast(window.attributes.geometry.x),
         .y = @intCast(window.attributes.geometry.y),
         .width = @intCast(window.attributes.geometry.width),
@@ -269,7 +275,7 @@ fn get_input_focus(request_context: xph.RequestContext) !void {
     var rep = GetInputFocusReply{
         .revert_to = .pointer_root,
         .sequence_number = request_context.sequence_number,
-        .focused_window = request_context.server.root_window.window_id,
+        .focused_window = request_context.server.root_window.id,
     };
     try request_context.client.write_reply(&rep);
 }
@@ -409,7 +415,7 @@ pub const WinGravity = enum(x11.Card32) {
     static = 10,
 };
 
-const EventMask = packed struct(x11.Card32) {
+pub const EventMask = packed struct(x11.Card32) {
     key_press: bool,
     key_release: bool,
     button_press: bool,
@@ -442,6 +448,10 @@ const EventMask = packed struct(x11.Card32) {
         var result = self;
         result._padding = 0;
         return result;
+    }
+
+    pub fn is_empty(self: EventMask) bool {
+        return @as(u32, @bitCast(self.sanitize())) == 0;
     }
 
     comptime {

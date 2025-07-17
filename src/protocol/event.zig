@@ -10,6 +10,10 @@ pub const EventCode = enum(x11.Card8) {
     xge = 35,
 };
 
+pub const AnyEvent = extern struct {
+    code: EventCode,
+};
+
 pub const KeyButMask = packed struct(x11.Card16) {
     shift: bool = false,
     lock: bool = false,
@@ -105,6 +109,7 @@ pub const CreateNotifyEvent = extern struct {
 };
 
 pub const Event = extern union {
+    any: AnyEvent,
     key_press: KeyPressEvent,
     key_release: KeyReleaseEvent,
     button_press: ButtonPressEvent,

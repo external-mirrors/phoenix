@@ -18,13 +18,15 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn add_window(self: *Self, window: *xph.Window) !void {
-    const result = try self.resources.getOrPut(@intFromEnum(window.window_id));
+    const result = try self.resources.getOrPut(@intFromEnum(window.id));
     std.debug.assert(!result.found_existing);
     result.value_ptr.* = .{ .window = window };
 }
 
-pub fn remove_window(self: *Self, window: *xph.Window) void {
-    _ = self.resources.remove(@intFromEnum(window.window_id));
+pub fn add_event_context(self: *Self, event_context: xph.EventContext) !void {
+    const result = try self.resources.getOrPut(event_context.id);
+    std.debug.assert(!result.found_existing);
+    result.value_ptr.* = .{ .event_context = event_context };
 }
 
 pub fn get_window(self: *Self, window_id: x11.Window) ?*xph.Window {
@@ -32,5 +34,20 @@ pub fn get_window(self: *Self, window_id: x11.Window) ?*xph.Window {
         return if (std.meta.activeTag(res) == .window) res.window else null;
     } else {
         return null;
+    }
+}
+
+pub fn get_resource(self: *Self, id: u32) ?xph.Resource {
+    return self.resources.get(id);
+}
+
+pub fn remove_resource(self: *Self, id: u32) void {
+    _ = self.resources.remove(id);
+}
+
+pub fn remove_resources_owned_by_client(self: *Self, client: *const xph.Client) void {
+    var client_resource_it = client.resources.keyIterator();
+    while (client_resource_it.next()) |client_resource_id| {
+        _ = self.resources.remove(client_resource_id.*);
     }
 }

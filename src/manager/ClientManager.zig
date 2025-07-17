@@ -22,10 +22,10 @@ pub fn init(allocator: std.mem.Allocator) Self {
     };
 }
 
-pub fn deinit(self: *Self, resource_manager: *xph.ResourceManager) void {
+pub fn deinit(self: *Self) void {
     var client_it = self.clients.valueIterator();
     while (client_it.next()) |client| {
-        client.*.deinit(resource_manager);
+        client.*.deinit();
         self.allocator.destroy(client);
     }
     self.clients.deinit();
@@ -44,9 +44,9 @@ pub fn add_client(self: *Self, client: xph.Client) !*xph.Client {
     return new_client;
 }
 
-pub fn remove_client(self: *Self, client_to_remove_fd: std.posix.socket_t, resource_manager: *xph.ResourceManager) bool {
+pub fn remove_client(self: *Self, client_to_remove_fd: std.posix.socket_t) bool {
     if (self.clients.fetchRemove(client_to_remove_fd)) |removed_item| {
-        removed_item.value.deinit(resource_manager);
+        removed_item.value.deinit();
         self.allocator.destroy(removed_item.value);
         return true;
     }

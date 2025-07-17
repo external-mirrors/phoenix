@@ -42,43 +42,52 @@ fn present_pixmap(request_context: xph.RequestContext) !void {
     defer req.deinit();
     std.log.info("PresentPixmap request: {s}", .{x11.stringify_fmt(req.request)});
 
+    for (req.request.notifies.items) |notify| {
+        _ = request_context.server.resource_manager.get_window(notify.window) orelse {
+            std.log.err("Received invalid notify window {d} in PresentPixmap request", .{notify.window});
+            return request_context.client.write_error(request_context, .window, @intFromEnum(notify.window));
+        };
+    }
+
+    const window = request_context.server.resource_manager.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in PresentPixmap request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+
     // TODO: Implement properly
 
     var idle_notify_event = PresentIdleNotifyEvent{
         .sequence_number = request_context.sequence_number,
-        .event_id = @enumFromInt(0x00400001),
         .window = req.request.window,
         .serial = req.request.serial,
         .pixmap = req.request.pixmap,
         .idle_fence = req.request.idle_fence,
     };
-    try request_context.client.write_event_extension(&idle_notify_event);
+    window.write_extension_event_to_event_listeners(&idle_notify_event);
 
-    // TODO: Only send event to clients that select input (PresentSelectInput)
     var complete_event = PresentCompleteNotifyEvent{
         .sequence_number = request_context.sequence_number,
         .kind = .pixmap,
         .mode = .suboptimal_copy,
-        .event_id = @enumFromInt(0x00400001),
         .window = req.request.window,
         .serial = req.request.serial,
         .ust = 0,
         .msc = req.request.target_msc,
     };
-    try request_context.client.write_event_extension(&complete_event);
+    window.write_extension_event_to_event_listeners(&complete_event);
 
     for (req.request.notifies.items) |notify| {
+        const notify_window = request_context.server.resource_manager.get_window(notify.window) orelse unreachable;
         var complete_event_notify = PresentCompleteNotifyEvent{
             .sequence_number = request_context.sequence_number,
             .kind = .pixmap,
             .mode = .suboptimal_copy,
-            .event_id = @enumFromInt(0x00400001),
             .window = notify.window,
             .serial = notify.serial,
             .ust = 0,
             .msc = req.request.target_msc,
         };
-        try request_context.client.write_event_extension(&complete_event_notify);
+        notify_window.write_extension_event_to_event_listeners(&complete_event_notify);
     }
 }
 
@@ -87,13 +96,42 @@ fn select_input(request_context: xph.RequestContext) !void {
     defer req.deinit();
     std.log.info("PresentSelectInput request: {s}", .{x11.stringify_fmt(req.request)});
 
-    if (!request_context.client.is_owner_of_resource(@intFromEnum(req.request.event_id))) {
-        return request_context.client.write_error(request_context, .access, 0);
+    if (request_context.client.get_resource(@intFromEnum(req.request.event_id))) |resource| {
+        if (std.meta.activeTag(resource) != .event_context)
+            return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.event_id));
+
+        if (req.request.window != resource.event_context.window.id)
+            return request_context.client.write_error(request_context, .match, 0);
+
+        if (req.request.event_mask.is_empty()) {
+            request_context.client.remove_resource(@intFromEnum(req.request.event_id));
+            request_context.server.resource_manager.remove_resource(@intFromEnum(req.request.event_id));
+            resource.event_context.window.remove_extension_event_listener(request_context.client, xph.opcode.Major.present);
+            return;
+        }
+
+        resource.event_context.window.modify_extension_event_listener(request_context.client, xph.opcode.Major.present, @bitCast(req.request.event_mask));
+        return;
+    } else {
+        const window = request_context.server.resource_manager.get_window(req.request.window) orelse {
+            std.log.err("Received invalid window {d} in PresentSelectInput request", .{req.request.window});
+            return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        };
+
+        if (req.request.event_mask.is_empty())
+            return;
+
+        const event_context = xph.EventContext{ .id = @intFromEnum(req.request.event_id), .window = window };
+
+        try request_context.client.add_event_context(event_context);
+        errdefer request_context.client.remove_resource(event_context.id);
+
+        try request_context.server.resource_manager.add_event_context(event_context);
+        errdefer request_context.server.resource_manager.remove_resource(event_context.id);
+
+        try window.add_extension_event_listener(request_context.client, event_context.id, xph.opcode.Major.present, @bitCast(req.request.event_mask));
+        errdefer window.remove_extension_event_listener(request_context.client, xph.opcode.Major.present);
     }
-
-    // TODO: Implement
-
-    //request_context.client.select_input(req.request.event_id, req.request.window, req.request.event_mask);
 }
 
 const MinorOpcode = struct {
@@ -140,6 +178,10 @@ const PresentEventMask = packed struct(x11.Card32) {
         var result = self;
         result._padding = 0;
         return result;
+    }
+
+    pub fn is_empty(self: PresentEventMask) bool {
+        return @as(u32, @bitCast(self.sanitize())) == 0;
     }
 
     comptime {
@@ -229,11 +271,27 @@ const PresentCompleteNotifyEvent = extern struct {
     present_event_code: PresentEventCode = .complete_notify,
     kind: PresentCompleteKind,
     mode: PresentCompleteMode,
-    event_id: PresentEventId,
+    event_id: PresentEventId = @enumFromInt(0), // This is automatically updated with the event id from the event listener
     window: x11.Window,
     serial: x11.Card32,
     ust: x11.Card64,
     msc: x11.Card64,
+
+    pub fn get_extension_major_opcode(self: *const PresentCompleteNotifyEvent) x11.Card8 {
+        _ = self;
+        return xph.opcode.Major.present;
+    }
+
+    pub fn get_minor_opcode(self: *const PresentCompleteNotifyEvent) x11.Card8 {
+        return self.present_extension_opcode;
+    }
+
+    pub fn to_event_mask(self: *const PresentCompleteNotifyEvent) u32 {
+        _ = self;
+        var event_mask: PresentEventMask = @bitCast(@as(u32, 0));
+        event_mask.complete_notify_mask = true;
+        return @bitCast(event_mask);
+    }
 
     comptime {
         std.debug.assert(@sizeOf(@This()) == 40);
@@ -247,11 +305,27 @@ const PresentIdleNotifyEvent = extern struct {
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
     present_event_code: PresentEventCode = .idle_notify,
     pad1: x11.Card16 = 0,
-    event_id: PresentEventId,
+    event_id: PresentEventId = @enumFromInt(0), // This is automatically updated with the event id from the event listener
     window: x11.Window,
     serial: x11.Card32,
     pixmap: x11.Pixmap,
     idle_fence: SyncFence,
+
+    pub fn get_extension_major_opcode(self: *const PresentIdleNotifyEvent) x11.Card8 {
+        _ = self;
+        return xph.opcode.Major.present;
+    }
+
+    pub fn get_minor_opcode(self: *const PresentIdleNotifyEvent) x11.Card8 {
+        return self.present_extension_opcode;
+    }
+
+    pub fn to_event_mask(self: *const PresentIdleNotifyEvent) u32 {
+        _ = self;
+        var event_mask: PresentEventMask = @bitCast(@as(u32, 0));
+        event_mask.idle_notify_mask = true;
+        return @bitCast(event_mask);
+    }
 
     comptime {
         std.debug.assert(@sizeOf(@This()) == 32);

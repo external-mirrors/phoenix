@@ -233,7 +233,7 @@ pub fn remove_window(self: *Self, window: *Window) void {
 // TODO: Use this
 //const max_read_buffer_size: usize = 1 * 1024 * 1024; // 1mb. If the server doesn't dont manage to read the data fast enough then the client is forcefully disconnected
 // TODO: Use this
-//const max_write_buffer_size: usize = 2 * 1024 * 1024; // 2mb. Clients that dont consume data fast enough are forcefully disconnected
+//const max_write_buffer_size: usize = 50 * 1024 * 1024; // 50mb. Clients that dont consume data fast enough are forcefully disconnected
 const DataBuffer = std.fifo.LinearFifo(u8, .Dynamic);
 const RequestFdsBuffer = std.fifo.LinearFifo(std.posix.fd_t, .Dynamic);
 const ReplyFdsBuffer = std.fifo.LinearFifo(message.ReplyFd, .Dynamic);

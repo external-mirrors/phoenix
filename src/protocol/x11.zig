@@ -13,7 +13,7 @@ pub const ListOfLengthType = enum {
 };
 
 pub const ListOfOptions = struct {
-    length_field: []const u8,
+    length_field: ?[]const u8,
     length_field_type: ListOfLengthType = .integer,
     padding: u8 = 0,
 };
@@ -34,7 +34,7 @@ pub fn ListOf(comptime T: type, comptime options: ListOfOptions) type {
 }
 
 pub const String8Options = struct {
-    length_field: []const u8,
+    length_field: ?[]const u8,
 };
 
 /// Automatically adds the padding (4) after the string
@@ -59,7 +59,6 @@ pub const Colormap = enum(Card32) {
 };
 
 pub const VisualId = enum(Card32) {
-    copy_from_parent = 0,
     _,
 };
 
@@ -68,7 +67,6 @@ pub const Atom = enum(Card32) {
 };
 
 pub const Class = enum(Card16) {
-    copy_from_parent = 0,
     input_output = 1,
     input_only = 2,
 };

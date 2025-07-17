@@ -62,7 +62,13 @@ const unit_size: u32 = 4;
 
 fn reply_set_length_fields_root(comptime T: type, reply: *T) void {
     if (@hasField(T, "length")) {
-        const header_size = if (T == ConnectionSetup.ConnectionSetupAcceptReply) @sizeOf(ReplyHeader) else @sizeOf(GenericReply);
+        const header_size: i32 = switch (T) {
+            ConnectionSetup.ConnectionSetupSuccessReply,
+            ConnectionSetup.ConnectionSetupFailedReply,
+            ConnectionSetup.ConnectionSetupAuthenticateReply,
+            => @sizeOf(ReplyHeader),
+            else => @sizeOf(GenericReply),
+        };
         const struct_length_without_header = @max(0, calculate_reply_length_bytes(T, reply) - header_size);
         reply.length = @intCast(struct_length_without_header / unit_size);
     } else {
@@ -80,7 +86,8 @@ fn reply_set_length_fields(comptime T: type, reply: *T) void {
         if (@hasDecl(field.type, "get_options")) {
             const list_of_options = comptime field.type.get_options();
             const list_of = &@field(reply, field.name);
-            @field(reply, list_of_options.length_field) = @intCast(list_of.items.len);
+            if (list_of_options.length_field) |length_field|
+                @field(reply, length_field) = @intCast(list_of.items.len);
             reply_set_length_fields_list_of(field.type, &@field(reply, field.name));
         } else {
             const field_value = &@field(reply, field.name);

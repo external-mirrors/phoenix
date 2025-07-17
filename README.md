@@ -5,4 +5,6 @@
 are UTF-8 unless the protocol states that it's not an ISO Latin-1 string.
 
 ## Non-goals
-* Supporting multiple _screens_. Multiple outputs (monitors) are going to be supported but not X11 screens.
+* Multiple _screens_. Multiple displays (monitors) are going to be supported but not X11 screens.
+* Endian-swapped client/server.
+* Indirect (remote) GLX.

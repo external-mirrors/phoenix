@@ -2,45 +2,49 @@ const std = @import("std");
 const x11 = @import("protocol/x11.zig");
 const Client = @import("Client.zig");
 const ResourceManager = @import("ResourceManager.zig");
+const Geometry = @import("Geometry.zig");
+const Colormap = @import("Colormap.zig");
+const Cursor = @import("Cursor.zig");
+const Visual = @import("Visual.zig");
+const core = @import("protocol/handlers/core.zig");
 
 const Self = @This();
 
 allocator: std.mem.Allocator,
 parent: ?*Self,
-window_id: x11.Window,
-x: i32,
-y: i32,
-width: i32,
-height: i32,
-properties: x11.PropertyHashMap,
 children: std.ArrayList(*Self),
 client_owner: *Client, // Reference
 deleting_self: bool,
 
-pub fn create(parent: ?*Self, window_id: x11.Window, x: i32, y: i32, width: i32, height: i32, client_owner: *Client, resource_manager: *ResourceManager, allocator: std.mem.Allocator) !*Self {
+window_id: x11.Window,
+attributes: Attributes,
+properties: x11.PropertyHashMap,
+
+pub fn create(
+    parent: ?*Self,
+    window_id: x11.Window,
+    attributes: *const Attributes,
+    client_owner: *Client,
+    resource_manager: *ResourceManager,
+    allocator: std.mem.Allocator,
+) !*Self {
     var window = try allocator.create(Self);
-    errdefer allocator.destroy(window);
+    errdefer window.destroy(resource_manager);
 
     window.* = .{
         .allocator = allocator,
         .parent = parent,
-        .window_id = window_id,
-        .x = x,
-        .y = y,
-        .width = width,
-        .height = height,
-        .properties = .init(allocator),
         .children = .init(allocator),
         .client_owner = client_owner,
         .deleting_self = false,
+
+        .window_id = window_id,
+        .attributes = attributes.*,
+        .properties = .init(allocator),
     };
 
     try window.client_owner.add_window(window);
-    errdefer window.client_owner.remove_window(window);
-
     try resource_manager.add_window(window);
-    errdefer resource_manager.remove_window(window);
-
     if (parent) |par|
         try par.children.append(window);
 
@@ -92,3 +96,36 @@ fn remove_child(self: *Self, child_to_remove: *Self) void {
         }
     }
 }
+
+pub const Attributes = struct {
+    geometry: Geometry,
+    class: x11.Class,
+    visual: *const Visual, // Reference
+    bit_gravity: core.BitGravity,
+    win_gravity: core.WinGravity,
+    backing_store: BackingStore,
+    backing_planes: u32,
+    backing_pixel: u32,
+    colormap: *const Colormap, // Reference
+    cursor: ?*const Cursor, // Reference
+    map_state: MapState,
+    background_pixmap: ?x11.Pixmap,
+    background_pixel: u32,
+    border_pixmap: ?x11.Pixmap,
+    border_pixel: u32,
+    save_under: bool,
+    override_redirect: bool,
+};
+
+pub const MapState = enum(x11.Card32) {
+    unmapped = 0,
+    unviewable = 1,
+    viewable = 2,
+};
+
+pub const BackingStore = enum(x11.Card8) {
+    /// aka not_useful
+    never = 0,
+    when_mapped = 1,
+    always = 2,
+};

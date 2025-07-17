@@ -9,6 +9,7 @@ const x11_error = @import("../error.zig");
 const resource = @import("../../resource.zig");
 const AtomManager = @import("../../AtomManager.zig");
 const Window = @import("../../Window.zig");
+const Colormap = @import("../../Colormap.zig");
 
 pub fn handle_request(request_context: RequestContext) !void {
     std.log.info("Handling core request: {d}", .{request_context.header.major_opcode});
@@ -29,6 +30,22 @@ pub fn handle_request(request_context: RequestContext) !void {
     }
 }
 
+fn window_class_validate_attributes(class: x11.Class, req: *const CreateWindowRequest) bool {
+    return switch (class) {
+        .input_output => true,
+        .input_only => !req.value_mask.background_pixmap and
+            !req.value_mask.background_pixel and
+            !req.value_mask.border_pixmap and
+            !req.value_mask.border_pixel and
+            !req.value_mask.bit_gravity and
+            !req.value_mask.backing_store and
+            !req.value_mask.backing_planes and
+            !req.value_mask.backing_pixel and
+            !req.value_mask.save_under and
+            !req.value_mask.colormap,
+    };
+}
+
 // TODO: Handle all params properly
 fn create_window(request_context: RequestContext) !void {
     var req = try request_context.client.read_request(CreateWindowRequest, request_context.allocator);
@@ -40,13 +57,92 @@ fn create_window(request_context: RequestContext) !void {
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.parent));
     };
 
+    const class: x11.Class = if (req.request.class == copy_from_parent) parent_window.attributes.class else @enumFromInt(req.request.class);
+    if (!window_class_validate_attributes(class, &req.request))
+        return request_context.client.write_error(request_context, .match, 0);
+
+    var visual = parent_window.attributes.visual;
+    if (@intFromEnum(req.request.visual) != copy_from_parent) {
+        visual = request_context.server.get_visual_by_id(req.request.visual) orelse {
+            return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.visual));
+        };
+    }
+
+    const background_pixmap_arg = req.request.get_value(x11.Card32, "background_pixmap") orelse none;
+    const background_pixmap: ?x11.Pixmap = switch (background_pixmap_arg) {
+        none => null,
+        parent_relative => parent_window.attributes.background_pixmap,
+        else => @enumFromInt(background_pixmap_arg),
+    };
+
+    const border_pixmap_arg = req.request.get_value(x11.Card32, "border_pixmap") orelse none;
+    const border_pixmap: ?x11.Pixmap = switch (border_pixmap_arg) {
+        copy_from_parent => parent_window.attributes.border_pixmap,
+        else => @enumFromInt(border_pixmap_arg),
+    };
+
+    const colormap_arg = req.request.get_value(x11.Card32, "colormap") orelse copy_from_parent;
+    var colormap: *const Colormap = undefined;
+    switch (colormap_arg) {
+        copy_from_parent => colormap = parent_window.attributes.colormap,
+        else => {
+            colormap = request_context.server.get_colormap_by_id(@enumFromInt(colormap_arg)) orelse {
+                return request_context.client.write_error(request_context, .value, colormap_arg);
+            };
+        },
+    }
+
+    const bit_gravity_arg = req.request.get_value(x11.Card32, "bit_gravity") orelse @intFromEnum(BitGravity.forget);
+    const bit_gravity = std.meta.intToEnum(BitGravity, bit_gravity_arg) catch |err| switch (err) {
+        error.InvalidEnumTag => return request_context.client.write_error(request_context, .value, bit_gravity_arg),
+    };
+
+    const win_gravity_arg = req.request.get_value(x11.Card32, "win_gravity") orelse @intFromEnum(WinGravity.north_west);
+    const win_gravity = std.meta.intToEnum(WinGravity, win_gravity_arg) catch |err| switch (err) {
+        error.InvalidEnumTag => return request_context.client.write_error(request_context, .value, win_gravity_arg),
+    };
+
+    const backing_store_arg = req.request.get_value(x11.Card32, "backing_store") orelse 0;
+    const backing_store = std.meta.intToEnum(Window.BackingStore, backing_store_arg) catch |err| switch (err) {
+        error.InvalidEnumTag => return request_context.client.write_error(request_context, .value, backing_store_arg),
+    };
+
+    const backing_planes = req.request.get_value(x11.Card32, "backing_planes") orelse 0xFFFFFFFF;
+    const backing_pixel = req.request.get_value(x11.Card32, "backing_pixel") orelse 0;
+    const background_pixel = req.request.get_value(x11.Card32, "background_pixel") orelse 0;
+    const border_pixel = req.request.get_value(x11.Card32, "border_pixel") orelse 0;
+    const save_under = if (req.request.get_value(x11.Card8, "save_under") orelse 0 == 0) false else true;
+    const override_redirect = if (req.request.get_value(x11.Card8, "override_redirect") orelse 0 == 0) false else true;
+
+    const window_attributes = Window.Attributes{
+        .geometry = .{
+            .x = req.request.x,
+            .y = req.request.y,
+            .width = req.request.width,
+            .height = req.request.height,
+        },
+        .class = class,
+        .visual = visual,
+        .bit_gravity = bit_gravity,
+        .win_gravity = win_gravity,
+        .backing_store = backing_store,
+        .backing_planes = backing_planes,
+        .backing_pixel = backing_pixel,
+        .colormap = colormap,
+        .cursor = null, // TODO:
+        .map_state = .unmapped,
+        .background_pixmap = background_pixmap,
+        .background_pixel = background_pixel,
+        .border_pixmap = border_pixmap,
+        .border_pixel = border_pixel,
+        .save_under = save_under,
+        .override_redirect = override_redirect,
+    };
+
     const window = if (Window.create(
         parent_window,
         req.request.window,
-        req.request.x,
-        req.request.y,
-        req.request.width,
-        req.request.height,
+        &window_attributes,
         request_context.client,
         &request_context.server.resource_manager,
         request_context.allocator,
@@ -68,7 +164,6 @@ fn create_window(request_context: RequestContext) !void {
 
     _ = window;
 
-    const override_redirect = if (req.request.get_value(x11.Card8, "override_redirect") orelse 0 == 0) false else true;
     const create_notify_event = event.Event{
         .create_notify = .{
             .sequence_number = request_context.sequence_number,
@@ -108,10 +203,10 @@ fn get_geometry(request_context: RequestContext) !void {
         .depth = 32, // TODO: Use real value
         .sequence_number = request_context.sequence_number,
         .root = request_context.server.root_window.window_id,
-        .x = @intCast(window.x),
-        .y = @intCast(window.y),
-        .width = @intCast(window.width),
-        .height = @intCast(window.height),
+        .x = @intCast(window.attributes.geometry.x),
+        .y = @intCast(window.attributes.geometry.y),
+        .width = @intCast(window.attributes.geometry.width),
+        .height = @intCast(window.attributes.geometry.height),
         .border_width = 1, // TODO: Use real value
     };
     try request_context.client.write_reply(&rep);
@@ -272,7 +367,7 @@ const CreateWindowRequest = struct {
     width: x11.Card16,
     height: x11.Card16,
     border_width: x11.Card16,
-    class: x11.Class,
+    class: x11.Card16, // x11.Class, or 0 (Copy from parent)
     visual: x11.VisualId,
     value_mask: ValueMask,
     value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
@@ -288,8 +383,114 @@ const CreateWindowRequest = struct {
     }
 };
 
+const none: x11.Card32 = 0;
+const parent_relative: x11.Card32 = 1;
 const window_none: x11.Window = 0;
+const pixmap_none: x11.Pixmap = 0;
 const window_pointer_root: x11.Window = 1;
+const copy_from_parent: x11.Card32 = 0;
+
+pub const BitGravity = enum(x11.Card32) {
+    forget = 0,
+    north_west = 1,
+    north = 2,
+    nort_east = 3,
+    west = 4,
+    center = 5,
+    east = 6,
+    south_west = 7,
+    south = 8,
+    south_east = 9,
+    static = 10,
+};
+
+pub const WinGravity = enum(x11.Card32) {
+    unmap = 0,
+    north_west = 1,
+    north = 2,
+    nort_east = 3,
+    west = 4,
+    center = 5,
+    east = 6,
+    south_west = 7,
+    south = 8,
+    south_east = 9,
+    static = 10,
+};
+
+const EventMask = packed struct(x11.Card32) {
+    key_press: bool,
+    key_release: bool,
+    button_press: bool,
+    button_release: bool,
+    enter_window: bool,
+    leave_window: bool,
+    pointer_motion: bool,
+    pointer_motion_hint: bool,
+    button1_motion: bool,
+    button2_motion: bool,
+    button3_motion: bool,
+    button4_motion: bool,
+    button5_motion: bool,
+    button_motion: bool,
+    keymap_state: bool,
+    exposure: bool,
+    visibility_change: bool,
+    structure_notify: bool,
+    resize_redirect: bool,
+    substructure_notify: bool,
+    substructure_redirect: bool,
+    focus_change: bool,
+    property_change: bool,
+    colormap_change: bool,
+    owner_grab_button: bool,
+
+    _padding: u7 = 0,
+
+    pub fn sanitize(self: EventMask) EventMask {
+        var result = self;
+        result._padding = 0;
+        return result;
+    }
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == @sizeOf(x11.Card32));
+        std.debug.assert(@bitSizeOf(@This()) == @bitSizeOf(x11.Card32));
+    }
+};
+
+const DeviceEventMask = packed struct(x11.Card32) {
+    key_press: bool,
+    key_release: bool,
+    button_press: bool,
+    button_release: bool,
+    _padding1: bool = 0,
+    _padding2: bool = 0,
+    pointer_motion: bool,
+    _padding3: bool = 0,
+    button1_motion: bool,
+    button2_motion: bool,
+    button3_motion: bool,
+    button4_motion: bool,
+    button5_motion: bool,
+    button_motion: bool,
+
+    _padding4: u18 = 0,
+
+    pub fn sanitize(self: EventMask) EventMask {
+        var result = self;
+        result._padding1 = 0;
+        result._padding2 = 0;
+        result._padding3 = 0;
+        result._padding4 = 0;
+        return result;
+    }
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == @sizeOf(x11.Card32));
+        std.debug.assert(@bitSizeOf(@This()) == @bitSizeOf(x11.Card32));
+    }
+};
 
 const RevertTo = enum(x11.Card8) {
     none = 0,

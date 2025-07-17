@@ -15,8 +15,21 @@ const ResourceManager = @import("ResourceManager.zig");
 const AtomManager = @import("AtomManager.zig");
 const RequestContext = @import("RequestContext.zig");
 const backend_imp = @import("backend/backend.zig");
+const Visual = @import("Visual.zig");
+const Colormap = @import("Colormap.zig");
 
 const Self = @This();
+
+pub const vendor = "XPhoenix";
+
+pub const screen_true_color_colormap_id: x11.Colormap = @enumFromInt(0x20);
+const screen_true_color_colormap = Colormap{
+    .id = screen_true_color_colormap_id,
+    .visual = &screen_true_color_visual,
+};
+
+pub const screen_true_color_visual_id: x11.VisualId = @enumFromInt(0x21);
+const screen_true_color_visual = Visual.create_true_color(screen_true_color_visual_id);
 
 allocator: std.mem.Allocator,
 root_client: *Client,
@@ -29,6 +42,8 @@ resource_id_base_manager: ResourceIdBaseManager,
 atom_manager: AtomManager,
 client_manager: ClientManager,
 backend: backend_imp.Backend,
+
+installed_colormaps: std.ArrayList(*const Colormap),
 
 pub fn init(allocator: std.mem.Allocator) !Self {
     const unix_domain_socket_path = "/tmp/.X11-unix/X1";
@@ -68,10 +83,12 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         return error.FailedToSetupRootClient;
     };
 
-    const root_window_id: x11.Window = @enumFromInt(0x3b2 | root_client.resource_id_base);
-    // TODO:
-    var root_window = try Window.create(null, root_window_id, 0, 0, 3840, 2160, root_client, &resource_manager, allocator);
-    try root_window.set_property_string8(AtomManager.Predefined.resource_manager, "*background:\t#222222");
+    var installed_colormaps = std.ArrayList(*const Colormap).init(allocator);
+    errdefer installed_colormaps.deinit();
+
+    try installed_colormaps.append(&screen_true_color_colormap);
+
+    const root_window = try create_root_window(root_client, &resource_manager, allocator);
 
     return .{
         .allocator = allocator,
@@ -84,6 +101,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         .atom_manager = atom_manager,
         .client_manager = client_manager,
         .backend = backend,
+        .installed_colormaps = installed_colormaps,
     };
 }
 
@@ -91,8 +109,43 @@ pub fn deinit(self: *Self) void {
     self.client_manager.deinit(&self.resource_manager);
     self.resource_manager.deinit();
     self.atom_manager.deinit();
+    self.installed_colormaps.deinit();
     std.posix.close(self.epoll_fd);
     self.backend.deinit(self.allocator);
+}
+
+fn create_root_window(root_client: *Client, resource_manager: *ResourceManager, allocator: std.mem.Allocator) !*Window {
+    const root_window_id: x11.Window = @enumFromInt(0x3b2 | root_client.resource_id_base);
+    const window_attributes = Window.Attributes{
+        .geometry = .{
+            .x = 0,
+            .y = 0,
+            .width = 3840, // TODO:
+            .height = 2160, // TODO:
+        },
+        .class = .input_output,
+        .visual = &screen_true_color_visual,
+        .bit_gravity = .forget,
+        .win_gravity = .north_west,
+        .backing_store = .never,
+        .backing_planes = 0xFFFFFFFF,
+        .backing_pixel = 0,
+        .colormap = &screen_true_color_colormap,
+        .cursor = null, // TODO: Add a cursor
+        .map_state = .viewable,
+        .background_pixmap = null,
+        .background_pixel = 0,
+        .border_pixmap = null,
+        .border_pixel = 0,
+        .save_under = false,
+        .override_redirect = false,
+    };
+
+    var root_window = try Window.create(null, root_window_id, &window_attributes, root_client, resource_manager, allocator);
+    errdefer root_window.destroy(resource_manager);
+
+    try root_window.set_property_string8(AtomManager.Predefined.resource_manager, "*background:\t#222222");
+    return root_window;
 }
 
 pub fn run(self: *Self) void {
@@ -147,7 +200,7 @@ pub fn run(self: *Self) void {
                     std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_DEL, epoll_event.data.fd, null) catch |err| {
                         std.log.err("Epoll del failed for server: {d}. Error: {s}", .{ epoll_event.data.fd, @errorName(err) });
                     };
-                    std.log.err("Server socket failed (HUP), closing " ++ ConnectionSetup.vendor, .{});
+                    std.log.err("Server socket failed (HUP), closing " ++ vendor, .{});
                     running = false;
                     break;
                 } else {
@@ -207,7 +260,7 @@ fn process_all_client_requests(self: *Self, client: *Client) bool {
     while (true) {
         switch (client.state) {
             .connecting => {
-                const one_request_handled = ConnectionSetup.handle_client_connect(client, self.root_window, self.allocator) catch |err| {
+                const one_request_handled = ConnectionSetup.handle_client_connect(self, client, self.root_window, self.allocator) catch |err| {
                     std.log.err("Client connection setup failed: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
                     remove_client(self, client.connection.stream.handle);
                     return false;
@@ -276,4 +329,22 @@ fn handle_client_request(self: *Self, client: *Client) !bool {
 
     try client.write_buffer_to_client();
     return true;
+}
+
+pub fn get_visual_by_id(self: *Self, visual_id: x11.VisualId) ?*const Visual {
+    _ = self;
+    if (visual_id == screen_true_color_visual.id) {
+        return &screen_true_color_visual;
+    } else {
+        return null;
+    }
+}
+
+pub fn get_colormap_by_id(self: *Self, colormap_id: x11.Colormap) ?*const Colormap {
+    _ = self;
+    if (colormap_id == screen_true_color_colormap_id) {
+        return &screen_true_color_colormap;
+    } else {
+        return null;
+    }
 }

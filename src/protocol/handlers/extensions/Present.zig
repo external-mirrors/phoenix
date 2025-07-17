@@ -146,6 +146,11 @@ const PresentEventMask = packed struct(x11.Card32) {
         result._padding = 0;
         return result;
     }
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == @sizeOf(x11.Card32));
+        std.debug.assert(@bitSizeOf(@This()) == @bitSizeOf(x11.Card32));
+    }
 };
 
 const PresentEventCode = enum(x11.Card16) {

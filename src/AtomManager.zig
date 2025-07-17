@@ -3,7 +3,7 @@ const x11 = @import("protocol/x11.zig");
 
 const Self = @This();
 
-const name_max_length: usize = 256;
+const name_max_length: usize = 255;
 const max_num_atoms: usize = 262144;
 
 pub const Predefined = struct {

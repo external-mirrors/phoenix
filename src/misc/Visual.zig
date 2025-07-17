@@ -1,4 +1,4 @@
-const xph = @import("xphoenix.zig");
+const xph = @import("../xphoenix.zig");
 const x11 = xph.x11;
 
 const Self = @This();

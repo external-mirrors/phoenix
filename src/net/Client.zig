@@ -17,7 +17,7 @@ write_buffer_fds: ReplyFdsBuffer,
 
 resource_id_base: u32,
 sequence_number: u16,
-resources: xph.resource.ResourceHashMap,
+resources: xph.ResourceHashMap,
 
 deleting_self: bool,
 

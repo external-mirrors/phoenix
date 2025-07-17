@@ -5,7 +5,7 @@ const x11 = xph.x11;
 const Self = @This();
 
 // Only keeps references, not ownership
-resources: xph.resource.ResourceHashMap,
+resources: xph.ResourceHashMap,
 
 pub fn init(allocator: std.mem.Allocator) Self {
     return .{

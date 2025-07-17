@@ -15,7 +15,7 @@ pub const Client = @import("net/Client.zig");
 pub const message = @import("net/message.zig");
 pub const Server = @import("net/Server.zig");
 
-const err = @import("protocol/error.zig");
+pub const err = @import("protocol/error.zig");
 pub const Error = err.Error;
 pub const ErrorType = err.ErrorType;
 pub const event = @import("protocol/event.zig");
@@ -28,16 +28,18 @@ pub const ConnectionSetup = @import("protocol/handlers/ConnectionSetup.zig");
 pub const RequestContext = @import("protocol/handlers/RequestContext.zig");
 pub const core = @import("protocol/handlers/core.zig");
 pub const extensions = @import("protocol/handlers/extensions.zig");
+pub const xshmfence = @import("protocol/xshmfence.zig");
 
 pub const Colormap = @import("resource/Colormap.zig");
 pub const Cursor = @import("resource/Cursor.zig");
 pub const Drawable = @import("resource/Drawable.zig");
 pub const Pixmap = @import("resource/Pixmap.zig");
 pub const Window = @import("resource/Window.zig");
+pub const resource = @import("resource/resource.zig");
+pub const Resource = resource.Resource;
+pub const ResourceHashMap = resource.ResourceHashMap;
 
-pub const Geometry = @import("Geometry.zig");
-pub const resource = @import("resource.zig");
-pub const Visual = @import("Visual.zig");
-pub const xshmfence = @import("xshmfence.zig");
+pub const Geometry = @import("misc/Geometry.zig");
+pub const Visual = @import("misc/Visual.zig");
 
 pub const c = @import("c.zig");

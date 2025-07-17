@@ -1,5 +1,5 @@
 const std = @import("std");
-const xph = @import("xphoenix.zig");
+const xph = @import("../xphoenix.zig");
 
 pub const Resource = union(enum) {
     window: *xph.Window,

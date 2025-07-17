@@ -79,7 +79,7 @@ fn open(request_context: xph.RequestContext) !void {
     // TODO: Use the request data (drawable, which should be the root window of the screen)
     // and provider.
 
-    const card_fd = request_context.server.display_backend.get_drm_card_fd();
+    const card_fd = request_context.server.display.get_drm_card_fd();
 
     const render_path = c.drmGetRenderDeviceNameFromFd(card_fd) orelse return error.FailedToGetCardRenderPath;
     defer std.c.free(render_path);
@@ -138,7 +138,7 @@ fn pixmap_from_buffer(request_context: xph.RequestContext) !void {
         .num_items = 1,
     };
     // TODO: associate this with the pixmap
-    try request_context.server.display_backend.import_dmabuf(&import_dmabuf);
+    try request_context.server.display.import_dmabuf(&import_dmabuf);
 }
 
 fn fence_from_fd(request_context: xph.RequestContext) !void {
@@ -189,7 +189,7 @@ fn get_supported_modifiers(request_context: xph.RequestContext) !void {
 
     // TODO: Handle screen as well
     var modifiers_buf: [64]u64 = undefined;
-    const modifiers = request_context.server.display_backend.get_supported_modifiers(window, req.request.depth, req.request.bpp, &modifiers_buf) catch |err| switch (err) {
+    const modifiers = request_context.server.display.get_supported_modifiers(window, req.request.depth, req.request.bpp, &modifiers_buf) catch |err| switch (err) {
         error.InvalidDepth, error.FailedToQueryDmaBufModifiers => {
             return request_context.client.write_error(request_context, .match, 0);
         },
@@ -255,7 +255,7 @@ fn pixmap_from_buffers(request_context: xph.RequestContext) !void {
     }
 
     // TODO: associate this with the pixmap
-    try request_context.server.display_backend.import_dmabuf(&import_dmabuf);
+    try request_context.server.display.import_dmabuf(&import_dmabuf);
 }
 
 const MinorOpcode = struct {

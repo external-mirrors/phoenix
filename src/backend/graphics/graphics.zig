@@ -1,5 +1,5 @@
 const std = @import("std");
-const xph = @import("../xphoenix.zig");
+const xph = @import("../../xphoenix.zig");
 const c = xph.c;
 
 pub const Graphics = union(enum) {

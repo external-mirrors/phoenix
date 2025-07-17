@@ -1,10 +1,10 @@
-pub const DisplayBackend = @import("display_backend/display_backend.zig").DisplayBackend;
-pub const DisplayBackendX11 = @import("display_backend/DisplayBackendX11.zig");
+pub const Display = @import("backend/display/display.zig").Display;
+pub const DisplayX11 = @import("backend/display/DisplayX11.zig");
 
-pub const graphics = @import("graphics/graphics.zig");
+pub const graphics = @import("backend/graphics/graphics.zig");
 pub const Graphics = graphics.Graphics;
 //pub const DmabufImport = graphics.DmabufImport;
-pub const GraphicsEgl = @import("graphics/GraphicsEgl.zig");
+pub const GraphicsEgl = @import("backend/graphics/GraphicsEgl.zig");
 
 pub const AtomManager = @import("manager/AtomManager.zig");
 pub const ClientManager = @import("manager/ClientManager.zig");

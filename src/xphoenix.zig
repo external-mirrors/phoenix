@@ -30,6 +30,7 @@ pub const core = @import("protocol/handlers/core.zig");
 pub const extensions = @import("protocol/handlers/extensions.zig");
 pub const xshmfence = @import("protocol/xshmfence.zig");
 
+pub const Visual = @import("resource/Visual.zig");
 pub const Colormap = @import("resource/Colormap.zig");
 pub const Cursor = @import("resource/Cursor.zig");
 pub const Drawable = @import("resource/Drawable.zig");
@@ -40,6 +41,5 @@ pub const Resource = resource.Resource;
 pub const ResourceHashMap = resource.ResourceHashMap;
 
 pub const Geometry = @import("misc/Geometry.zig");
-pub const Visual = @import("misc/Visual.zig");
 
 pub const c = @import("c.zig");

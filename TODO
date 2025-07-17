@@ -9,5 +9,3 @@ Implement xc-misc extension, might be needed in practice for gtk/qt applications
 Use composition by default, but if any application gets the overlay window with GetCompositeOverlayWindow then turn it off until the composite overlay window is released.
 Maybe break x11 protocol standard and use the top 3 bits in resource id?
 Handle error.InvalidEnumTag in request.read_request using std.meta.intToEnum. It should return an x11 .value error.
-Organize files better. Move networking code to a "net" directory and rename netutils to utils. Have a zig file with the same name as subdirectory and that should include all of the files inside the subdirectory. This will allow just including one file instead of many in many places.
-    Have one directory for managers as well.

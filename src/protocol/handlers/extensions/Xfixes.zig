@@ -1,11 +1,8 @@
 const std = @import("std");
-const RequestContext = @import("../../../RequestContext.zig");
-const x11 = @import("../../x11.zig");
-const x11_error = @import("../../error.zig");
-const request = @import("../../request.zig");
-const reply = @import("../../reply.zig");
+const xph = @import("../../../xphoenix.zig");
+const x11 = xph.x11;
 
-pub fn handle_request(request_context: RequestContext) !void {
+pub fn handle_request(request_context: xph.RequestContext) !void {
     std.log.warn("Handling xfixes request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
     switch (request_context.header.minor_opcode) {
         MinorOpcode.query_version => return query_version(request_context),
@@ -17,7 +14,7 @@ pub fn handle_request(request_context: RequestContext) !void {
     }
 }
 
-fn query_version(request_context: RequestContext) !void {
+fn query_version(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(XfixesQueryVersionRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("XfixesQueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
@@ -37,7 +34,7 @@ fn query_version(request_context: RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn create_region(_: RequestContext) !void {
+fn create_region(_: xph.RequestContext) !void {
     // TODO: Implement
 }
 
@@ -60,7 +57,7 @@ const XfixesQueryVersionRequest = struct {
 };
 
 const XfixesQueryVersionReply = struct {
-    type: reply.ReplyType = .reply,
+    type: xph.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply

@@ -1,28 +1,19 @@
 const std = @import("std");
-const RequestContext = @import("../../RequestContext.zig");
-const request = @import("../request.zig");
-const reply = @import("../reply.zig");
-const x11 = @import("../x11.zig");
-const opcode = @import("../opcode.zig");
-const event = @import("../event.zig");
-const x11_error = @import("../error.zig");
-const resource = @import("../../resource.zig");
-const AtomManager = @import("../../AtomManager.zig");
-const Window = @import("../../Window.zig");
-const Colormap = @import("../../Colormap.zig");
+const xph = @import("../../xphoenix.zig");
+const x11 = xph.x11;
 
-pub fn handle_request(request_context: RequestContext) !void {
+pub fn handle_request(request_context: xph.RequestContext) !void {
     std.log.info("Handling core request: {d}", .{request_context.header.major_opcode});
     switch (request_context.header.major_opcode) {
-        opcode.Major.create_window => return create_window(request_context),
-        opcode.Major.map_window => return map_window(request_context),
-        opcode.Major.get_geometry => return get_geometry(request_context),
-        opcode.Major.intern_atom => return intern_atom(request_context),
-        opcode.Major.change_property => return change_property(request_context),
-        opcode.Major.get_property => return get_property(request_context),
-        opcode.Major.get_input_focus => return get_input_focus(request_context),
-        opcode.Major.create_gc => return create_gc(request_context),
-        opcode.Major.query_extension => return query_extension(request_context),
+        xph.opcode.Major.create_window => return create_window(request_context),
+        xph.opcode.Major.map_window => return map_window(request_context),
+        xph.opcode.Major.get_geometry => return get_geometry(request_context),
+        xph.opcode.Major.intern_atom => return intern_atom(request_context),
+        xph.opcode.Major.change_property => return change_property(request_context),
+        xph.opcode.Major.get_property => return get_property(request_context),
+        xph.opcode.Major.get_input_focus => return get_input_focus(request_context),
+        xph.opcode.Major.create_gc => return create_gc(request_context),
+        xph.opcode.Major.query_extension => return query_extension(request_context),
         else => {
             std.log.warn("Unimplemented core request: {d}", .{request_context.header.major_opcode});
             return request_context.client.write_error(request_context, .implementation, 0);
@@ -47,7 +38,7 @@ fn window_class_validate_attributes(class: x11.Class, req: *const CreateWindowRe
 }
 
 // TODO: Handle all params properly
-fn create_window(request_context: RequestContext) !void {
+fn create_window(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(CreateWindowRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("CreateWindow request: {s}", .{x11.stringify_fmt(req)});
@@ -82,7 +73,7 @@ fn create_window(request_context: RequestContext) !void {
     };
 
     const colormap_arg = req.request.get_value(x11.Card32, "colormap") orelse copy_from_parent;
-    var colormap: *const Colormap = undefined;
+    var colormap: *const xph.Colormap = undefined;
     switch (colormap_arg) {
         copy_from_parent => colormap = parent_window.attributes.colormap,
         else => {
@@ -103,7 +94,7 @@ fn create_window(request_context: RequestContext) !void {
     };
 
     const backing_store_arg = req.request.get_value(x11.Card32, "backing_store") orelse 0;
-    const backing_store = std.meta.intToEnum(Window.BackingStore, backing_store_arg) catch |err| switch (err) {
+    const backing_store = std.meta.intToEnum(xph.Window.BackingStore, backing_store_arg) catch |err| switch (err) {
         error.InvalidEnumTag => return request_context.client.write_error(request_context, .value, backing_store_arg),
     };
 
@@ -114,7 +105,7 @@ fn create_window(request_context: RequestContext) !void {
     const save_under = if (req.request.get_value(x11.Card8, "save_under") orelse 0 == 0) false else true;
     const override_redirect = if (req.request.get_value(x11.Card8, "override_redirect") orelse 0 == 0) false else true;
 
-    const window_attributes = Window.Attributes{
+    const window_attributes = xph.Window.Attributes{
         .geometry = .{
             .x = req.request.x,
             .y = req.request.y,
@@ -139,7 +130,7 @@ fn create_window(request_context: RequestContext) !void {
         .override_redirect = override_redirect,
     };
 
-    const window = if (Window.create(
+    const window = if (xph.Window.create(
         parent_window,
         req.request.window,
         &window_attributes,
@@ -164,7 +155,7 @@ fn create_window(request_context: RequestContext) !void {
 
     _ = window;
 
-    const create_notify_event = event.Event{
+    const create_notify_event = xph.event.Event{
         .create_notify = .{
             .sequence_number = request_context.sequence_number,
             .parent = req.request.parent,
@@ -181,14 +172,14 @@ fn create_window(request_context: RequestContext) !void {
     try request_context.client.write_event(&create_notify_event);
 }
 
-fn map_window(request_context: RequestContext) !void {
+fn map_window(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(MapWindowRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("MapWindow request: {s}", .{x11.stringify_fmt(req)});
     // TODO: Implement
 }
 
-fn get_geometry(request_context: RequestContext) !void {
+fn get_geometry(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(GetGeometryRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("GetGeometry request: {s}", .{x11.stringify_fmt(req.request)});
@@ -212,14 +203,14 @@ fn get_geometry(request_context: RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn intern_atom(request_context: RequestContext) !void {
+fn intern_atom(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(InternAtomRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("InternAtom request: {s}", .{x11.stringify_fmt(req.request)});
 
     var atom: x11.Atom = undefined;
     if (req.request.only_if_exists) {
-        atom = if (request_context.server.atom_manager.get_atom_by_name(req.request.name.items)) |atom_id| atom_id else AtomManager.Predefined.none;
+        atom = if (request_context.server.atom_manager.get_atom_by_name(req.request.name.items)) |atom_id| atom_id else xph.AtomManager.Predefined.none;
     } else {
         atom = if (request_context.server.atom_manager.get_atom_by_name_create_if_not_exists(req.request.name.items)) |atom_id| atom_id else |err| switch (err) {
             error.OutOfMemory, error.TooManyAtoms => return request_context.client.write_error(request_context, .alloc, 0),
@@ -234,12 +225,12 @@ fn intern_atom(request_context: RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn change_property(_: RequestContext) !void {
+fn change_property(_: xph.RequestContext) !void {
     // TODO: Implement
 }
 
 // TODO: Actually read the request values, handling them properly
-fn get_property(request_context: RequestContext) !void {
+fn get_property(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(GetPropertyRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("GetProperty request: {s}", .{x11.stringify_fmt(req.request)});
@@ -255,7 +246,7 @@ fn get_property(request_context: RequestContext) !void {
     };
 
     // TODO: Handle this properly
-    if (std.meta.activeTag(property.*) == .string8 and req.request.type == AtomManager.Predefined.string) {
+    if (std.meta.activeTag(property.*) == .string8 and req.request.type == xph.AtomManager.Predefined.string) {
         // TODO: Properly set bytes_after and all that crap
         var rep = GetPropertyCard8Reply{
             .sequence_number = request_context.sequence_number,
@@ -270,7 +261,7 @@ fn get_property(request_context: RequestContext) !void {
     }
 }
 
-fn get_input_focus(request_context: RequestContext) !void {
+fn get_input_focus(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(GetInputFocusRequest, request_context.allocator);
     defer req.deinit();
 
@@ -283,11 +274,11 @@ fn get_input_focus(request_context: RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn create_gc(_: RequestContext) !void {
+fn create_gc(_: xph.RequestContext) !void {
     std.log.err("Unimplemented request: CreateGC", .{});
 }
 
-fn query_extension(request_context: RequestContext) !void {
+fn query_extension(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(QueryExtensionRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("QueryExtension request: {s}", .{x11.stringify_fmt(req.request)});
@@ -302,13 +293,13 @@ fn query_extension(request_context: RequestContext) !void {
 
     if (std.mem.eql(u8, req.request.name.items, "DRI3")) {
         rep.present = true;
-        rep.major_opcode = opcode.Major.dri3;
+        rep.major_opcode = xph.opcode.Major.dri3;
     } else if (std.mem.eql(u8, req.request.name.items, "XFIXES")) {
         rep.present = true;
-        rep.major_opcode = opcode.Major.xfixes;
+        rep.major_opcode = xph.opcode.Major.xfixes;
     } else if (std.mem.eql(u8, req.request.name.items, "Present")) {
         rep.present = true;
-        rep.major_opcode = opcode.Major.present;
+        rep.major_opcode = xph.opcode.Major.present;
     }
 
     try request_context.client.write_reply(&rep);
@@ -512,7 +503,7 @@ const GetInputFocusRequest = struct {
 };
 
 const GetInputFocusReply = struct {
-    reply_type: reply.ReplyType = .reply,
+    reply_type: xph.reply.ReplyType = .reply,
     revert_to: RevertTo,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -530,7 +521,7 @@ const QueryExtensionRequest = struct {
 };
 
 const QueryExtensionReply = struct {
-    reply_type: reply.ReplyType = .reply,
+    reply_type: xph.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -554,7 +545,7 @@ const GetPropertyRequest = struct {
 
 fn GetPropertyReply(comptime DataType: type) type {
     return struct {
-        reply_type: reply.ReplyType = .reply,
+        reply_type: xph.reply.ReplyType = .reply,
         format: x11.Card8 = @sizeOf(DataType),
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -578,7 +569,7 @@ const GetGeometryRequest = struct {
 };
 
 const GetGeometryReply = struct {
-    reply_type: reply.ReplyType = .reply,
+    reply_type: xph.reply.ReplyType = .reply,
     depth: x11.Card8,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -601,7 +592,7 @@ const InternAtomRequest = struct {
 };
 
 const InternAtomReply = struct {
-    reply_type: reply.ReplyType = .reply,
+    reply_type: xph.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -615,7 +606,7 @@ const Str = struct {
 };
 
 const ListExtensionsReply = struct {
-    reply_type: reply.ReplyType = .reply,
+    reply_type: xph.reply.ReplyType = .reply,
     num_strs: x11.Card8,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply

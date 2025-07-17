@@ -1,7 +1,6 @@
 const std = @import("std");
 const BackendX11 = @import("BackendX11.zig");
-const Window = @import("../Window.zig");
-const graphics_imp = @import("../graphics/graphics.zig");
+const xph = @import("../xphoenix.zig");
 
 pub const Backend = union(enum) {
     x11: *BackendX11,
@@ -35,13 +34,13 @@ pub const Backend = union(enum) {
         }
     }
 
-    pub fn import_dmabuf(self: Backend, import: *const graphics_imp.DmabufImport) !void {
+    pub fn import_dmabuf(self: Backend, import: *const xph.graphics.DmabufImport) !void {
         return switch (self) {
             inline else => |item| item.import_dmabuf(import),
         };
     }
 
-    pub fn get_supported_modifiers(self: Backend, window: *Window, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {
+    pub fn get_supported_modifiers(self: Backend, window: *xph.Window, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {
         return switch (self) {
             inline else => |item| item.get_supported_modifiers(window, depth, bpp, modifiers),
         };

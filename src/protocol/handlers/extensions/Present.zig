@@ -1,15 +1,10 @@
 const std = @import("std");
-const RequestContext = @import("../../../RequestContext.zig");
-const x11 = @import("../../x11.zig");
-const x11_error = @import("../../error.zig");
-const request = @import("../../request.zig");
-const reply = @import("../../reply.zig");
-const event = @import("../../event.zig");
-const opcode = @import("../../opcode.zig");
+const xph = @import("../../../xphoenix.zig");
 const Xfixes = @import("Xfixes.zig");
 const Randr = @import("Randr.zig");
+const x11 = xph.x11;
 
-pub fn handle_request(request_context: RequestContext) !void {
+pub fn handle_request(request_context: xph.RequestContext) !void {
     std.log.warn("Handling present request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
     switch (request_context.header.minor_opcode) {
         MinorOpcode.query_version => return query_version(request_context),
@@ -22,7 +17,7 @@ pub fn handle_request(request_context: RequestContext) !void {
     }
 }
 
-fn query_version(request_context: RequestContext) !void {
+fn query_version(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(PresentQueryVersionRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("PresentQueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
@@ -42,7 +37,7 @@ fn query_version(request_context: RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn present_pixmap(request_context: RequestContext) !void {
+fn present_pixmap(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(PresentPixmapRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("PresentPixmap request: {s}", .{x11.stringify_fmt(req.request)});
@@ -87,7 +82,7 @@ fn present_pixmap(request_context: RequestContext) !void {
     }
 }
 
-fn select_input(request_context: RequestContext) !void {
+fn select_input(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(PresentSelectInputRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("PresentSelectInput request: {s}", .{x11.stringify_fmt(req.request)});
@@ -186,7 +181,7 @@ const PresentQueryVersionRequest = struct {
 };
 
 const PresentQueryVersionReply = struct {
-    type: reply.ReplyType = .reply,
+    type: xph.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -227,8 +222,8 @@ const PresentSelectInputRequest = struct {
 };
 
 const PresentCompleteNotifyEvent = extern struct {
-    code: event.EventCode = .xge,
-    present_extension_opcode: x11.Card8 = opcode.Major.present,
+    code: xph.event.EventCode = .xge,
+    present_extension_opcode: x11.Card8 = xph.opcode.Major.present,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
     present_event_code: PresentEventCode = .complete_notify,
@@ -246,8 +241,8 @@ const PresentCompleteNotifyEvent = extern struct {
 };
 
 const PresentIdleNotifyEvent = extern struct {
-    code: event.EventCode = .xge,
-    present_extension_opcode: x11.Card8 = opcode.Major.present,
+    code: xph.event.EventCode = .xge,
+    present_extension_opcode: x11.Card8 = xph.opcode.Major.present,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
     present_event_code: PresentEventCode = .idle_notify,

@@ -1,4 +1,5 @@
-const x11 = @import("../../x11.zig");
+const xph = @import("../../../xphoenix.zig");
+const x11 = xph.x11;
 
 pub const PictFormat = enum(x11.Card32) {
     _,

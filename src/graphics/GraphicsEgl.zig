@@ -1,6 +1,6 @@
 const std = @import("std");
-const c = @import("../c.zig");
-const graphics_imp = @import("graphics.zig");
+const xph = @import("../xphoenix.zig");
+const c = xph.c;
 
 const Self = @This();
 
@@ -178,7 +178,7 @@ pub fn display(self: *Self) void {
     _ = c.eglSwapBuffers(self.egl_display, self.egl_surface);
 }
 
-pub fn import_dmabuf(self: *Self, import: *const graphics_imp.DmabufImport) !void {
+pub fn import_dmabuf(self: *Self, import: *const xph.graphics.DmabufImport) !void {
     std.debug.assert(import.num_items <= drm_num_buf_attrs);
     var attr: [64]c.EGLAttrib = undefined;
 

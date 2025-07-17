@@ -1,15 +1,9 @@
 const std = @import("std");
-const Client = @import("Client.zig");
-const Server = @import("Server.zig");
-const Window = @import("Window.zig");
-const ResourceIdBaseManager = @import("ResourceIdBaseManager.zig");
-const request = @import("protocol/request.zig");
-const reply = @import("protocol/reply.zig");
-const x11 = @import("protocol/x11.zig");
-const Visual = @import("Visual.zig");
+const xph = @import("../../xphoenix.zig");
+const x11 = xph.x11;
 
 /// Returns true if there was enough data from the client to handle the request
-pub fn handle_client_connect(server: *Server, client: *Client, root_window: *Window, allocator: std.mem.Allocator) !bool {
+pub fn handle_client_connect(server: *xph.Server, client: *xph.Client, root_window: *xph.Window, allocator: std.mem.Allocator) !bool {
     // TODO: byteswap
     const connection_setup_request_header = client.peek_read_buffer(ConnectionSetupRequestHeader) orelse return false;
     if (client.read_buffer_data_size() < connection_setup_request_header.total_size())
@@ -40,11 +34,11 @@ pub fn handle_client_connect(server: *Server, client: *Client, root_window: *Win
     std.log.info("auth_protocol_data_length: {s} (len: {d})", .{ std.fmt.fmtSliceHexLower(req.request.auth_protocol_data.items), req.request.auth_protocol_data.items.len });
     std.log.info("Connection setup request: {}", .{x11.stringify_fmt(req)});
 
-    const screen_visual = server.get_visual_by_id(Server.screen_true_color_visual_id) orelse unreachable;
-    const screen_colormap = server.get_colormap_by_id(Server.screen_true_color_colormap_id) orelse unreachable;
+    const screen_visual = server.get_visual_by_id(xph.Server.screen_true_color_visual_id) orelse unreachable;
+    const screen_colormap = server.get_colormap_by_id(xph.Server.screen_true_color_colormap_id) orelse unreachable;
 
     var vendor_buf: [32]x11.Card8 = undefined;
-    const ven = std.fmt.bufPrint(&vendor_buf, "{s}", .{Server.vendor}) catch unreachable;
+    const ven = std.fmt.bufPrint(&vendor_buf, "{s}", .{xph.Server.vendor}) catch unreachable;
 
     var pixmap_formats = [_]PixmapFormat{
         .{
@@ -99,7 +93,7 @@ pub fn handle_client_connect(server: *Server, client: *Client, root_window: *Win
     var rep = ConnectionSetupSuccessReply{
         .release_number = 10000000,
         .resource_id_base = client.resource_id_base,
-        .resource_id_mask = ResourceIdBaseManager.resource_id_mask,
+        .resource_id_mask = xph.ResourceIdBaseManager.resource_id_mask,
         .motion_buffer_size = 256,
         .maximum_request_length = 0xffff,
         .image_byte_order = if (x11.native_endian == .little) .lsb_first else .msg_first,
@@ -190,7 +184,7 @@ const PixmapFormat = struct {
 
 const VisualType = struct {
     visual: x11.VisualId,
-    class: Visual.Class,
+    class: xph.Visual.Class,
     bits_per_rgb_value: x11.Card8,
     colormap_entries: x11.Card16,
     red_mask: x11.Card32,
@@ -220,7 +214,7 @@ const Screen = struct {
     min_installed_colormaps: x11.Card16,
     max_installed_colormaps: x11.Card16,
     root_visual: x11.VisualId,
-    backing_stores: Window.BackingStore,
+    backing_stores: xph.Window.BackingStore,
     save_unders: bool,
     root_depth: x11.Card8,
     num_allowed_depths: x11.Card8 = 0,

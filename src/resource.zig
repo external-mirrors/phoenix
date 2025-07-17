@@ -1,11 +1,10 @@
 const std = @import("std");
-const Window = @import("Window.zig");
-const ResourceManager = @import("ResourceManager.zig");
+const xph = @import("xphoenix.zig");
 
 pub const Resource = union(enum) {
-    window: *Window,
+    window: *xph.Window,
 
-    pub fn deinit(self: Resource, resource_manager: *ResourceManager) void {
+    pub fn deinit(self: Resource, resource_manager: *xph.ResourceManager) void {
         switch (self) {
             inline else => |item| item.destroy(resource_manager),
         }

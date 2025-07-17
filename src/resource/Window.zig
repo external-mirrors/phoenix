@@ -1,19 +1,13 @@
 const std = @import("std");
-const x11 = @import("protocol/x11.zig");
-const Client = @import("Client.zig");
-const ResourceManager = @import("ResourceManager.zig");
-const Geometry = @import("Geometry.zig");
-const Colormap = @import("Colormap.zig");
-const Cursor = @import("Cursor.zig");
-const Visual = @import("Visual.zig");
-const core = @import("protocol/handlers/core.zig");
+const xph = @import("../xphoenix.zig");
+const x11 = xph.x11;
 
 const Self = @This();
 
 allocator: std.mem.Allocator,
 parent: ?*Self,
 children: std.ArrayList(*Self),
-client_owner: *Client, // Reference
+client_owner: *xph.Client, // Reference
 deleting_self: bool,
 
 window_id: x11.Window,
@@ -24,8 +18,8 @@ pub fn create(
     parent: ?*Self,
     window_id: x11.Window,
     attributes: *const Attributes,
-    client_owner: *Client,
-    resource_manager: *ResourceManager,
+    client_owner: *xph.Client,
+    resource_manager: *xph.ResourceManager,
     allocator: std.mem.Allocator,
 ) !*Self {
     var window = try allocator.create(Self);
@@ -51,7 +45,7 @@ pub fn create(
     return window;
 }
 
-pub fn destroy(self: *Self, resource_manager: *ResourceManager) void {
+pub fn destroy(self: *Self, resource_manager: *xph.ResourceManager) void {
     self.deleting_self = true;
 
     if (self.parent) |parent|
@@ -98,16 +92,16 @@ fn remove_child(self: *Self, child_to_remove: *Self) void {
 }
 
 pub const Attributes = struct {
-    geometry: Geometry,
+    geometry: xph.Geometry,
     class: x11.Class,
-    visual: *const Visual, // Reference
-    bit_gravity: core.BitGravity,
-    win_gravity: core.WinGravity,
+    visual: *const xph.Visual, // Reference
+    bit_gravity: xph.core.BitGravity,
+    win_gravity: xph.core.WinGravity,
     backing_store: BackingStore,
     backing_planes: u32,
     backing_pixel: u32,
-    colormap: *const Colormap, // Reference
-    cursor: ?*const Cursor, // Reference
+    colormap: *const xph.Colormap, // Reference
+    cursor: ?*const xph.Cursor, // Reference
     map_state: MapState,
     background_pixmap: ?x11.Pixmap,
     background_pixel: u32,

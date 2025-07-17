@@ -1,16 +1,7 @@
 const std = @import("std");
-const Window = @import("Window.zig");
-const ResourceIdBaseManager = @import("ResourceIdBaseManager.zig");
-const ResourceManager = @import("ResourceManager.zig");
-const message = @import("message.zig");
-const resource = @import("resource.zig");
-const request = @import("protocol/request.zig");
-const reply = @import("protocol/reply.zig");
-const x11_error = @import("protocol/error.zig");
-const event = @import("protocol/event.zig");
-const x11 = @import("protocol/x11.zig");
-const netutils = @import("netutils.zig");
-const RequestContext = @import("RequestContext.zig");
+const xph = @import("../xphoenix.zig");
+const x11 = xph.x11;
+const netutils = @import("utils.zig");
 
 const Self = @This();
 
@@ -26,7 +17,7 @@ write_buffer_fds: ReplyFdsBuffer,
 
 resource_id_base: u32,
 sequence_number: u16,
-resources: resource.ResourceHashMap,
+resources: xph.resource.ResourceHashMap,
 
 deleting_self: bool,
 
@@ -50,7 +41,7 @@ pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, alloca
     };
 }
 
-pub fn deinit(self: *Self, resource_manager: *ResourceManager) void {
+pub fn deinit(self: *Self, resource_manager: *xph.ResourceManager) void {
     self.deleting_self = true;
 
     self.connection.stream.close();
@@ -80,7 +71,7 @@ pub fn deinit(self: *Self, resource_manager: *ResourceManager) void {
 
 // Unused right now, but this will be used similarly to how xace works
 pub fn is_owner_of_resource(self: *Self, resource_id: u32) bool {
-    return (resource_id & ResourceIdBaseManager.resource_id_base_mask) == self.resource_id_base;
+    return (resource_id & xph.ResourceIdBaseManager.resource_id_base_mask) == self.resource_id_base;
 }
 
 pub fn read_buffer_data_size(self: *Self) usize {
@@ -163,26 +154,26 @@ pub fn discard_and_close_read_fds(self: *Self, num_fds: usize) void {
     }
 }
 
-pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator) !message.Request(T) {
-    const req_data = try request.read_request(T, self.read_buffer.reader(), allocator);
-    return message.Request(T).init(&req_data);
+pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator) !xph.message.Request(T) {
+    const req_data = try xph.request.read_request(T, self.read_buffer.reader(), allocator);
+    return xph.message.Request(T).init(&req_data);
 }
 
 pub fn write_reply(self: *Self, reply_data: anytype) !void {
     return write_reply_with_fds(self, reply_data, &.{});
 }
 
-pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const message.ReplyFd) !void {
+pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const xph.message.ReplyFd) !void {
     if (@typeInfo(@TypeOf(reply_data)) != .pointer)
         @compileError("Expected reply data to be a pointer");
 
-    try reply.write_reply(@TypeOf(reply_data.*), reply_data, self.write_buffer.writer());
+    try xph.reply.write_reply(@TypeOf(reply_data.*), reply_data, self.write_buffer.writer());
     // TODO: If this fails but not the above then we need to discard data from the write end, how?
     try self.write_buffer_fds.write(fds);
 }
 
-pub fn write_error(self: *Self, request_context: RequestContext, error_type: x11_error.ErrorType, value: x11.Card32) !void {
-    const err_reply = x11_error.Error{
+pub fn write_error(self: *Self, request_context: xph.RequestContext, error_type: xph.ErrorType, value: x11.Card32) !void {
+    const err_reply = xph.Error{
         .code = error_type,
         .sequence_number = request_context.sequence_number,
         .value = value,
@@ -193,7 +184,7 @@ pub fn write_error(self: *Self, request_context: RequestContext, error_type: x11
     return self.write_buffer.write(std.mem.asBytes(&err_reply));
 }
 
-pub fn write_event(self: *Self, ev: *const event.Event) !void {
+pub fn write_event(self: *Self, ev: *const xph.event.Event) !void {
     //std.log.info("Replying with event: {s}", .{x11.stringify_fmt(ev)});
     return self.write_buffer.write(std.mem.asBytes(ev));
 }
@@ -210,7 +201,7 @@ pub fn next_sequence_number(self: *Self) u16 {
     return sequence;
 }
 
-pub fn add_window(self: *Self, window: *Window) !void {
+pub fn add_window(self: *Self, window: *xph.Window) !void {
     if (!self.is_owner_of_resource(@intFromEnum(window.window_id)))
         return error.ResourceNotOwnedByClient;
 
@@ -221,7 +212,7 @@ pub fn add_window(self: *Self, window: *Window) !void {
     result.value_ptr.* = .{ .window = window };
 }
 
-pub fn remove_window(self: *Self, window: *Window) void {
+pub fn remove_window(self: *Self, window: *xph.Window) void {
     if (self.deleting_self)
         return;
 
@@ -236,7 +227,7 @@ pub fn remove_window(self: *Self, window: *Window) void {
 //const max_write_buffer_size: usize = 50 * 1024 * 1024; // 50mb. Clients that dont consume data fast enough are forcefully disconnected
 const DataBuffer = std.fifo.LinearFifo(u8, .Dynamic);
 const RequestFdsBuffer = std.fifo.LinearFifo(std.posix.fd_t, .Dynamic);
-const ReplyFdsBuffer = std.fifo.LinearFifo(message.ReplyFd, .Dynamic);
+const ReplyFdsBuffer = std.fifo.LinearFifo(xph.message.ReplyFd, .Dynamic);
 
 const State = enum {
     connecting,

@@ -1,49 +1,33 @@
 const std = @import("std");
-const x11 = @import("protocol/x11.zig");
-const request = @import("protocol/request.zig");
-const reply = @import("protocol/reply.zig");
-const opcode = @import("protocol/opcode.zig");
-const Client = @import("Client.zig");
-const ResourceIdBaseManager = @import("ResourceIdBaseManager.zig");
-const ClientManager = @import("ClientManager.zig");
-const ConnectionSetup = @import("ConnectionSetup.zig");
-const x11_error = @import("protocol/error.zig");
-const core = @import("protocol/handlers/core.zig");
-const extensions = @import("protocol/handlers/extensions.zig");
-const Window = @import("Window.zig");
-const ResourceManager = @import("ResourceManager.zig");
-const AtomManager = @import("AtomManager.zig");
-const RequestContext = @import("RequestContext.zig");
-const backend_imp = @import("backend/backend.zig");
-const Visual = @import("Visual.zig");
-const Colormap = @import("Colormap.zig");
+const xph = @import("../xphoenix.zig");
+const x11 = xph.x11;
 
 const Self = @This();
 
 pub const vendor = "XPhoenix";
 
 pub const screen_true_color_colormap_id: x11.Colormap = @enumFromInt(0x20);
-const screen_true_color_colormap = Colormap{
+const screen_true_color_colormap = xph.Colormap{
     .id = screen_true_color_colormap_id,
     .visual = &screen_true_color_visual,
 };
 
 pub const screen_true_color_visual_id: x11.VisualId = @enumFromInt(0x21);
-const screen_true_color_visual = Visual.create_true_color(screen_true_color_visual_id);
+const screen_true_color_visual = xph.Visual.create_true_color(screen_true_color_visual_id);
 
 allocator: std.mem.Allocator,
-root_client: *Client,
-root_window: *Window,
+root_client: *xph.Client,
+root_window: *xph.Window,
 server_net: std.net.Server,
 epoll_fd: i32,
 epoll_events: [32]std.os.linux.epoll_event = undefined,
-resource_manager: ResourceManager,
-resource_id_base_manager: ResourceIdBaseManager,
-atom_manager: AtomManager,
-client_manager: ClientManager,
-backend: backend_imp.Backend,
+resource_manager: xph.ResourceManager,
+resource_id_base_manager: xph.ResourceIdBaseManager,
+atom_manager: xph.AtomManager,
+client_manager: xph.ClientManager,
+backend: xph.Backend,
 
-installed_colormaps: std.ArrayList(*const Colormap),
+installed_colormaps: std.ArrayList(*const xph.Colormap),
 
 pub fn init(allocator: std.mem.Allocator) !Self {
     const unix_domain_socket_path = "/tmp/.X11-unix/X1";
@@ -53,13 +37,13 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     // TODO:
     //defer server.deinit();
 
-    var resource_manager = ResourceManager.init(allocator);
+    var resource_manager = xph.ResourceManager.init(allocator);
     errdefer resource_manager.deinit();
 
-    var atom_manager = try AtomManager.init(allocator);
+    var atom_manager = try xph.AtomManager.init(allocator);
     errdefer atom_manager.deinit();
 
-    var client_manager = ClientManager.init(allocator);
+    var client_manager = xph.ClientManager.init(allocator);
     errdefer client_manager.deinit(&resource_manager);
 
     const epoll_fd = try std.posix.epoll_create1(0);
@@ -67,10 +51,10 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     errdefer std.posix.close(epoll_fd);
 
     // TODO: Choose backend from argv but give an error if xphoenix is built without that backend
-    var backend = try backend_imp.Backend.init_x11(allocator);
+    var backend = try xph.Backend.init_x11(allocator);
     errdefer backend.deinit(allocator);
 
-    var resource_id_base_manager = ResourceIdBaseManager{};
+    var resource_id_base_manager = xph.ResourceIdBaseManager{};
 
     const server_connection = std.net.Server.Connection{
         .stream = server.stream,
@@ -83,7 +67,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         return error.FailedToSetupRootClient;
     };
 
-    var installed_colormaps = std.ArrayList(*const Colormap).init(allocator);
+    var installed_colormaps = std.ArrayList(*const xph.Colormap).init(allocator);
     errdefer installed_colormaps.deinit();
 
     try installed_colormaps.append(&screen_true_color_colormap);
@@ -114,9 +98,9 @@ pub fn deinit(self: *Self) void {
     self.backend.deinit(self.allocator);
 }
 
-fn create_root_window(root_client: *Client, resource_manager: *ResourceManager, allocator: std.mem.Allocator) !*Window {
+fn create_root_window(root_client: *xph.Client, resource_manager: *xph.ResourceManager, allocator: std.mem.Allocator) !*xph.Window {
     const root_window_id: x11.Window = @enumFromInt(0x3b2 | root_client.resource_id_base);
-    const window_attributes = Window.Attributes{
+    const window_attributes = xph.Window.Attributes{
         .geometry = .{
             .x = 0,
             .y = 0,
@@ -141,10 +125,10 @@ fn create_root_window(root_client: *Client, resource_manager: *ResourceManager, 
         .override_redirect = false,
     };
 
-    var root_window = try Window.create(null, root_window_id, &window_attributes, root_client, resource_manager, allocator);
+    var root_window = try xph.Window.create(null, root_window_id, &window_attributes, root_client, resource_manager, allocator);
     errdefer root_window.destroy(resource_manager);
 
-    try root_window.set_property_string8(AtomManager.Predefined.resource_manager, "*background:\t#222222");
+    try root_window.set_property_string8(xph.AtomManager.Predefined.resource_manager, "*background:\t#222222");
     return root_window;
 }
 
@@ -221,7 +205,13 @@ fn set_socket_non_blocking(socket: std.posix.socket_t) void {
     _ = std.posix.fcntl(socket, std.posix.F.SETFL, flags | std.posix.SOCK.NONBLOCK) catch unreachable;
 }
 
-fn add_client_internal(epoll_fd: std.posix.fd_t, connection: std.net.Server.Connection, client_manager: *ClientManager, resource_id_base_manager: *ResourceIdBaseManager, allocator: std.mem.Allocator) !*Client {
+fn add_client_internal(
+    epoll_fd: std.posix.fd_t,
+    connection: std.net.Server.Connection,
+    client_manager: *xph.ClientManager,
+    resource_id_base_manager: *xph.ResourceIdBaseManager,
+    allocator: std.mem.Allocator,
+) !*xph.Client {
     set_socket_non_blocking(connection.stream.handle);
     std.log.info("Client connected: {d}, waiting for client connection setup", .{connection.stream.handle});
 
@@ -238,10 +228,10 @@ fn add_client_internal(epoll_fd: std.posix.fd_t, connection: std.net.Server.Conn
     try std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_ADD, connection.stream.handle, &new_client_epoll_event);
     errdefer std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, connection.stream.handle, null) catch {};
 
-    return client_manager.add_client(Client.init(connection, resource_id_base, allocator));
+    return client_manager.add_client(xph.Client.init(connection, resource_id_base, allocator));
 }
 
-fn add_client(self: *Self, connection: std.net.Server.Connection) !*Client {
+fn add_client(self: *Self, connection: std.net.Server.Connection) !*xph.Client {
     return add_client_internal(self.epoll_fd, connection, &self.client_manager, &self.resource_id_base_manager, self.allocator);
 }
 
@@ -256,11 +246,11 @@ fn remove_client(self: *Self, client_fd: std.posix.socket_t) void {
     }
 }
 
-fn process_all_client_requests(self: *Self, client: *Client) bool {
+fn process_all_client_requests(self: *Self, client: *xph.Client) bool {
     while (true) {
         switch (client.state) {
             .connecting => {
-                const one_request_handled = ConnectionSetup.handle_client_connect(self, client, self.root_window, self.allocator) catch |err| {
+                const one_request_handled = xph.ConnectionSetup.handle_client_connect(self, client, self.root_window, self.allocator) catch |err| {
                     std.log.err("Client connection setup failed: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
                     remove_client(self, client.connection.stream.handle);
                     return false;
@@ -287,15 +277,15 @@ fn process_all_client_requests(self: *Self, client: *Client) bool {
 }
 
 /// Returns true if there was enough data from the client to handle the request
-fn handle_client_request(self: *Self, client: *Client) !bool {
+fn handle_client_request(self: *Self, client: *xph.Client) !bool {
     // TODO: Byteswap
-    const request_header = client.peek_read_buffer(request.RequestHeader) orelse return false;
+    const request_header = client.peek_read_buffer(xph.request.RequestHeader) orelse return false;
     const request_header_length = request_header.get_length_in_bytes();
     std.log.info("Got client data. Opcode: {d}:{d}, length: {d}", .{ request_header.major_opcode, request_header.minor_opcode, request_header_length });
     if (client.read_buffer_data_size() < request_header_length)
         return false;
 
-    const request_context = RequestContext{
+    const request_context = xph.RequestContext{
         .allocator = self.allocator,
         .client = client,
         .server = self,
@@ -308,10 +298,10 @@ fn handle_client_request(self: *Self, client: *Client) !bool {
     // TODO: Respond to client with proper error
     if (request_header.major_opcode == 0) {
         return error.InvalidMajorOpcode;
-    } else if (request_header.major_opcode >= 1 and request_header.major_opcode <= opcode.core_opcode_max) {
-        try core.handle_request(request_context);
+    } else if (request_header.major_opcode >= 1 and request_header.major_opcode <= xph.opcode.core_opcode_max) {
+        try xph.core.handle_request(request_context);
     } else {
-        try extensions.handle_request(request_context);
+        try xph.extensions.handle_request(request_context);
     }
 
     const bytes_available_to_read_after = client.read_buffer_data_size();
@@ -331,7 +321,7 @@ fn handle_client_request(self: *Self, client: *Client) !bool {
     return true;
 }
 
-pub fn get_visual_by_id(self: *Self, visual_id: x11.VisualId) ?*const Visual {
+pub fn get_visual_by_id(self: *Self, visual_id: x11.VisualId) ?*const xph.Visual {
     _ = self;
     if (visual_id == screen_true_color_visual.id) {
         return &screen_true_color_visual;
@@ -340,7 +330,7 @@ pub fn get_visual_by_id(self: *Self, visual_id: x11.VisualId) ?*const Visual {
     }
 }
 
-pub fn get_colormap_by_id(self: *Self, colormap_id: x11.Colormap) ?*const Colormap {
+pub fn get_colormap_by_id(self: *Self, colormap_id: x11.Colormap) ?*const xph.Colormap {
     _ = self;
     if (colormap_id == screen_true_color_colormap_id) {
         return &screen_true_color_colormap;

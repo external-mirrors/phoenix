@@ -1,6 +1,6 @@
 const std = @import("std");
-const x11 = @import("x11.zig");
-const ConnectionSetup = @import("../ConnectionSetup.zig");
+const xph = @import("../xphoenix.zig");
+const x11 = xph.x11;
 
 // TODO: Byteswap
 pub fn write_reply(comptime T: type, reply: *T, writer: anytype) !void {
@@ -63,9 +63,9 @@ const unit_size: u32 = 4;
 fn reply_set_length_fields_root(comptime T: type, reply: *T) void {
     if (@hasField(T, "length")) {
         const header_size: i32 = switch (T) {
-            ConnectionSetup.ConnectionSetupSuccessReply,
-            ConnectionSetup.ConnectionSetupFailedReply,
-            ConnectionSetup.ConnectionSetupAuthenticateReply,
+            xph.ConnectionSetup.ConnectionSetupSuccessReply,
+            xph.ConnectionSetup.ConnectionSetupFailedReply,
+            xph.ConnectionSetup.ConnectionSetupAuthenticateReply,
             => @sizeOf(ReplyHeader),
             else => @sizeOf(GenericReply),
         };

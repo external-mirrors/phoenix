@@ -1,9 +1,8 @@
 const std = @import("std");
-const Client = @import("Client.zig");
-const ResourceManager = @import("ResourceManager.zig");
+const xph = @import("../xphoenix.zig");
 
 const Self = @This();
-const ClientHashMap = std.HashMap(std.posix.socket_t, *Client, struct {
+const ClientHashMap = std.HashMap(std.posix.socket_t, *xph.Client, struct {
     pub fn hash(_: @This(), key: std.posix.socket_t) u64 {
         return @intCast(key);
     }
@@ -23,7 +22,7 @@ pub fn init(allocator: std.mem.Allocator) Self {
     };
 }
 
-pub fn deinit(self: *Self, resource_manager: *ResourceManager) void {
+pub fn deinit(self: *Self, resource_manager: *xph.ResourceManager) void {
     var client_it = self.clients.valueIterator();
     while (client_it.next()) |client| {
         client.*.deinit(resource_manager);
@@ -32,8 +31,8 @@ pub fn deinit(self: *Self, resource_manager: *ResourceManager) void {
     self.clients.deinit();
 }
 
-pub fn add_client(self: *Self, client: Client) !*Client {
-    const new_client = try self.allocator.create(Client);
+pub fn add_client(self: *Self, client: xph.Client) !*xph.Client {
+    const new_client = try self.allocator.create(xph.Client);
     new_client.* = client;
     errdefer self.allocator.destroy(new_client);
 
@@ -45,7 +44,7 @@ pub fn add_client(self: *Self, client: Client) !*Client {
     return new_client;
 }
 
-pub fn remove_client(self: *Self, client_to_remove_fd: std.posix.socket_t, resource_manager: *ResourceManager) bool {
+pub fn remove_client(self: *Self, client_to_remove_fd: std.posix.socket_t, resource_manager: *xph.ResourceManager) bool {
     if (self.clients.fetchRemove(client_to_remove_fd)) |removed_item| {
         removed_item.value.deinit(resource_manager);
         self.allocator.destroy(removed_item.value);
@@ -54,6 +53,6 @@ pub fn remove_client(self: *Self, client_to_remove_fd: std.posix.socket_t, resou
     return false;
 }
 
-pub fn get_client(self: *Self, client_fd: std.posix.socket_t) ?*Client {
+pub fn get_client(self: *Self, client_fd: std.posix.socket_t) ?*xph.Client {
     return if (self.clients.get(client_fd)) |client| client else null;
 }

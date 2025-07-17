@@ -1,14 +1,9 @@
 const std = @import("std");
-const RequestContext = @import("../../../RequestContext.zig");
-const graphics = @import("../../../graphics/graphics.zig");
-const x11 = @import("../../x11.zig");
-const x11_error = @import("../../error.zig");
-const request = @import("../../request.zig");
-const reply = @import("../../reply.zig");
-const xshmfence = @import("../../../xshmfence.zig");
-const c = @import("../../../c.zig");
+const xph = @import("../../../xphoenix.zig");
+const x11 = xph.x11;
+const c = xph.c;
 
-pub fn handle_request(request_context: RequestContext) !void {
+pub fn handle_request(request_context: xph.RequestContext) !void {
     std.log.warn("Handling dri3 request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
     switch (request_context.header.minor_opcode) {
         MinorOpcode.query_version => return query_version(request_context),
@@ -24,7 +19,7 @@ pub fn handle_request(request_context: RequestContext) !void {
     }
 }
 
-fn query_version(request_context: RequestContext) !void {
+fn query_version(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(Dri3QueryExtensionRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("DRI3QueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
@@ -76,7 +71,7 @@ fn validate_drm_auth(card_fd: std.posix.fd_t, render_fd: std.posix.fd_t) bool {
     return true;
 }
 
-fn open(request_context: RequestContext) !void {
+fn open(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(Dri3OpenRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("Dri3Open request: {s}", .{x11.stringify_fmt(req.request)});
@@ -109,7 +104,7 @@ fn open(request_context: RequestContext) !void {
     });
 }
 
-fn pixmap_from_buffer(request_context: RequestContext) !void {
+fn pixmap_from_buffer(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(Dri3PixmapFromBufferRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("DRI3PixmapFromBuffer request: {s}, fd: {d}", .{ x11.stringify_fmt(req), request_context.client.get_read_fds() });
@@ -129,7 +124,7 @@ fn pixmap_from_buffer(request_context: RequestContext) !void {
     const resolved_path = std.posix.readlink(path, &resolved_path_buf) catch "unknown";
     std.log.info("dmabuf: {d}: {s}", .{ dmabuf_fd, resolved_path });
 
-    const import_dmabuf = graphics.DmabufImport{
+    const import_dmabuf = xph.graphics.DmabufImport{
         .fd = [_]std.posix.fd_t{ dmabuf_fd, 0, 0, 0 },
         .stride = [_]u32{ req.request.stride, 0, 0, 0 },
         .offset = [_]u32{ 0, 0, 0, 0 },
@@ -146,7 +141,7 @@ fn pixmap_from_buffer(request_context: RequestContext) !void {
     try request_context.server.backend.import_dmabuf(&import_dmabuf);
 }
 
-fn fence_from_fd(request_context: RequestContext) !void {
+fn fence_from_fd(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(Dri3FenceFromFdRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("Dri3FenceFromFd request: {s}, fd: {d}", .{ x11.stringify_fmt(req), request_context.client.get_read_fds() });
@@ -167,7 +162,7 @@ fn fence_from_fd(request_context: RequestContext) !void {
     std.log.info("fence: {d}: {s}", .{ fence_fd, resolved_path });
 
     // TODO: Use it properly
-    var fence = try xshmfence.xshmfence.create_from_fd(fence_fd);
+    var fence = try xph.xshmfence.xshmfence.create_from_fd(fence_fd);
     defer fence.destroy();
 
     // _ = try std.Thread.spawn(.{}, struct {
@@ -183,7 +178,7 @@ fn fence_from_fd(request_context: RequestContext) !void {
     // TODO: Implement
 }
 
-fn get_supported_modifiers(request_context: RequestContext) !void {
+fn get_supported_modifiers(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(Dri3GetSupportedModifiersRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("Dri3GetSupportedModifiers request: {s}", .{x11.stringify_fmt(req)});
@@ -212,7 +207,7 @@ fn get_supported_modifiers(request_context: RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn pixmap_from_buffers(request_context: RequestContext) !void {
+fn pixmap_from_buffers(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(Dri3PixmapFromBuffersRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("Dri3PixmapFromBuffers request: {s}, fd: {d}", .{ x11.stringify_fmt(req), request_context.client.get_read_fds() });
@@ -245,7 +240,7 @@ fn pixmap_from_buffers(request_context: RequestContext) !void {
     const strides: [4]u32 = .{ req.request.stride0, req.request.stride1, req.request.stride2, req.request.stride3 };
     const offsets: [4]u32 = .{ req.request.offset0, req.request.offset1, req.request.offset2, req.request.offset3 };
 
-    var import_dmabuf: graphics.DmabufImport = undefined;
+    var import_dmabuf: xph.graphics.DmabufImport = undefined;
     import_dmabuf.width = req.request.width;
     import_dmabuf.height = req.request.height;
     import_dmabuf.depth = req.request.depth;
@@ -281,7 +276,7 @@ const Dri3QueryExtensionRequest = struct {
 };
 
 const Dri3QueryExtensionReply = struct {
-    type: reply.ReplyType = .reply,
+    type: xph.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -299,7 +294,7 @@ const Dri3OpenRequest = struct {
 };
 
 const Dri3OpenReply = struct {
-    type: reply.ReplyType = .reply,
+    type: xph.reply.ReplyType = .reply,
     nfd: x11.Card8 = 1,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -345,7 +340,7 @@ const Dri3GetSupportedModifiersRequest = struct {
 };
 
 const Dri3GetSupportedModifiersReply = struct {
-    type: reply.ReplyType = .reply,
+    type: xph.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply

@@ -1,9 +1,9 @@
 const std = @import("std");
-const GraphicsEgl = @import("GraphicsEgl.zig");
-const c = @import("../c.zig");
+const xph = @import("../xphoenix.zig");
+const c = xph.c;
 
 pub const Graphics = union(enum) {
-    egl: *GraphicsEgl,
+    egl: *xph.GraphicsEgl,
 
     pub fn init_egl(
         platform: c_uint,
@@ -13,7 +13,7 @@ pub const Graphics = union(enum) {
         debug: bool,
         allocator: std.mem.Allocator,
     ) !Graphics {
-        const egl = try allocator.create(GraphicsEgl);
+        const egl = try allocator.create(xph.GraphicsEgl);
         errdefer allocator.destroy(egl);
         egl.* = try .init(platform, screen_type, connection, window_id, debug, allocator);
         return .{ .egl = egl };

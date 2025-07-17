@@ -1,5 +1,6 @@
 const std = @import("std");
-const x11 = @import("protocol/x11.zig");
+const xph = @import("../xphoenix.zig");
+const x11 = xph.x11;
 
 const Self = @This();
 

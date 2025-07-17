@@ -1,8 +1,7 @@
 const std = @import("std");
-const c = @import("../c.zig");
+const xph = @import("../xphoenix.zig");
+const c = xph.c;
 const cstdlib = std.c;
-const graphics_imp = @import("../graphics/graphics.zig");
-const Window = @import("../Window.zig");
 
 const Self = @This();
 
@@ -10,7 +9,7 @@ const gl_debug = true;
 
 connection: *c.xcb_connection_t,
 root_window: c.xcb_window_t,
-graphics: graphics_imp.Graphics,
+graphics: xph.Graphics,
 
 // No need to explicitly cleanup all x11 resources on failure, xcb_disconnect will do that (server-side)
 
@@ -45,7 +44,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         return error.FailedToCreateRootWindow;
     }
 
-    var graphics = try graphics_imp.Graphics.init_egl(c.EGL_PLATFORM_XCB_EXT, c.EGL_PLATFORM_XCB_SCREEN_EXT, connection, window_id, gl_debug, allocator);
+    var graphics = try xph.Graphics.init_egl(c.EGL_PLATFORM_XCB_EXT, c.EGL_PLATFORM_XCB_SCREEN_EXT, connection, window_id, gl_debug, allocator);
     errdefer graphics.deinit(allocator);
 
     const map_cookie = c.xcb_map_window_checked(connection, window_id);
@@ -80,11 +79,11 @@ pub fn create_window(self: *Self) !void {
     _ = self;
 }
 
-pub fn import_dmabuf(self: *Self, import: *const graphics_imp.DmabufImport) !void {
+pub fn import_dmabuf(self: *Self, import: *const xph.graphics.DmabufImport) !void {
     return self.graphics.import_dmabuf(import);
 }
 
-pub fn get_supported_modifiers(self: *Self, window: *Window, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {
+pub fn get_supported_modifiers(self: *Self, window: *xph.Window, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {
     _ = window;
     // TODO: Do something with window
     return self.graphics.get_supported_modifiers(depth, bpp, modifiers);

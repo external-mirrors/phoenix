@@ -1,5 +1,5 @@
-pub const Backend = @import("backend/backend.zig").Backend;
-pub const BackendX11 = @import("backend/BackendX11.zig");
+pub const DisplayBackend = @import("display_backend/display_backend.zig").DisplayBackend;
+pub const DisplayBackendX11 = @import("display_backend/DisplayBackendX11.zig");
 
 pub const graphics = @import("graphics/graphics.zig");
 pub const Graphics = graphics.Graphics;

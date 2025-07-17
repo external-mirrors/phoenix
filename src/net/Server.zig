@@ -25,7 +25,7 @@ resource_manager: xph.ResourceManager,
 resource_id_base_manager: xph.ResourceIdBaseManager,
 atom_manager: xph.AtomManager,
 client_manager: xph.ClientManager,
-backend: xph.Backend,
+display_backend: xph.DisplayBackend,
 
 installed_colormaps: std.ArrayList(*const xph.Colormap),
 
@@ -51,8 +51,8 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     errdefer std.posix.close(epoll_fd);
 
     // TODO: Choose backend from argv but give an error if xphoenix is built without that backend
-    var backend = try xph.Backend.init_x11(allocator);
-    errdefer backend.deinit(allocator);
+    var display_backend = try xph.DisplayBackend.init_x11(allocator);
+    errdefer display_backend.deinit(allocator);
 
     var resource_id_base_manager = xph.ResourceIdBaseManager{};
 
@@ -84,7 +84,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         .resource_id_base_manager = resource_id_base_manager,
         .atom_manager = atom_manager,
         .client_manager = client_manager,
-        .backend = backend,
+        .display_backend = display_backend,
         .installed_colormaps = installed_colormaps,
     };
 }
@@ -95,7 +95,7 @@ pub fn deinit(self: *Self) void {
     self.atom_manager.deinit();
     self.installed_colormaps.deinit();
     std.posix.close(self.epoll_fd);
-    self.backend.deinit(self.allocator);
+    self.display_backend.deinit(self.allocator);
 }
 
 fn create_root_window(root_client: *xph.Client, resource_manager: *xph.ResourceManager, allocator: std.mem.Allocator) !*xph.Window {
@@ -196,7 +196,7 @@ pub fn run(self: *Self) void {
         }
 
         // TODO: Remove this and instead do the rendering in a separate thread of process
-        self.backend.draw();
+        self.display_backend.draw();
     }
 }
 

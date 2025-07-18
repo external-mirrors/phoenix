@@ -57,6 +57,8 @@ pub fn destroy(self: *Self) void {
     if (self.parent) |parent|
         parent.remove_child(self);
 
+    // TODO: remove from resource manager as well and trigger DestroyNotify event (first in children, then this window).
+    // TODO: Also do a UnmapWindow operation if the window is mapped, which triggers UnmapNotify event.
     for (self.children.items) |child| {
         child.destroy();
     }

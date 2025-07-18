@@ -21,7 +21,6 @@ root_window: *xph.Window,
 server_net: std.net.Server,
 epoll_fd: i32,
 epoll_events: [32]std.os.linux.epoll_event = undefined,
-resource_manager: xph.ResourceManager,
 resource_id_base_manager: xph.ResourceIdBaseManager,
 atom_manager: xph.AtomManager,
 client_manager: xph.ClientManager,
@@ -36,9 +35,6 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     const server = try address.listen(.{ .force_nonblocking = true });
     // TODO:
     //defer server.deinit();
-
-    var resource_manager = xph.ResourceManager.init(allocator);
-    errdefer resource_manager.deinit();
 
     var atom_manager = try xph.AtomManager.init(allocator);
     errdefer atom_manager.deinit();
@@ -72,7 +68,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
 
     try installed_colormaps.append(&screen_true_color_colormap);
 
-    const root_window = try create_root_window(root_client, &resource_manager, allocator);
+    const root_window = try create_root_window(root_client, allocator);
 
     return .{
         .allocator = allocator,
@@ -80,7 +76,6 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         .root_window = root_window,
         .server_net = server,
         .epoll_fd = epoll_fd,
-        .resource_manager = resource_manager,
         .resource_id_base_manager = resource_id_base_manager,
         .atom_manager = atom_manager,
         .client_manager = client_manager,
@@ -91,14 +86,13 @@ pub fn init(allocator: std.mem.Allocator) !Self {
 
 pub fn deinit(self: *Self) void {
     self.client_manager.deinit();
-    self.resource_manager.deinit();
     self.atom_manager.deinit();
     self.installed_colormaps.deinit();
     std.posix.close(self.epoll_fd);
     self.display.deinit(self.allocator);
 }
 
-fn create_root_window(root_client: *xph.Client, resource_manager: *xph.ResourceManager, allocator: std.mem.Allocator) !*xph.Window {
+fn create_root_window(root_client: *xph.Client, allocator: std.mem.Allocator) !*xph.Window {
     const root_window_id: x11.Window = @enumFromInt(0x3b2 | root_client.resource_id_base);
     const window_attributes = xph.Window.Attributes{
         .geometry = .{
@@ -130,9 +124,6 @@ fn create_root_window(root_client: *xph.Client, resource_manager: *xph.ResourceM
 
     try root_window.set_property_string8(xph.AtomManager.Predefined.resource_manager, "*background:\t#222222");
 
-    try resource_manager.add_window(root_window);
-    errdefer resource_manager.remove_resource(root_window.id);
-
     return root_window;
 }
 
@@ -157,7 +148,7 @@ pub fn run(self: *Self) void {
                     connection.stream.close();
                 };
             } else if (epoll_event.events & std.os.linux.EPOLL.IN != 0) {
-                var client = self.client_manager.get_client(epoll_event.data.fd) orelse {
+                var client = self.client_manager.get_client_by_fd(epoll_event.data.fd) orelse {
                     std.log.err("Got input data from an unknown client: {d}", .{epoll_event.data.fd});
                     continue;
                 };
@@ -171,7 +162,7 @@ pub fn run(self: *Self) void {
                 if (!process_all_client_requests(self, client))
                     continue;
             } else if (epoll_event.events & std.os.linux.EPOLL.OUT != 0) {
-                var client = self.client_manager.get_client(epoll_event.data.fd) orelse {
+                var client = self.client_manager.get_client_by_fd(epoll_event.data.fd) orelse {
                     std.log.err("Output data is ready for an unknown client: {d}", .{epoll_event.data.fd});
                     continue;
                 };
@@ -244,9 +235,8 @@ fn remove_client(self: *Self, client_fd: std.posix.socket_t) void {
         std.log.err("Epoll del failed for client: {d}. Error: {s}", .{ client_fd, @errorName(err) });
     };
 
-    if (self.client_manager.get_client(client_fd)) |client| {
+    if (self.client_manager.get_client_by_fd(client_fd)) |client| {
         self.resource_id_base_manager.free(client.resource_id_base);
-        self.resource_manager.remove_resources_owned_by_client(client);
         _ = self.client_manager.remove_client(client_fd);
     }
 }

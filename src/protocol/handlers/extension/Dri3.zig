@@ -188,7 +188,7 @@ fn get_supported_modifiers(request_context: xph.RequestContext) !void {
     defer req.deinit();
     std.log.info("Dri3GetSupportedModifiers request: {s}", .{x11.stringify_fmt(req)});
 
-    const window = request_context.server.resource_manager.get_window(req.request.window) orelse {
+    const window = request_context.server.client_manager.get_window(req.request.window) orelse {
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
 

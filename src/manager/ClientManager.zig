@@ -1,8 +1,9 @@
 const std = @import("std");
 const xph = @import("../xphoenix.zig");
+const x11 = xph.x11;
 
 const Self = @This();
-const ClientHashMap = std.HashMap(std.posix.socket_t, *xph.Client, struct {
+const ClientIndexHashMap = std.HashMap(std.posix.socket_t, usize, struct {
     pub fn hash(_: @This(), key: std.posix.socket_t) u64 {
         return @intCast(key);
     }
@@ -12,47 +13,77 @@ const ClientHashMap = std.HashMap(std.posix.socket_t, *xph.Client, struct {
     }
 }, std.hash_map.default_max_load_percentage);
 
-clients: ClientHashMap,
+clients: [xph.ResourceIdBaseManager.resource_id_base_size + 1]?*xph.Client,
+clients_by_fd: ClientIndexHashMap,
 allocator: std.mem.Allocator,
 
 pub fn init(allocator: std.mem.Allocator) Self {
-    return .{
-        .clients = .init(allocator),
+    var result = Self{
+        .clients = undefined,
+        .clients_by_fd = .init(allocator),
         .allocator = allocator,
     };
+
+    for (0..result.clients.len) |i| {
+        result.clients[i] = null;
+    }
+
+    return result;
 }
 
 pub fn deinit(self: *Self) void {
-    var client_it = self.clients.valueIterator();
-    while (client_it.next()) |client| {
-        client.*.deinit();
-        self.allocator.destroy(client);
+    for (self.clients) |client| {
+        if (client) |c| {
+            c.deinit();
+            self.allocator.destroy(c);
+        }
     }
-    self.clients.deinit();
+    self.clients_by_fd.deinit();
 }
 
 pub fn add_client(self: *Self, client: xph.Client) !*xph.Client {
+    const free_index = self.get_free_client_index() orelse return error.ClientLimitReached;
+
     const new_client = try self.allocator.create(xph.Client);
     new_client.* = client;
     errdefer self.allocator.destroy(new_client);
 
-    const result = try self.clients.getOrPut(client.connection.stream.handle);
+    const result = try self.clients_by_fd.getOrPut(client.connection.stream.handle);
     if (result.found_existing)
         return error.ClientAlreadyAdded;
 
-    result.value_ptr.* = new_client;
+    result.value_ptr.* = free_index;
+    self.clients[free_index] = new_client;
     return new_client;
 }
 
 pub fn remove_client(self: *Self, client_to_remove_fd: std.posix.socket_t) bool {
-    if (self.clients.fetchRemove(client_to_remove_fd)) |removed_item| {
-        removed_item.value.deinit();
-        self.allocator.destroy(removed_item.value);
+    if (self.clients_by_fd.fetchRemove(client_to_remove_fd)) |removed_item| {
+        self.allocator.destroy(self.clients[removed_item.value].?);
+        self.clients[removed_item.value] = null;
         return true;
     }
     return false;
 }
 
-pub fn get_client(self: *Self, client_fd: std.posix.socket_t) ?*xph.Client {
-    return if (self.clients.get(client_fd)) |client| client else null;
+pub fn get_client_by_fd(self: *Self, client_fd: std.posix.socket_t) ?*xph.Client {
+    return if (self.clients_by_fd.get(client_fd)) |client_index| self.clients[client_index] else null;
+}
+
+pub fn get_window(self: *Self, window_id: x11.Window) ?*xph.Window {
+    const client_index = xph.ResourceIdBaseManager.resource_id_get_base_index(window_id.to_id().to_int());
+    if (self.clients[client_index]) |client| {
+        const resource = client.get_resource(window_id.to_id()) orelse return null;
+        return if (std.meta.activeTag(resource) == .window) resource.window else null;
+    } else {
+        return null;
+    }
+}
+
+fn get_free_client_index(self: *Self) ?usize {
+    for (self.clients, 0..) |client, i| {
+        if (client == null)
+            return i;
+    }
+    return null;
 }

@@ -9,7 +9,6 @@ pub const GraphicsEgl = @import("backend/graphics/GraphicsEgl.zig");
 pub const AtomManager = @import("manager/AtomManager.zig");
 pub const ClientManager = @import("manager/ClientManager.zig");
 pub const ResourceIdBaseManager = @import("manager/ResourceIdBaseManager.zig");
-pub const ResourceManager = @import("manager/ResourceManager.zig");
 
 pub const Client = @import("net/Client.zig");
 pub const message = @import("net/message.zig");

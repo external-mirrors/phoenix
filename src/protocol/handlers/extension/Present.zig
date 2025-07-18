@@ -48,13 +48,13 @@ fn present_pixmap(request_context: xph.RequestContext) !void {
     std.log.info("PresentPixmap request: {s}", .{x11.stringify_fmt(req.request)});
 
     for (req.request.notifies.items) |notify| {
-        _ = request_context.server.resource_manager.get_window(notify.window) orelse {
+        _ = request_context.server.client_manager.get_window(notify.window) orelse {
             std.log.err("Received invalid notify window {d} in PresentPixmap request", .{notify.window});
             return request_context.client.write_error(request_context, .window, @intFromEnum(notify.window));
         };
     }
 
-    const window = request_context.server.resource_manager.get_window(req.request.window) orelse {
+    const window = request_context.server.client_manager.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in PresentPixmap request", .{req.request.window});
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
@@ -82,7 +82,7 @@ fn present_pixmap(request_context: xph.RequestContext) !void {
     window.write_extension_event_to_event_listeners(&complete_event);
 
     for (req.request.notifies.items) |notify| {
-        const notify_window = request_context.server.resource_manager.get_window(notify.window) orelse unreachable;
+        const notify_window = request_context.server.client_manager.get_window(notify.window) orelse unreachable;
         var complete_event_notify = PresentCompleteNotifyEvent{
             .sequence_number = request_context.sequence_number,
             .kind = .pixmap,
@@ -111,7 +111,6 @@ fn select_input(request_context: xph.RequestContext) !void {
 
         if (req.request.event_mask.is_empty()) {
             request_context.client.remove_resource(event_id);
-            request_context.server.resource_manager.remove_resource(event_id);
             resource.event_context.window.remove_extension_event_listener(request_context.client, .present);
             return;
         }
@@ -119,7 +118,7 @@ fn select_input(request_context: xph.RequestContext) !void {
         resource.event_context.window.modify_extension_event_listener(request_context.client, .present, @bitCast(req.request.event_mask));
         return;
     } else {
-        const window = request_context.server.resource_manager.get_window(req.request.window) orelse {
+        const window = request_context.server.client_manager.get_window(req.request.window) orelse {
             std.log.err("Received invalid window {d} in PresentSelectInput request", .{req.request.window});
             return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
         };
@@ -131,9 +130,6 @@ fn select_input(request_context: xph.RequestContext) !void {
 
         try request_context.client.add_event_context(event_context);
         errdefer request_context.client.remove_resource(event_context.id);
-
-        try request_context.server.resource_manager.add_event_context(event_context);
-        errdefer request_context.server.resource_manager.remove_resource(event_context.id);
 
         try window.add_extension_event_listener(request_context.client, event_context.id, .present, @bitCast(req.request.event_mask));
         errdefer window.remove_extension_event_listener(request_context.client, .present);

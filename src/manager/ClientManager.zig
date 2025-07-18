@@ -42,7 +42,8 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn add_client(self: *Self, client: xph.Client) !*xph.Client {
-    const free_index = self.get_free_client_index() orelse return error.ClientLimitReached;
+    const client_index = xph.ResourceIdBaseManager.resource_id_get_base_index(client.resource_id_base);
+    std.debug.assert(self.clients[client_index] == null);
 
     const new_client = try self.allocator.create(xph.Client);
     new_client.* = client;
@@ -52,8 +53,8 @@ pub fn add_client(self: *Self, client: xph.Client) !*xph.Client {
     if (result.found_existing)
         return error.ClientAlreadyAdded;
 
-    result.value_ptr.* = free_index;
-    self.clients[free_index] = new_client;
+    result.value_ptr.* = client_index;
+    self.clients[client_index] = new_client;
     return new_client;
 }
 

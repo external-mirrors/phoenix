@@ -49,12 +49,17 @@ fn create_window(request_context: xph.RequestContext) !void {
     defer req.deinit();
     std.log.info("CreateWindow request: {s}", .{x11.stringify_fmt(req)});
 
-    const parent_window = request_context.server.client_manager.get_window(req.request.parent) orelse {
+    const parent_window = request_context.server.get_window(req.request.parent) orelse {
         std.log.err("Received invalid parent window {d} in CreateWindow request", .{req.request.parent});
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.parent));
     };
 
-    const class: x11.Class = if (req.request.class == copy_from_parent) parent_window.attributes.class else @enumFromInt(req.request.class);
+    const class: x11.Class =
+        if (req.request.class == copy_from_parent)
+            parent_window.attributes.class
+        else
+            @enumFromInt(req.request.class);
+
     if (!window_class_validate_attributes(class, &req.request))
         return request_context.client.write_error(request_context, .match, 0);
 
@@ -194,7 +199,7 @@ fn get_geometry(request_context: xph.RequestContext) !void {
     std.log.info("GetGeometry request: {s}", .{x11.stringify_fmt(req.request)});
 
     // TODO: Support types other than window
-    const window = request_context.server.client_manager.get_window(req.request.drawable.to_window()) orelse {
+    const window = request_context.server.get_window(req.request.drawable.to_window()) orelse {
         std.log.err("Received invalid drawable {d} in GetGeometry request", .{req.request.drawable});
         return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.drawable));
     };
@@ -244,7 +249,7 @@ fn get_property(request_context: xph.RequestContext) !void {
     defer req.deinit();
     std.log.info("GetProperty request: {s}", .{x11.stringify_fmt(req.request)});
     // TODO: Error if running in security mode and the window is not owned by the client
-    const window = request_context.server.client_manager.get_window(req.request.window) orelse {
+    const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in GetProperty request", .{req.request.window});
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };

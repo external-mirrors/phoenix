@@ -333,3 +333,7 @@ pub fn get_colormap_by_id(self: *Self, colormap_id: x11.Colormap) ?*const xph.Co
         return null;
     }
 }
+
+pub fn get_window(self: *Self, window_id: x11.Window) ?*xph.Window {
+    return self.client_manager.get_window(window_id);
+}

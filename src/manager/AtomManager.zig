@@ -90,8 +90,8 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     errdefer self.deinit();
 
     inline for (@typeInfo(Predefined).@"struct".decls) |*decl| {
-        const field = @field(Predefined, decl.name);
-        std.debug.assert(self.atoms.items.len == @intFromEnum(field));
+        const field_value = @field(Predefined, decl.name);
+        std.debug.assert(self.atoms.items.len == @intFromEnum(field_value));
         const atom_name = try std.ascii.allocUpperString(allocator, decl.name);
         errdefer allocator.free(atom_name);
         try self.atoms.append(atom_name);
@@ -124,10 +124,10 @@ pub fn get_atom_by_name_create_if_not_exists(self: *Self, name: []const u8) !x11
     if (self.get_atom_by_name(name)) |atom|
         return atom;
 
-    if(name.len > name_max_length)
+    if (name.len > name_max_length)
         return error.NameTooLong;
 
-    if(self.atoms.items.len + 1 > max_num_atoms)
+    if (self.atoms.items.len + 1 > max_num_atoms)
         return error.TooManyAtoms;
 
     const atom_name = try self.allocator.dupe(u8, name);

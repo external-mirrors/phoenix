@@ -4,12 +4,12 @@ const x11 = xph.x11;
 const c = xph.c;
 
 pub fn handle_request(request_context: xph.RequestContext) !void {
-    std.log.warn("Handling dri3 request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
+    std.log.info("Handling dri3 request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
     const minor_opcode = std.meta.intToEnum(MinorOpcode, request_context.header.minor_opcode) catch |err| switch (err) {
         error.InvalidEnumTag => {
-            std.log.warn("Unimplemented dri3 request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
+            std.log.err("Unimplemented dri3 request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
             return request_context.client.write_error(request_context, .implementation, 0);
         },
     };

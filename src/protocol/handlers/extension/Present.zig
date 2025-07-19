@@ -5,12 +5,12 @@ const Randr = @import("Randr.zig");
 const x11 = xph.x11;
 
 pub fn handle_request(request_context: xph.RequestContext) !void {
-    std.log.warn("Handling present request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
+    std.log.info("Handling present request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
     const minor_opcode = std.meta.intToEnum(MinorOpcode, request_context.header.minor_opcode) catch |err| switch (err) {
         error.InvalidEnumTag => {
-            std.log.warn("Unimplemented present request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
+            std.log.err("Unimplemented present request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
             return request_context.client.write_error(request_context, .implementation, 0);
         },
     };

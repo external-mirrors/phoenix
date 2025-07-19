@@ -2,6 +2,10 @@ const std = @import("std");
 const builtin = @import("builtin");
 const xph = @import("xphoenix.zig");
 
+pub const std_options = std.Options{
+    .log_level = .err,
+};
+
 pub fn main() !void {
     if (builtin.mode == .Debug) {
         var gpa = std.heap.DebugAllocator(.{}){};
@@ -19,9 +23,4 @@ pub fn main() !void {
 
 test "all tests" {
     _ = @import("xphoenix.zig");
-    _ = @import("protocol/handlers/extension/Dri3.zig");
-    _ = @import("protocol/handlers/extension/Present.zig");
-    _ = @import("protocol/handlers/extension/Randr.zig");
-    _ = @import("protocol/handlers/extension/Render.zig");
-    _ = @import("protocol/handlers/extension/Xfixes.zig");
 }

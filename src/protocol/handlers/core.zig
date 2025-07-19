@@ -8,7 +8,7 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
     // TODO: Remove
     const major_opcode = std.meta.intToEnum(xph.opcode.Major, request_context.header.major_opcode) catch |err| switch (err) {
         error.InvalidEnumTag => {
-            std.log.warn("Unimplemented core request: {d}", .{request_context.header.major_opcode});
+            std.log.err("Unimplemented core request: {d}", .{request_context.header.major_opcode});
             return request_context.client.write_error(request_context, .implementation, 0);
         },
     };

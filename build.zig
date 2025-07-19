@@ -38,6 +38,7 @@ pub fn build(b: *std.Build) !void {
 
     if (backends.wayland) {
         exe.root_module.linkSystemLibrary("wayland-client", .{});
+        exe.root_module.linkSystemLibrary("wayland-egl", .{});
     }
 
     if (backends.drm) {

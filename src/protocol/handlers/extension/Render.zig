@@ -14,7 +14,6 @@ pub const PictType = enum(x11.Card8) {
 // The values are defined in this header file:
 // https://gitlab.freedesktop.org/xorg/proto/xorgproto/-/blob/master/include/X11/extensions/render.h?ref_type=heads
 pub const PictOp = enum(x11.Card8) {
-    pict_op_minimum = 0x00,
     pict_op_clear = 0x00,
     pict_op_src = 0x01,
     pict_op_dst = 0x02,
@@ -29,10 +28,8 @@ pub const PictOp = enum(x11.Card8) {
     pict_op_xor = 0x11,
     pict_op_add = 0x12,
     pict_op_saturate = 0x13,
-    pict_op_maximum = 0x13,
 
     // // Operators only available in version 0.2
-    // pict_op_disjoint_minimum = 0x10,
     // pict_op_disjoint_clear = 0x10,
     // pict_op_disjoint_src = 0x11,
     // pict_op_disjoint_dst = 0x12,
@@ -45,8 +42,6 @@ pub const PictOp = enum(x11.Card8) {
     // pict_op_disjoint_atop = 0x19,
     // pict_op_disjoint_atop_reverse = 0x1a,
     // pict_op_disjoint_xor = 0x1b,
-    // pict_op_disjoint_maximum = 0x1b,
-    // pict_op_conjoint_minimum = 0x20,
     // pict_op_conjoint_clear = 0x20,
     // pict_op_conjoint_src = 0x21,
     // pict_op_conjoint_dst = 0x22,
@@ -59,10 +54,8 @@ pub const PictOp = enum(x11.Card8) {
     // pict_op_conjoint_atop = 0x29,
     // pict_op_conjoint_atop_reverse = 0x2a,
     // pict_op_conjoint_xor = 0x2b,
-    // pict_op_conjoint_maximum = 0x2b,
 
     // // Operators only available in version 0.11
-    // pict_op_blend_minimum = 0x30,
     // pict_op_multiply = 0x30,
     // pict_op_screen = 0x31,
     // pict_op_overlay = 0x32,
@@ -78,8 +71,19 @@ pub const PictOp = enum(x11.Card8) {
     // pict_op_hsl_saturation = 0x3c,
     // pict_op_hsl_color = 0x3d,
     // pict_op_hsl_luminosity = 0x3e,
-    // pict_op_blend_maximum = 0x3e,
 };
+
+pub const pict_op_minimum: x11.Card8 = 0x00;
+pub const pict_op_maximum: x11.Card8 = 0x13;
+
+//pub const pict_op_disjoint_minimum: x11.Card8 = 0x10;
+//pub const pict_op_disjoint_maximum: x11.Card8 = 0x1b;
+
+//pub const pict_op_conjoint_minimum: x11.Card8 = 0x20;
+//pub const pict_op_conjoint_maximum: x11.Card8 = 0x2b;
+
+//pub const pict_op_blend_minimum: x11.Card8 = 0x30;
+//pub const pict_op_blend_maximum: x11.Card8 = 0x3e;
 
 pub const ChannelMask = struct {
     shift: x11.Card16,

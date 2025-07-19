@@ -16,9 +16,8 @@ const config_attr = [_]c.EGLint{
     c.EGL_RED_SIZE,          8,
     c.EGL_GREEN_SIZE,        8,
     c.EGL_BLUE_SIZE,         8,
-    //c.EGL_ALPHA_SIZE,        0,
-    //c.EGL_DEPTH_SIZE,        24,
-    //c.EGL_STENCIL_SIZE,      8,
+    c.EGL_ALPHA_SIZE,        0,
+    c.EGL_BUFFER_SIZE,       24,
 
     // uncomment for multisampled framebuffer
     //c.EGL_SAMPLE_BUFFERS, 1,

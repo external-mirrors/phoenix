@@ -1,9 +1,7 @@
-pub const Display = @import("backend/display/display.zig").Display;
+pub const Display = @import("backend/display/Display.zig");
 pub const DisplayX11 = @import("backend/display/DisplayX11.zig");
 
-pub const graphics = @import("backend/graphics/graphics.zig");
-pub const Graphics = graphics.Graphics;
-//pub const DmabufImport = graphics.DmabufImport;
+pub const Graphics = @import("backend/graphics/Graphics.zig");
 pub const GraphicsEgl = @import("backend/graphics/GraphicsEgl.zig");
 
 pub const AtomManager = @import("manager/AtomManager.zig");

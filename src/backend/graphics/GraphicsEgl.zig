@@ -40,18 +40,16 @@ const PFNEGLQUERYDEVICESTRINGEXTPROC = *const fn (c.EGLDeviceEXT, c.EGLint) call
 const PFNGLEGLIMAGETARGETTEXTURE2DOESPROC = *const fn (c.GLenum, c.GLeglImageOES) callconv(.c) void;
 const PFNEGLQUERYDMABUFMODIFIERSEXTPROC = *const fn (c.EGLDisplay, c.EGLint, c.EGLint, [*c]c.EGLuint64KHR, [*c]c.EGLBoolean, [*c]c.EGLint) callconv(.c) c.EGLBoolean;
 
-render_thread: std.Thread,
-render_thread_started: bool,
-running: bool,
-
 egl_display: c.EGLDisplay,
 egl_surface: c.EGLSurface,
 egl_context: c.EGLContext,
 dri_card_fd: std.posix.fd_t,
 
 textures: std.ArrayList(c.GLuint),
-dmabufs_to_import: std.ArrayList(xph.graphics.DmabufImport),
+dmabufs_to_import: std.ArrayList(xph.Graphics.DmabufImport),
 mutex: std.Thread.Mutex,
+width: u32,
+height: u32,
 
 glEGLImageTargetTexture2DOES: PFNGLEGLIMAGETARGETTEXTURE2DOESPROC,
 eglQueryDmaBufModifiersEXT: PFNEGLQUERYDMABUFMODIFIERSEXTPROC,
@@ -142,10 +140,6 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
         return error.FailedToMakeEglContextCurrent;
 
     return .{
-        .render_thread = undefined,
-        .render_thread_started = false,
-        .running = true,
-
         .egl_display = egl_display,
         .egl_surface = egl_surface,
         .egl_context = egl_context,
@@ -154,6 +148,9 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
         .textures = .init(allocator),
         .dmabufs_to_import = .init(allocator),
         .mutex = .{},
+        // TODO:
+        .width = 1920,
+        .height = 1080,
 
         .glEGLImageTargetTexture2DOES = glEGLImageTargetTexture2DOES,
         .eglQueryDmaBufModifiersEXT = eglQueryDmaBufModifiersEXT,
@@ -161,11 +158,6 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
 }
 
 pub fn deinit(self: *Self) void {
-    if (self.render_thread_started) {
-        self.running = false;
-        self.render_thread.join();
-    }
-
     c.glDeleteTextures(@intCast(self.textures.items.len), self.textures.items.ptr);
     self.dmabufs_to_import.deinit();
     self.textures.deinit();
@@ -180,31 +172,66 @@ pub fn deinit(self: *Self) void {
     self.egl_display = undefined;
 }
 
-pub fn run_render_thread(self: *Self) !void {
-    if (self.render_thread_started)
-        return error.RenderThreadAlreadyRunning;
-
-    self.render_thread = try std.Thread.spawn(.{}, render_loop, .{self});
-    self.render_thread_started = true;
-}
-
 pub fn get_dri_card_fd(self: *Self) std.posix.fd_t {
     return self.dri_card_fd;
 }
 
+pub fn render(self: *Self) !void {
+    // TODO: If this fails propagate it up to the main thread, maybe by setting a variable if it succeeds
+    // or not and wait for that in the main thread.
+    // TODO: Dont do this everytime?
+    if (c.eglMakeCurrent(self.egl_display, self.egl_surface, self.egl_surface, self.egl_context) == c.EGL_FALSE) {
+        std.log.err("GraphicsEgl.render_loop: eglMakeCurrent failed, error: {d}", .{c.eglGetError()});
+        return error.FailedToMakeEglContextCurrent;
+    }
+
+    self.run_updates();
+
+    c.glClearColor(0.392, 0.584, 0.929, 1.0);
+    c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT | c.GL_STENCIL_BUFFER_BIT);
+
+    for (self.textures.items) |texture| {
+        c.glBindTexture(c.GL_TEXTURE_2D, texture);
+        //std.log.info("texture: {d}", .{texture});
+
+        // TODO: Move out of loop
+        c.glBegin(c.GL_QUADS);
+        {
+            c.glTexCoord2f(0.0, 0.0);
+            c.glVertex2f(-0.5, -0.5);
+
+            c.glTexCoord2f(1.0, 0.0);
+            c.glVertex2f(0.5, -0.5);
+
+            c.glTexCoord2f(1.0, 1.0);
+            c.glVertex2f(0.5, 0.5);
+
+            c.glTexCoord2f(0.0, 1.0);
+            c.glVertex2f(-0.5, 0.5);
+        }
+        c.glEnd();
+    }
+
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    _ = c.eglSwapBuffers(self.egl_display, self.egl_surface);
+}
+
 pub fn resize(self: *Self, width: u32, height: u32) void {
-    _ = self;
-    c.glViewport(0, 0, @intCast(width), @intCast(height));
+    self.width = width;
+    self.height = height;
+    c.glViewport(0, 0, @intCast(self.width), @intCast(self.height));
     //c.glOrtho(0, @floatFromInt(width), 0, @floatFromInt(height), -1, 1);
 }
 
-pub fn create_texture_from_pixmap(self: *Self, pixmap: *xph.Pixmap) !void {
+/// Returns a texture id
+pub fn create_texture_from_pixmap(self: *Self, pixmap: *xph.Pixmap) !u32 {
     self.mutex.lock();
     defer self.mutex.unlock();
     try self.dmabufs_to_import.append(pixmap.dmabuf_data);
+    return @intCast(self.textures.items.len);
 }
 
-fn import_dmabuf_internal(self: *Self, import: *const xph.graphics.DmabufImport) !void {
+fn import_dmabuf_internal(self: *Self, import: *const xph.Graphics.DmabufImport) !void {
     std.debug.assert(import.num_items <= drm_num_buf_attrs);
     var attr: [64]c.EGLAttrib = undefined;
 
@@ -299,9 +326,6 @@ fn import_dmabuf_internal(self: *Self, import: *const xph.graphics.DmabufImport)
 }
 
 fn import_dmabufs_internal(self: *Self) void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
-
     for (self.dmabufs_to_import.items) |*dmabuf_to_import| {
         // TODO: Report success/failure back to x11 protocol handler
         self.import_dmabuf_internal(dmabuf_to_import) catch |err| {
@@ -311,6 +335,14 @@ fn import_dmabufs_internal(self: *Self) void {
     self.dmabufs_to_import.clearRetainingCapacity();
 }
 
+fn run_updates(self: *Self) void {
+    // TODO: Instead of locking all of the operations, copy the data (dmabufs to import) and unlock immediately?
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    self.import_dmabufs_internal();
+}
+
 pub fn get_supported_modifiers(self: *Self, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {
     _ = bpp;
     const format = try depth_to_fourcc(depth);
@@ -318,49 +350,6 @@ pub fn get_supported_modifiers(self: *Self, depth: u8, bpp: u8, modifiers: *[64]
     if (self.eglQueryDmaBufModifiersEXT(self.egl_display, @intCast(format), modifiers.len, @ptrCast(modifiers.ptr), c.EGL_FALSE, &num_modifiers) == c.EGL_FALSE or num_modifiers < 0)
         return error.FailedToQueryDmaBufModifiers;
     return modifiers[0..@intCast(num_modifiers)];
-}
-
-fn render_loop(self: *Self) !void {
-    std.log.info("render loop", .{});
-
-    // TODO: If this fails propagate it up to the main thread, maybe by setting a variable if it succeeds
-    // or not and wait for that in the main thread
-    if (c.eglMakeCurrent(self.egl_display, self.egl_surface, self.egl_surface, self.egl_context) == c.EGL_FALSE) {
-        std.log.err("GraphicsEgl.render_loop: eglMakeCurrent failed, error: {d}", .{c.eglGetError()});
-        return error.FailedToMakeEglContextCurrent;
-    }
-
-    while (self.running) {
-        self.import_dmabufs_internal();
-
-        c.glClearColor(0.392, 0.584, 0.929, 1.0);
-        c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT | c.GL_STENCIL_BUFFER_BIT);
-
-        for (self.textures.items) |texture| {
-            c.glBindTexture(c.GL_TEXTURE_2D, texture);
-            //std.log.info("texture: {d}", .{texture});
-
-            // TODO: Move out of loop
-            c.glBegin(c.GL_QUADS);
-            {
-                c.glTexCoord2f(0.0, 0.0);
-                c.glVertex2f(-0.5, -0.5);
-
-                c.glTexCoord2f(1.0, 0.0);
-                c.glVertex2f(0.5, -0.5);
-
-                c.glTexCoord2f(1.0, 1.0);
-                c.glVertex2f(0.5, 0.5);
-
-                c.glTexCoord2f(0.0, 1.0);
-                c.glVertex2f(-0.5, 0.5);
-            }
-            c.glEnd();
-        }
-
-        c.glBindTexture(c.GL_TEXTURE_2D, 0);
-        _ = c.eglSwapBuffers(self.egl_display, self.egl_surface);
-    }
 }
 
 fn gl_debug_callback(

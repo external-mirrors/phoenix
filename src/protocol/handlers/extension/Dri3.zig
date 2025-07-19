@@ -119,6 +119,13 @@ fn pixmap_from_buffer(request_context: xph.RequestContext) !void {
         return request_context.client.write_error(request_context, .length, 0);
     }
 
+    const depth_supported = depth_is_supported(req.request.depth);
+    const bpp_supported = bpp_is_supported(req.request.bpp);
+    if(!depth_supported or !bpp_supported) {
+        request_context.client.discard_and_close_read_fds(1);
+        return request_context.client.write_error(request_context, .value, if(!depth_supported) req.request.depth else req.request.bpp);
+    }
+
     const dmabuf_fd = read_fds[0];
     // TODO: Close fds if failure, or always close them on discard but have a "steal" function. When those are passed to import_dmabuf, they should be cleaned up there
     defer request_context.client.discard_read_fds(1);
@@ -130,7 +137,7 @@ fn pixmap_from_buffer(request_context: xph.RequestContext) !void {
     const resolved_path = std.posix.readlink(path, &resolved_path_buf) catch "unknown";
     std.log.info("dmabuf: {d}: {s}", .{ dmabuf_fd, resolved_path });
 
-    const import_dmabuf = xph.graphics.DmabufImport{
+    const import_dmabuf = xph.Graphics.DmabufImport{
         .fd = [_]std.posix.fd_t{ dmabuf_fd, 0, 0, 0 },
         .stride = [_]u32{ req.request.stride, 0, 0, 0 },
         .offset = [_]u32{ 0, 0, 0, 0 },
@@ -147,8 +154,8 @@ fn pixmap_from_buffer(request_context: xph.RequestContext) !void {
     var pixmap = try xph.Pixmap.create(req.request.pixmap, &import_dmabuf, request_context.client, request_context.allocator);
     errdefer pixmap.destroy();
 
-    // TODO: associate this with the pixmap
-    try request_context.server.display.create_texture_from_pixmap(pixmap);
+    // TODO: If import dmabuf fails then return match error
+    pixmap.texture_id = try request_context.server.display.create_texture_from_pixmap(pixmap);
 }
 
 fn fence_from_fd(request_context: xph.RequestContext) !void {
@@ -233,7 +240,14 @@ fn pixmap_from_buffers(request_context: xph.RequestContext) !void {
         return request_context.client.write_error(request_context, .length, 0);
     }
 
-    const dmabuf_fds = read_fds[0..@min(4, req.request.num_buffers)];
+    const depth_supported = depth_is_supported(req.request.depth);
+    const bpp_supported = bpp_is_supported(req.request.bpp);
+    if(!depth_supported or !bpp_supported) {
+        request_context.client.discard_and_close_read_fds(req.request.num_buffers);
+        return request_context.client.write_error(request_context, .value, if(!depth_supported) req.request.depth else req.request.bpp);
+    }
+
+    const dmabuf_fds = read_fds[0..req.request.num_buffers];
     defer request_context.client.discard_read_fds(req.request.num_buffers);
 
     // TODO: Use size?
@@ -252,7 +266,7 @@ fn pixmap_from_buffers(request_context: xph.RequestContext) !void {
     const strides: [4]u32 = .{ req.request.stride0, req.request.stride1, req.request.stride2, req.request.stride3 };
     const offsets: [4]u32 = .{ req.request.offset0, req.request.offset1, req.request.offset2, req.request.offset3 };
 
-    var import_dmabuf: xph.graphics.DmabufImport = undefined;
+    var import_dmabuf: xph.Graphics.DmabufImport = undefined;
     import_dmabuf.width = req.request.width;
     import_dmabuf.height = req.request.height;
     import_dmabuf.depth = req.request.depth;
@@ -269,8 +283,22 @@ fn pixmap_from_buffers(request_context: xph.RequestContext) !void {
     var pixmap = try xph.Pixmap.create(req.request.pixmap, &import_dmabuf, request_context.client, request_context.allocator);
     errdefer pixmap.destroy();
 
-    // TODO: associate this with the pixmap
-    try request_context.server.display.create_texture_from_pixmap(pixmap);
+    // TODO: If import dmabuf fails then return match error
+    pixmap.texture_id = try request_context.server.display.create_texture_from_pixmap(pixmap);
+}
+
+fn depth_is_supported(depth: u8) bool {
+    return switch (depth) {
+        16, 24, 30, 32 => true,
+        else => false,
+    };
+}
+
+fn bpp_is_supported(bpp: u8) bool {
+    return switch (bpp) {
+        16, 24, 30, 32 => true,
+        else => false,
+    };
 }
 
 const MinorOpcode = enum(x11.Card8) {

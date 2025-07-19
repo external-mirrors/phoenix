@@ -171,14 +171,6 @@ const MinorOpcode = enum(x11.Card8) {
     select_input = 3,
 };
 
-pub const Fence = enum(x11.Card32) {
-    _,
-
-    pub fn to_id(self: Fence) x11.ResourceId {
-        return @enumFromInt(@intFromEnum(self));
-    }
-};
-
 const PresentNotify = struct {
     window: x11.Window,
     serial: x11.Card32,
@@ -283,8 +275,8 @@ const PresentPixmapRequest = struct {
     x_off: i16,
     y_off: i16,
     target_crtc: Randr.Crtc,
-    wait_fence: Fence,
-    idle_fence: Fence,
+    wait_fence: xph.Sync.Fence,
+    idle_fence: xph.Sync.Fence,
     options: PresentOptions,
     pad1: x11.Card32,
     target_msc: x11.Card64,
@@ -344,7 +336,7 @@ const PresentIdleNotifyEvent = extern struct {
     window: x11.Window,
     serial: x11.Card32,
     pixmap: x11.Pixmap,
-    idle_fence: Fence,
+    idle_fence: xph.Sync.Fence,
 
     pub fn get_extension_major_opcode(self: *const PresentIdleNotifyEvent) xph.opcode.Major {
         _ = self;

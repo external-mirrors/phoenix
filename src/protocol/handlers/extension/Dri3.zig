@@ -354,7 +354,7 @@ const Dri3FenceFromFdRequest = struct {
     minor_opcode: x11.Card8, // MinorOpcode
     length: x11.Card16,
     drawable: x11.Drawable,
-    fence: xph.Present.Fence,
+    fence: xph.Sync.Fence,
     initially_triggered: bool,
     pad1: x11.Card8,
     pad2: x11.Card16,

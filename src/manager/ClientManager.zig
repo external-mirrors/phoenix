@@ -92,7 +92,7 @@ pub fn get_pixmap(self: *Self, pixmap_id: x11.Pixmap) ?*xph.Pixmap {
     }
 }
 
-pub fn get_fence(self: *Self, fence_id: xph.Present.Fence) ?*xph.Fence {
+pub fn get_fence(self: *Self, fence_id: xph.Sync.Fence) ?*xph.Fence {
     const client_index = xph.ResourceIdBaseManager.resource_id_get_base_index(fence_id.to_id().to_int());
     if (self.clients[client_index]) |client| {
         const resource = client.get_resource(fence_id.to_id()) orelse return null;

@@ -13,3 +13,4 @@ Move backend to a separate process which has can be restarted. Restarting works 
 Use timerfd (linux only) for epoll friendly timer timeout.
 Use eventfd (linux only) for epoll friendly manual event trigger, that unblocks the epoll wait.
     This is useful for example for writing events to client when rendering is done (in a separate thread).
+Close the program if the nested x11 window is closed.

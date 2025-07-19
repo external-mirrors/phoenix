@@ -31,6 +31,22 @@ Applications can use this property to scale their content to the specified DPI f
 * Strings are in ISO Latin-1 encoding in the X11 protocol unless specified otherwise, however in XPhoenix all strings
 are UTF-8 unless the protocol states that it's not an ISO Latin-1 string.
 
+## Installing
+Run:
+```sh
+zig build -Doptimize=ReleaseSafe
+sudo zig build install -p /usr/local -Doptimize=ReleaseSafe
+```
+
+## Uninstalling
+Zig does currently not support the uninstall command so you have to remove files manually:
+```sh
+sudo rm /usr/local/bin/xphoenix
+```
+
+## Building (for development)
+Run `zig build`, which builds XPhoenix in debug mode. The compiled binary will be available at `./zig-out/bin/xphoenix`. You can alternatively build and run with one command: `zig build run`.
+
 ## Dependencies
 * [Zig 0.14.1](https://ziglang.org/download/)
 * x11 (`xcb`) - for nested mode under X11, when building XPhoenix with `-Dbackends=x11`

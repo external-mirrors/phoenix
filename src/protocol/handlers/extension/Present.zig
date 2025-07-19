@@ -65,7 +65,16 @@ fn present_pixmap(request_context: xph.RequestContext) !void {
     };
     _ = pixmap;
 
+    if (req.request.idle_fence.to_id().to_int() != 0) {
+        const idle_fence = request_context.server.get_fence(req.request.idle_fence) orelse {
+            std.log.err("Received invalid idle fence {d} in PresentPixmap request", .{req.request.idle_fence});
+            return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.idle_fence));
+        };
+        _ = idle_fence.shm_fence.trigger();
+    }
+
     // TODO: Implement properly
+    // TODO: Handle wait_fence
 
     std.log.err("present pixmap: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -135,7 +144,21 @@ fn select_input(request_context: xph.RequestContext) !void {
 
         const event_context = xph.EventContext{ .id = event_id, .window = window };
 
-        try request_context.client.add_event_context(event_context);
+        request_context.client.add_event_context(event_context) catch |err| switch (err) {
+            error.ResourceNotOwnedByClient => {
+                std.log.err("Received event id {d} in PresentSelectInput request which doesn't belong to the client", .{req.request.event_id});
+                // TODO: What type of error should actually be generated?
+                return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.event_id));
+            },
+            error.ResourceAlreadyExists => {
+                std.log.err("Received event id {d} in CreateWindow request which already exists", .{req.request.event_id});
+                // TODO: What type of error should actually be generated?
+                return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.event_id));
+            },
+            error.OutOfMemory => {
+                return request_context.client.write_error(request_context, .alloc, 0);
+            },
+        };
         errdefer request_context.client.remove_resource(event_context.id);
 
         try window.add_extension_event_listener(request_context.client, event_context.id, .present, @bitCast(req.request.event_mask));
@@ -148,8 +171,12 @@ const MinorOpcode = enum(x11.Card8) {
     select_input = 3,
 };
 
-const SyncFence = enum(x11.Card32) {
+pub const Fence = enum(x11.Card32) {
     _,
+
+    pub fn to_id(self: Fence) x11.ResourceId {
+        return @enumFromInt(@intFromEnum(self));
+    }
 };
 
 const PresentNotify = struct {
@@ -256,8 +283,8 @@ const PresentPixmapRequest = struct {
     x_off: i16,
     y_off: i16,
     target_crtc: Randr.Crtc,
-    wait_fence: SyncFence,
-    idle_fence: SyncFence,
+    wait_fence: Fence,
+    idle_fence: Fence,
     options: PresentOptions,
     pad1: x11.Card32,
     target_msc: x11.Card64,
@@ -317,7 +344,7 @@ const PresentIdleNotifyEvent = extern struct {
     window: x11.Window,
     serial: x11.Card32,
     pixmap: x11.Pixmap,
-    idle_fence: SyncFence,
+    idle_fence: Fence,
 
     pub fn get_extension_major_opcode(self: *const PresentIdleNotifyEvent) xph.opcode.Major {
         _ = self;

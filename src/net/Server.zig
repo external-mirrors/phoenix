@@ -360,3 +360,7 @@ pub fn get_window(self: *Self, window_id: x11.Window) ?*xph.Window {
 pub fn get_pixmap(self: *Self, pixmap_id: x11.Pixmap) ?*xph.Pixmap {
     return self.client_manager.get_pixmap(pixmap_id);
 }
+
+pub fn get_fence(self: *Self, fence_id: xph.Present.Fence) ?*xph.Fence {
+    return self.client_manager.get_fence(fence_id);
+}

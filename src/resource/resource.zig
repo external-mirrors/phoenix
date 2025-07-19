@@ -5,12 +5,14 @@ const x11 = xph.x11;
 pub const Resource = union(enum) {
     window: *xph.Window,
     pixmap: *xph.Pixmap,
+    fence: *xph.Fence,
     event_context: xph.EventContext,
 
     pub fn deinit(self: Resource) void {
         switch (self) {
             .window => |item| item.destroy(),
             .pixmap => |item| item.destroy(),
+            .fence => |item| item.destroy(),
             .event_context => {},
         }
     }

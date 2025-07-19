@@ -243,6 +243,10 @@ pub fn add_pixmap(self: *Self, pixmap: *xph.Pixmap) !void {
     return self.add_resource(pixmap.id.to_id(), .{ .pixmap = pixmap });
 }
 
+pub fn add_fence(self: *Self, fence: *xph.Fence) !void {
+    return self.add_resource(fence.id.to_id(), .{ .fence = fence });
+}
+
 pub fn remove_resource(self: *Self, id: x11.ResourceId) void {
     if (self.deleting_self)
         return;

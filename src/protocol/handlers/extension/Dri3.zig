@@ -121,9 +121,9 @@ fn pixmap_from_buffer(request_context: xph.RequestContext) !void {
 
     const depth_supported = depth_is_supported(req.request.depth);
     const bpp_supported = bpp_is_supported(req.request.bpp);
-    if(!depth_supported or !bpp_supported) {
+    if (!depth_supported or !bpp_supported) {
         request_context.client.discard_and_close_read_fds(1);
-        return request_context.client.write_error(request_context, .value, if(!depth_supported) req.request.depth else req.request.bpp);
+        return request_context.client.write_error(request_context, .value, if (!depth_supported) req.request.depth else req.request.bpp);
     }
 
     const dmabuf_fd = read_fds[0];
@@ -168,8 +168,13 @@ fn fence_from_fd(request_context: xph.RequestContext) !void {
         return request_context.client.write_error(request_context, .length, 0);
     }
 
+    // TODO: What to do about req.request.initially_triggered ?
+
     const fence_fd = read_fds[0];
-    defer request_context.client.discard_and_close_read_fds(1);
+    defer request_context.client.discard_read_fds(1);
+
+    var fence = try xph.Fence.create_from_fd(req.request.fence, fence_fd, request_context.client, request_context.allocator);
+    errdefer fence.destroy();
 
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
     var resolved_path_buf: [std.fs.max_path_bytes]u8 = undefined;
@@ -177,22 +182,6 @@ fn fence_from_fd(request_context: xph.RequestContext) !void {
     const path = try std.fmt.bufPrint(&path_buf, "/proc/self/fd/{d}", .{fence_fd});
     const resolved_path = std.posix.readlink(path, &resolved_path_buf) catch "unknown";
     std.log.info("fence: {d}: {s}", .{ fence_fd, resolved_path });
-
-    // TODO: Use it properly
-    var fence = try xph.xshmfence.xshmfence.create_from_fd(fence_fd);
-    defer fence.destroy();
-
-    // _ = try std.Thread.spawn(.{}, struct {
-    //     pub fn lol(zz: *xshmfence.xshmfence) void {
-    //         while (true) {
-    //             std.debug.print("trigger xshmfence!\n", .{});
-    //             _ = zz.trigger();
-    //             std.Thread.sleep(1 * std.time.ns_per_s);
-    //         }
-    //     }
-    // }.lol, .{fence});
-
-    // TODO: Implement
 }
 
 fn get_supported_modifiers(request_context: xph.RequestContext) !void {
@@ -242,9 +231,9 @@ fn pixmap_from_buffers(request_context: xph.RequestContext) !void {
 
     const depth_supported = depth_is_supported(req.request.depth);
     const bpp_supported = bpp_is_supported(req.request.bpp);
-    if(!depth_supported or !bpp_supported) {
+    if (!depth_supported or !bpp_supported) {
         request_context.client.discard_and_close_read_fds(req.request.num_buffers);
-        return request_context.client.write_error(request_context, .value, if(!depth_supported) req.request.depth else req.request.bpp);
+        return request_context.client.write_error(request_context, .value, if (!depth_supported) req.request.depth else req.request.bpp);
     }
 
     const dmabuf_fds = read_fds[0..req.request.num_buffers];
@@ -365,7 +354,7 @@ const Dri3FenceFromFdRequest = struct {
     minor_opcode: x11.Card8, // MinorOpcode
     length: x11.Card16,
     drawable: x11.Drawable,
-    fence: x11.Card32,
+    fence: xph.Present.Fence,
     initially_triggered: bool,
     pad1: x11.Card8,
     pad2: x11.Card16,

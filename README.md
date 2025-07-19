@@ -14,10 +14,15 @@ and no server driver interface like the Xorg server.
 As it's written in Zig, it also automatically catches illegal behaviors (such as index out of array bounds).
 * Support modern technology better than the Xorg server.
 Proper support for multiple monitors (different refresh rates, VRR - not a single framebuffer for the whole collection of displays) and technology like HDR.
-* No tearing by default and a built-in compositor. The compositor will get disabled if the user runs a client compositor (such as picom).
+* No tearing by default and a built-in compositor. The compositor will get disabled if the user runs an external compositor (client application), such as picom.
 * Lower vsync/compositor latency than the Xorg server.
 * Provide new standards, such as per-monitor DPI as randr properties.
 Applications can use this property to scale their content to the specified DPI for the monitor they are on.
+* Secure by default. Applications will be isolated and can only interact with other applications either through a
+GUI prompt asking for permission, such as with screen recorders, where it will only be allowed to record the window specified
+or by explicitly giving the application permission before launched (such as a window manager or external compositor).
+There will be an option to disable this to make the X server behave like the Xorg server.
+* Extending the X11 protocol. If there is a need for new features (such as HDR) then the X11 protocol will be extended.
 * Support wayland applications, either directly or indirectly (internally or externally).
 * Support (hardware accelerated) nested X server or to be used as an XWayland server.
 

@@ -15,7 +15,7 @@ As it's written in Zig, it also automatically catches illegal behaviors (such as
 * Support modern technology better than the Xorg server.
 Proper support for multiple monitors (different refresh rates, VRR - not a single framebuffer for the whole collection of displays) and technology like HDR.
 * No tearing by default and a built-in compositor. The compositor will get disabled if the user runs a client compositor (such as picom).
-* Less vsync/compositor latency than the Xorg server.
+* Lower vsync/compositor latency than the Xorg server.
 * Provide new standards, such as per-monitor DPI as randr properties.
 Applications can use this property to scale their content to the specified DPI for the monitor they are on.
 * Support wayland applications, either directly or indirectly (internally or externally).

@@ -27,7 +27,8 @@ Applications can use this property to scale their content to the specified DPI f
 * Endian-swapped client/server. This can be considered if there is a reason.
 * Indirect (remote) GLX.
 
-## Differences between X11 protocol and XPhoenix implementation
+## Differences between the X11 protocol and XPhoenix
+* Several parts of the X11 protocol (core) are mandatory to be implemented by an X server, such as font related operations. However these are not going to be implemented in XPhoenix.
 * Strings are in ISO Latin-1 encoding in the X11 protocol unless specified otherwise, however in XPhoenix all strings
 are UTF-8 unless the protocol states that it's not an ISO Latin-1 string.
 

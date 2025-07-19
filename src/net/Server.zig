@@ -313,6 +313,7 @@ fn handle_client_request(self: *Self, client: *xph.Client) !bool {
     return true;
 }
 
+// TODO: Consistent names for resource get
 pub fn get_visual_by_id(self: *Self, visual_id: x11.VisualId) ?*const xph.Visual {
     _ = self;
     if (visual_id == screen_true_color_visual.id) {
@@ -333,4 +334,8 @@ pub fn get_colormap_by_id(self: *Self, colormap_id: x11.Colormap) ?*const xph.Co
 
 pub fn get_window(self: *Self, window_id: x11.Window) ?*xph.Window {
     return self.client_manager.get_window(window_id);
+}
+
+pub fn get_pixmap(self: *Self, pixmap_id: x11.Pixmap) ?*xph.Pixmap {
+    return self.client_manager.get_pixmap(pixmap_id);
 }

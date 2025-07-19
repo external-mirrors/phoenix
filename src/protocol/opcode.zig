@@ -11,6 +11,7 @@ pub const Major = enum(x11.Card8) {
     change_property = 18,
     get_property = 20,
     get_input_focus = 43,
+    free_pixmap = 54,
     create_gc = 55,
     query_extension = 98,
 

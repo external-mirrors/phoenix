@@ -21,6 +21,7 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
         .change_property => return change_property(request_context),
         .get_property => return get_property(request_context),
         .get_input_focus => return get_input_focus(request_context),
+        .free_pixmap => return free_pixmap(request_context),
         .create_gc => return create_gc(request_context),
         .query_extension => return query_extension(request_context),
         else => unreachable,
@@ -288,6 +289,17 @@ fn get_input_focus(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn free_pixmap(request_context: xph.RequestContext) !void {
+    var req = try request_context.client.read_request(FreePixmapRequest, request_context.allocator);
+    defer req.deinit();
+
+    // TODO: Dont free immediately if the pixmap still has references somewhere
+    const pixmap = request_context.server.get_pixmap(req.request.pixmap) orelse {
+        return request_context.client.write_error(request_context, .pixmap, @intFromEnum(req.request.pixmap));
+    };
+    pixmap.destroy();
+}
+
 fn create_gc(_: xph.RequestContext) !void {
     std.log.err("Unimplemented request: CreateGC", .{});
 }
@@ -314,6 +326,8 @@ fn query_extension(request_context: xph.RequestContext) !void {
     } else if (std.mem.eql(u8, req.request.name.items, "Present")) {
         rep.present = true;
         rep.major_opcode = @intFromEnum(xph.opcode.Major.present);
+    } else {
+        std.log.err("QueryExtension: unsupported extension: {s}", .{req.request.name.items});
     }
 
     try request_context.client.write_reply(&rep);
@@ -518,6 +532,13 @@ const GetInputFocusRequest = struct {
     opcode: x11.Card8, // opcode.Major
     pad1: x11.Card8,
     length: x11.Card16,
+};
+
+const FreePixmapRequest = struct {
+    opcode: x11.Card8, // opcode.Major
+    pad1: x11.Card8,
+    length: x11.Card16,
+    pixmap: x11.Pixmap,
 };
 
 const GetInputFocusReply = struct {

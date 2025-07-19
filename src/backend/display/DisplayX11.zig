@@ -1,11 +1,13 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const xph = @import("../../xphoenix.zig");
 const c = xph.c;
 const cstdlib = std.c;
 
 const Self = @This();
 
-const gl_debug = true;
+// TODO:
+const gl_debug = builtin.mode == .Debug;
 
 connection: *c.xcb_connection_t,
 root_window: c.xcb_window_t,
@@ -53,9 +55,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         return error.FailedToMapRootWindow;
     }
 
-    graphics.resize(width, height);
-    graphics.clear();
-    graphics.display();
+    try graphics.run_render_thread();
 
     return .{
         .connection = connection,
@@ -79,18 +79,12 @@ pub fn create_window(self: *Self) !void {
     _ = self;
 }
 
-pub fn import_dmabuf(self: *Self, import: *const xph.graphics.DmabufImport) !void {
-    return self.graphics.import_dmabuf(import);
+pub fn create_texture_from_pixmap(self: *Self, pixmap: *xph.Pixmap) !void {
+    return self.graphics.create_texture_from_pixmap(pixmap);
 }
 
 pub fn get_supported_modifiers(self: *Self, window: *xph.Window, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {
     _ = window;
     // TODO: Do something with window
     return self.graphics.get_supported_modifiers(depth, bpp, modifiers);
-}
-
-pub fn draw(self: *Self) void {
-    self.graphics.clear();
-    self.graphics.render();
-    self.graphics.display();
 }

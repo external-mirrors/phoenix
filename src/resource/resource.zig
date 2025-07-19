@@ -4,11 +4,13 @@ const x11 = xph.x11;
 
 pub const Resource = union(enum) {
     window: *xph.Window,
+    pixmap: *xph.Pixmap,
     event_context: xph.EventContext,
 
     pub fn deinit(self: Resource) void {
         switch (self) {
             .window => |item| item.destroy(),
+            .pixmap => |item| item.destroy(),
             .event_context => {},
         }
     }
@@ -16,7 +18,7 @@ pub const Resource = union(enum) {
 
 pub const ResourceHashMap = std.HashMap(x11.ResourceId, Resource, struct {
     pub fn hash(_: @This(), key: x11.ResourceId) u64 {
-        return @intCast(@intFromEnum(key));
+        return key.to_int();
     }
 
     pub fn eql(_: @This(), a: x11.ResourceId, b: x11.ResourceId) bool {

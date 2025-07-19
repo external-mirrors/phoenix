@@ -120,7 +120,8 @@ fn pixmap_from_buffer(request_context: xph.RequestContext) !void {
     }
 
     const dmabuf_fd = read_fds[0];
-    defer request_context.client.discard_and_close_read_fds(1);
+    // TODO: Close fds if failure, or always close them on discard but have a "steal" function. When those are passed to import_dmabuf, they should be cleaned up there
+    defer request_context.client.discard_read_fds(1);
 
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
     var resolved_path_buf: [std.fs.max_path_bytes]u8 = undefined;
@@ -142,8 +143,12 @@ fn pixmap_from_buffer(request_context: xph.RequestContext) !void {
         .bpp = req.request.bpp,
         .num_items = 1,
     };
+
+    var pixmap = try xph.Pixmap.create(req.request.pixmap, &import_dmabuf, request_context.client, request_context.allocator);
+    errdefer pixmap.destroy();
+
     // TODO: associate this with the pixmap
-    try request_context.server.display.import_dmabuf(&import_dmabuf);
+    try request_context.server.display.create_texture_from_pixmap(pixmap);
 }
 
 fn fence_from_fd(request_context: xph.RequestContext) !void {
@@ -218,18 +223,18 @@ fn pixmap_from_buffers(request_context: xph.RequestContext) !void {
     std.log.info("Dri3PixmapFromBuffers request: {s}, fd: {d}", .{ x11.stringify_fmt(req), request_context.client.get_read_fds() });
 
     const read_fds = request_context.client.get_read_fds();
+    // TODO: What about the read fds?
     if (read_fds.len < req.request.num_buffers) {
         return request_context.client.write_error(request_context, .length, 0);
     }
 
-    const dmabuf_fds = read_fds[0..@min(4, req.request.num_buffers)];
-    defer request_context.client.discard_and_close_read_fds(req.request.num_buffers);
-
     if (req.request.num_buffers > 4) {
+        request_context.client.discard_and_close_read_fds(4);
         return request_context.client.write_error(request_context, .length, 0);
     }
 
-    // TODO: Actually create the pixmap and add it to resources
+    const dmabuf_fds = read_fds[0..@min(4, req.request.num_buffers)];
+    defer request_context.client.discard_read_fds(req.request.num_buffers);
 
     // TODO: Use size?
     // const size = @mulWithOverflow(strides[i], req.request.height);
@@ -261,8 +266,11 @@ fn pixmap_from_buffers(request_context: xph.RequestContext) !void {
         import_dmabuf.modifier[i] = req.request.modifier;
     }
 
+    var pixmap = try xph.Pixmap.create(req.request.pixmap, &import_dmabuf, request_context.client, request_context.allocator);
+    errdefer pixmap.destroy();
+
     // TODO: associate this with the pixmap
-    try request_context.server.display.import_dmabuf(&import_dmabuf);
+    try request_context.server.display.create_texture_from_pixmap(pixmap);
 }
 
 const MinorOpcode = enum(x11.Card8) {

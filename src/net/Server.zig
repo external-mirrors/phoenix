@@ -189,9 +189,6 @@ pub fn run(self: *Self) void {
                 }
             }
         }
-
-        // TODO: Remove this and instead do the rendering in a separate thread of process
-        self.display.draw();
     }
 }
 

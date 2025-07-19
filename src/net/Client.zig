@@ -153,6 +153,11 @@ pub fn get_read_fds(self: *Self) []const std.posix.fd_t {
     return self.read_buffer_fds.readableSliceOfLen(self.read_buffer_fds.readableLength());
 }
 
+pub fn discard_read_fds(self: *Self, num_fds: usize) void {
+    const num_fds_to_cleanup = @min(self.read_buffer_fds.readableLength(), num_fds);
+    self.read_buffer_fds.discard(num_fds_to_cleanup);
+}
+
 pub fn discard_and_close_read_fds(self: *Self, num_fds: usize) void {
     const num_fds_to_cleanup = @min(self.read_buffer_fds.readableLength(), num_fds);
     for (0..num_fds_to_cleanup) |_| {
@@ -214,29 +219,28 @@ pub fn next_sequence_number(self: *Self) u16 {
     return sequence;
 }
 
-pub fn add_window(self: *Self, window: *xph.Window) !void {
-    const window_id = window.id.to_id();
-    if (!self.is_owner_of_resource(window_id))
+fn add_resource(self: *Self, resource_id: x11.ResourceId, resource: xph.Resource) !void {
+    if (!self.is_owner_of_resource(resource_id))
         return error.ResourceNotOwnedByClient;
 
-    const result = try self.resources.getOrPut(window_id);
+    const result = try self.resources.getOrPut(resource_id);
     if (result.found_existing)
         return error.ResourceAlreadyExists;
 
-    result.value_ptr.* = .{ .window = window };
-    errdefer _ = self.resources.remove(window_id);
+    result.value_ptr.* = resource;
+    errdefer _ = self.resources.remove(resource_id);
+}
+
+pub fn add_window(self: *Self, window: *xph.Window) !void {
+    return self.add_resource(window.id.to_id(), .{ .window = window });
 }
 
 pub fn add_event_context(self: *Self, event_context: xph.EventContext) !void {
-    if (!self.is_owner_of_resource(event_context.id))
-        return error.ResourceNotOwnedByClient;
+    return self.add_resource(event_context.id, .{ .event_context = event_context });
+}
 
-    const result = try self.resources.getOrPut(event_context.id);
-    if (result.found_existing)
-        return error.ResourceAlreadyExists;
-
-    result.value_ptr.* = .{ .event_context = event_context };
-    errdefer _ = self.resources.remove(event_context.id);
+pub fn add_pixmap(self: *Self, pixmap: *xph.Pixmap) !void {
+    return self.add_resource(pixmap.id.to_id(), .{ .pixmap = pixmap });
 }
 
 pub fn remove_resource(self: *Self, id: x11.ResourceId) void {

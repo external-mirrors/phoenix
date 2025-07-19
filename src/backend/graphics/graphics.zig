@@ -28,6 +28,12 @@ pub const Graphics = union(enum) {
         }
     }
 
+    pub fn run_render_thread(self: Graphics) !void {
+        return switch (self) {
+            inline else => |item| item.run_render_thread(),
+        };
+    }
+
     pub fn get_dri_card_fd(self: Graphics) std.posix.fd_t {
         return switch (self) {
             inline else => |item| item.get_dri_card_fd(),
@@ -40,27 +46,9 @@ pub const Graphics = union(enum) {
         }
     }
 
-    pub fn clear(self: Graphics) void {
-        switch (self) {
-            inline else => |item| item.clear(),
-        }
-    }
-
-    pub fn render(self: Graphics) void {
-        switch (self) {
-            inline else => |item| item.render(),
-        }
-    }
-
-    pub fn display(self: Graphics) void {
-        switch (self) {
-            inline else => |item| item.display(),
-        }
-    }
-
-    pub fn import_dmabuf(self: Graphics, import: *const DmabufImport) !void {
+    pub fn create_texture_from_pixmap(self: Graphics, pixmap: *xph.Pixmap) !void {
         return switch (self) {
-            inline else => |item| item.import_dmabuf(import),
+            inline else => |item| item.create_texture_from_pixmap(pixmap),
         };
     }
 

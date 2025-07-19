@@ -33,21 +33,15 @@ pub const Display = union(enum) {
         }
     }
 
-    pub fn import_dmabuf(self: Display, import: *const xph.graphics.DmabufImport) !void {
+    pub fn create_texture_from_pixmap(self: Display, pixmap: *xph.Pixmap) !void {
         return switch (self) {
-            inline else => |item| item.import_dmabuf(import),
+            inline else => |item| item.create_texture_from_pixmap(pixmap),
         };
     }
 
     pub fn get_supported_modifiers(self: Display, window: *xph.Window, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {
         return switch (self) {
             inline else => |item| item.get_supported_modifiers(window, depth, bpp, modifiers),
-        };
-    }
-
-    pub fn draw(self: Display) void {
-        return switch (self) {
-            inline else => |item| item.draw(),
         };
     }
 };

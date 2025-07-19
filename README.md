@@ -1,9 +1,9 @@
-# XPhoenix
-XPhoenix is a new X server, written from scratch (not a fork of Xorg server) in Zig. This X server is designed to be a modern alternative to the Xorg server.
+# Xphoenix
+Xphoenix is a new X server, written from scratch (not a fork of Xorg server) in Zig. This X server is designed to be a modern alternative to the Xorg server.
 
 ## Current state
-XPhoenix can render simple applications that do EGL graphics (fully hardware accelerated) nested in an existing X server, it's not ready to be used yet.
-Running XPhoenix nested will be the only supported mode until XPhoenix has progressed more and can run real-world applications.
+Xphoenix can render simple applications that do EGL graphics (fully hardware accelerated) nested in an existing X server, it's not ready to be used yet.
+Running Xphoenix nested will be the only supported mode until Xphoenix has progressed more and can run real-world applications.
 
 ## Goals
 * Be a simpler X server than the Xorg server by only supporting a subset of the X11 protocol,
@@ -27,9 +27,9 @@ Applications can use this property to scale their content to the specified DPI f
 * Endian-swapped client/server. This can be considered if there is a reason.
 * Indirect (remote) GLX.
 
-## Differences between the X11 protocol and XPhoenix
-* Several parts of the X11 protocol (core) are mandatory to be implemented by an X server, such as font related operations. However these are not going to be implemented in XPhoenix.
-* Strings are in ISO Latin-1 encoding in the X11 protocol unless specified otherwise, however in XPhoenix all strings
+## Differences between the X11 protocol and Xphoenix
+* Several parts of the X11 protocol (core) are mandatory to be implemented by an X server, such as font related operations. However these are not going to be implemented in Xphoenix.
+* Strings are in ISO Latin-1 encoding in the X11 protocol unless specified otherwise, however in Xphoenix all strings
 are UTF-8 unless the protocol states that it's not an ISO Latin-1 string.
 
 ## Installing
@@ -46,11 +46,11 @@ sudo rm /usr/local/bin/xphoenix
 ```
 
 ## Building (for development)
-Run `zig build`, which builds XPhoenix in debug mode. The compiled binary will be available at `./zig-out/bin/xphoenix`. You can alternatively build and run with one command: `zig build run`.
+Run `zig build`, which builds Xphoenix in debug mode. The compiled binary will be available at `./zig-out/bin/xphoenix`. You can alternatively build and run with one command: `zig build run`.
 
 ## Dependencies
 * [Zig 0.14.1](https://ziglang.org/download/)
-* x11 (`xcb`) - for nested mode under X11, when building XPhoenix with `-Dbackends=x11`
-* wayland (`wayland-client`, `wayland-egl`) - for nested mode under Wayland, when building XPhoenix with `-Dbackends=wayland` (not currently supported)
-* drm (`libdrm`, `gbm`) - for running XPhoenix as a standalone X11 server, when building XPhoenix with `-Dbackends=drm` (not currently supported)
+* x11 (`xcb`) - for nested mode under X11, when building Xphoenix with `-Dbackends=x11`
+* wayland (`wayland-client`, `wayland-egl`) - for nested mode under Wayland, when building Xphoenix with `-Dbackends=wayland` (not currently supported)
+* drm (`libdrm`, `gbm`) - for running Xphoenix as a standalone X11 server, when building Xphoenix with `-Dbackends=drm` (not currently supported)
 * OpenGL (`libglvnd` which provides both `gl` and `egl`)

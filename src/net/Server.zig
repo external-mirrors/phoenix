@@ -4,7 +4,7 @@ const x11 = xph.x11;
 
 const Self = @This();
 
-pub const vendor = "XPhoenix";
+pub const vendor = "Xphoenix";
 
 pub const screen_true_color_colormap_id: x11.Colormap = @enumFromInt(0x20);
 const screen_true_color_colormap = xph.Colormap{

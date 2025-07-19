@@ -51,7 +51,7 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.linkSystemLibrary("gl", .{});
     exe.root_module.linkSystemLibrary("egl", .{});
 
-    const check = b.step("check", "Check if xphoenix compiles");
+    const check = b.step("check", "Check if Xphoenix compiles");
     check.dependOn(&exe.step);
 
     const run_cmd = b.addRunArtifact(exe);

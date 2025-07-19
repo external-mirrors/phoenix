@@ -1,7 +1,7 @@
 .{
-    .name = .xphoenix,
-    .version = "0.0.0",
-    .fingerprint = 0xad6a2037c2e0892a, // Changing this has security and trust implications.
+    .name = .Xphoenix,
+    .version = "0.1.0",
+    .fingerprint = 0x541c4261b833bd62, // Changing this has security and trust implications.
     .minimum_zig_version = "0.14.1",
     .dependencies = .{},
     .paths = .{

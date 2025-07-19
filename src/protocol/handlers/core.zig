@@ -295,6 +295,7 @@ fn free_pixmap(request_context: xph.RequestContext) !void {
 
     // TODO: Dont free immediately if the pixmap still has references somewhere
     const pixmap = request_context.server.get_pixmap(req.request.pixmap) orelse {
+        std.log.err("Received invalid pixmap {d} in FreePixmap request", .{req.request.pixmap});
         return request_context.client.write_error(request_context, .pixmap, @intFromEnum(req.request.pixmap));
     };
     pixmap.destroy();

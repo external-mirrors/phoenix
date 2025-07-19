@@ -63,6 +63,11 @@ pub fn destroy(self: *Self) void {
         child.destroy();
     }
 
+    var property_it = self.properties.valueIterator();
+    while (property_it.next()) |property| {
+        property.deinit();
+    }
+
     self.client_owner.remove_resource(self.id.to_id());
 
     self.core_event_listeners.deinit();

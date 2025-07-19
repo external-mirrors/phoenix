@@ -59,7 +59,15 @@ fn present_pixmap(request_context: xph.RequestContext) !void {
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
 
+    const pixmap = request_context.server.get_pixmap(req.request.pixmap) orelse {
+        std.log.err("Received invalid pixmap {d} in PresentPixmap request", .{req.request.pixmap});
+        return request_context.client.write_error(request_context, .pixmap, @intFromEnum(req.request.pixmap));
+    };
+    _ = pixmap;
+
     // TODO: Implement properly
+
+    std.log.err("present pixmap: {s}", .{x11.stringify_fmt(req.request)});
 
     var idle_notify_event = PresentIdleNotifyEvent{
         .sequence_number = request_context.sequence_number,

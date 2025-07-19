@@ -21,6 +21,7 @@ root_window: *xph.Window,
 server_net: std.net.Server,
 epoll_fd: i32,
 epoll_events: [32]std.os.linux.epoll_event = undefined,
+signal_fd: std.posix.fd_t,
 resource_id_base_manager: xph.ResourceIdBaseManager,
 atom_manager: xph.AtomManager,
 client_manager: xph.ClientManager,
@@ -28,6 +29,7 @@ display: xph.Display,
 
 installed_colormaps: std.ArrayList(*const xph.Colormap),
 
+/// The server will catch sigint and close down (if |run| has been executed)
 pub fn init(allocator: std.mem.Allocator) !Self {
     const unix_domain_socket_path = "/tmp/.X11-unix/X1";
     const address = try std.net.Address.initUnix(unix_domain_socket_path);
@@ -49,6 +51,20 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     // TODO: Choose backend from argv but give an error if xphoenix is built without that backend
     var display = try xph.Display.init_x11(allocator);
     errdefer display.deinit();
+
+    var signal_mask = std.mem.zeroes(std.posix.sigset_t);
+    std.os.linux.sigaddset(&signal_mask, std.posix.SIG.INT);
+    std.posix.sigprocmask(std.posix.SIG.BLOCK, &signal_mask, null);
+
+    const signal_fd = try std.posix.signalfd(-1, &signal_mask, 0);
+    errdefer std.posix.close(signal_fd);
+
+    var signal_fd_epoll_event = std.os.linux.epoll_event{
+        .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.ET,
+        .data = .{ .fd = signal_fd },
+    };
+    try std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_ADD, signal_fd, &signal_fd_epoll_event);
+    errdefer std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, signal_fd, null) catch {};
 
     var resource_id_base_manager = xph.ResourceIdBaseManager{};
 
@@ -76,6 +92,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         .root_window = root_window,
         .server_net = server,
         .epoll_fd = epoll_fd,
+        .signal_fd = signal_fd,
         .resource_id_base_manager = resource_id_base_manager,
         .atom_manager = atom_manager,
         .client_manager = client_manager,
@@ -128,8 +145,7 @@ fn create_root_window(root_client: *xph.Client, allocator: std.mem.Allocator) !*
 }
 
 pub fn run(self: *Self) void {
-    // TODO: Increase this to 500
-    const poll_timeout_ms: u32 = 100;
+    const poll_timeout_ms: u32 = 500;
     var running = true;
 
     while (running) {
@@ -137,7 +153,10 @@ pub fn run(self: *Self) void {
         for (0..num_events) |event_index| {
             const epoll_event = &self.epoll_events[event_index];
 
-            if (epoll_event.data.fd == self.server_net.stream.handle) {
+            if (epoll_event.data.fd == self.signal_fd) {
+                std.log.info("Received SIGINT signal, stopping " ++ vendor, .{});
+                running = false;
+            } else if (epoll_event.data.fd == self.server_net.stream.handle) {
                 const connection = self.server_net.accept() catch |err| {
                     std.log.err("Connection from client failed, error: {s}", .{@errorName(err)});
                     continue;
@@ -175,7 +194,9 @@ pub fn run(self: *Self) void {
             }
 
             if (epoll_event.events & (std.os.linux.EPOLL.RDHUP | std.os.linux.EPOLL.HUP) != 0) {
-                if (epoll_event.data.fd == self.server_net.stream.handle) {
+                if (epoll_event.data.fd == self.signal_fd) {
+                    // What? how is this possible?
+                } else if (epoll_event.data.fd == self.server_net.stream.handle) {
                     std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_DEL, epoll_event.data.fd, null) catch |err| {
                         std.log.err("Epoll del failed for server: {d}. Error: {s}", .{ epoll_event.data.fd, @errorName(err) });
                     };

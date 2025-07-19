@@ -10,3 +10,6 @@ Use composition by default, but if any application gets the overlay window with 
 Maybe break x11 protocol standard and use the top 3 bits in resource id?
 Handle error.InvalidEnumTag in request.read_request using std.meta.intToEnum. It should return an x11 .value error.
 Move backend to a separate process which has can be restarted. Restarting works without losing graphics contexts since pixmaps save the dmabuf fd, which it can re-import if the backend process is restarted.
+Use timerfd (linux only) for epoll friendly timer timeout.
+Use eventfd (linux only) for epoll friendly manual event trigger, that unblocks the epoll wait.
+    This is useful for example for writing events to client when rendering is done (in a separate thread).

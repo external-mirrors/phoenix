@@ -55,8 +55,8 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         return error.FailedToCreateRootWindow;
     }
 
-    var graphics = try xph.Graphics.init_egl(c.EGL_PLATFORM_XCB_EXT, c.EGL_PLATFORM_XCB_SCREEN_EXT, connection, window_id, gl_debug, allocator);
-    errdefer graphics.deinit();
+    var graphics = try xph.Graphics.create_egl(c.EGL_PLATFORM_XCB_EXT, c.EGL_PLATFORM_XCB_SCREEN_EXT, connection, window_id, gl_debug, allocator);
+    errdefer graphics.destroy();
 
     const map_cookie = c.xcb_map_window_checked(connection, window_id);
     if (c.xcb_request_check(connection, map_cookie)) |err| {
@@ -85,7 +85,7 @@ pub fn deinit(self: *Self) void {
         self.thread.join();
     }
 
-    self.graphics.deinit();
+    self.graphics.destroy();
     //_ = c.xcb_destroy_window(self.connection, self.root_window);
     c.xcb_disconnect(self.connection);
     self.connection = undefined;

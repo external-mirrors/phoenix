@@ -6,7 +6,7 @@ const Self = @This();
 allocator: std.mem.Allocator,
 impl: DisplayImpl,
 
-pub fn init_x11(allocator: std.mem.Allocator) !Self {
+pub fn create_x11(allocator: std.mem.Allocator) !Self {
     const x11 = try allocator.create(xph.DisplayX11);
     errdefer allocator.destroy(x11);
 
@@ -21,7 +21,7 @@ pub fn init_x11(allocator: std.mem.Allocator) !Self {
     };
 }
 
-pub fn deinit(self: *Self) void {
+pub fn destroy(self: *Self) void {
     switch (self.impl) {
         inline else => |item| {
             item.deinit();
@@ -62,7 +62,7 @@ const DisplayImpl = union(enum) {
 
 test "x11" {
     const allocator = std.testing.allocator;
-    const x11 = try Self.init_x11(allocator);
-    defer x11.deinit(allocator);
+    const x11 = try Self.create_x11(allocator);
+    defer x11.destroy();
     try x11.create_window();
 }

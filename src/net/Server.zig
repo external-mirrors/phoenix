@@ -49,8 +49,8 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     errdefer std.posix.close(epoll_fd);
 
     // TODO: Choose backend from argv but give an error if xphoenix is built without that backend
-    var display = try xph.Display.init_x11(allocator);
-    errdefer display.deinit();
+    var display = try xph.Display.create_x11(allocator);
+    errdefer display.destroy();
 
     var signal_mask = std.mem.zeroes(std.posix.sigset_t);
     std.os.linux.sigaddset(&signal_mask, std.posix.SIG.INT);
@@ -106,7 +106,7 @@ pub fn deinit(self: *Self) void {
     self.atom_manager.deinit();
     self.installed_colormaps.deinit();
     std.posix.close(self.epoll_fd);
-    self.display.deinit();
+    self.display.destroy();
 }
 
 fn create_root_window(root_client: *xph.Client, allocator: std.mem.Allocator) !*xph.Window {

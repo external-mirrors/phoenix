@@ -7,7 +7,7 @@ const Self = @This();
 allocator: std.mem.Allocator,
 impl: GraphicsImpl,
 
-pub fn init_egl(
+pub fn create_egl(
     platform: c_uint,
     screen_type: c_int,
     connection: c.EGLNativeDisplayType,
@@ -24,7 +24,7 @@ pub fn init_egl(
     };
 }
 
-pub fn deinit(self: *Self) void {
+pub fn destroy(self: *Self) void {
     switch (self.impl) {
         inline else => |item| {
             item.deinit();

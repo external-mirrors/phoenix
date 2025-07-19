@@ -132,9 +132,12 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
     //c.glDisable(c.GL_DEPTH_TEST);
     c.glDisable(c.GL_CULL_FACE);
 
-    //c.glMatrixMode(c.GL_PROJECTION); //from now on all glOrtho, glTranslate etc affect projection
+    //c.glMatrixMode(c.GL_PROJECTION);
     //c.glOrtho(0, 1920, 0, 1080, -1, 1);
-    //c.glMatrixMode(c.GL_MODELVIEW); //good to leave in edit-modelview mode
+    //c.glMatrixMode(c.GL_MODELVIEW);
+
+    //c.glViewport(0, 0, 1920, 1080);
+    //c.glOrtho(0, @floatFromInt(width), 0, @floatFromInt(height), -1, 1);
 
     if (c.eglMakeCurrent(egl_display, null, null, null) == c.EGL_FALSE)
         return error.FailedToMakeEglContextCurrent;
@@ -187,27 +190,27 @@ pub fn render(self: *Self) !void {
 
     self.run_updates();
 
-    c.glClearColor(0.392, 0.584, 0.929, 1.0);
+    c.glClearColor(0.0, 0.0, 0.0, 1.0);
     c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT | c.GL_STENCIL_BUFFER_BIT);
 
     for (self.textures.items) |texture| {
         c.glBindTexture(c.GL_TEXTURE_2D, texture);
         //std.log.info("texture: {d}", .{texture});
 
-        // TODO: Move out of loop
+        // TODO: Optimize. Use vertex buffers, etc.
         c.glBegin(c.GL_QUADS);
         {
             c.glTexCoord2f(0.0, 0.0);
-            c.glVertex2f(-0.5, -0.5);
+            c.glVertex2f(0.0, 0.0);
 
             c.glTexCoord2f(1.0, 0.0);
-            c.glVertex2f(0.5, -0.5);
+            c.glVertex2f(@floatFromInt(self.width), 0.0);
 
             c.glTexCoord2f(1.0, 1.0);
-            c.glVertex2f(0.5, 0.5);
+            c.glVertex2f(@floatFromInt(self.width), @floatFromInt(self.height));
 
             c.glTexCoord2f(0.0, 1.0);
-            c.glVertex2f(-0.5, 0.5);
+            c.glVertex2f(0.0, @floatFromInt(self.height));
         }
         c.glEnd();
     }
@@ -219,8 +222,15 @@ pub fn render(self: *Self) !void {
 pub fn resize(self: *Self, width: u32, height: u32) void {
     self.width = width;
     self.height = height;
+
     c.glViewport(0, 0, @intCast(self.width), @intCast(self.height));
-    //c.glOrtho(0, @floatFromInt(width), 0, @floatFromInt(height), -1, 1);
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glLoadIdentity();
+    c.glOrtho(0.0, @floatFromInt(self.width), @floatFromInt(self.height), 0.0, 0.0, 1.0);
+
+    c.glMatrixMode(c.GL_MODELVIEW);
+    c.glLoadIdentity();
 }
 
 /// Returns a texture id

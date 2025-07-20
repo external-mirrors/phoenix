@@ -19,7 +19,8 @@ pub const Major = enum(x11.Card8) {
     dri3 = 128,
     xfixes = 129,
     present = 130,
+    sync = 131,
 };
 
 pub const core_opcode_max: x11.Card8 = 127;
-pub const extension_opcode_max: x11.Card8 = 130;
+pub const extension_opcode_max: x11.Card8 = 131;

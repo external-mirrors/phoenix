@@ -44,11 +44,23 @@ pub fn create_window(self: *Self, window: *const xph.Window) !u32 {
     }
 }
 
+pub fn destroy_window(self: *Self, window: *const xph.Window) void {
+    switch (self.impl) {
+        inline else => |item| return item.destroy_window(window),
+    }
+}
+
 /// Returns a texture id
 pub fn create_texture_from_pixmap(self: *Self, pixmap: *const xph.Pixmap) !u32 {
     return switch (self.impl) {
         inline else => |item| item.create_texture_from_pixmap(pixmap),
     };
+}
+
+pub fn destroy_pixmap(self: *Self, pixmap: *const xph.Pixmap) void {
+    switch (self.impl) {
+        inline else => |item| return item.destroy_pixmap(pixmap),
+    }
 }
 
 pub fn present_pixmap(self: *Self, pixmap: *const xph.Pixmap, window: *const xph.Window, target_msc: u64) !void {

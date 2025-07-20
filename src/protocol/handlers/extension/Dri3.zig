@@ -151,11 +151,17 @@ fn pixmap_from_buffer(request_context: xph.RequestContext) !void {
         .num_items = 1,
     };
 
-    var pixmap = try xph.Pixmap.create(req.request.pixmap, &import_dmabuf, request_context.client, request_context.allocator);
+    var pixmap = try xph.Pixmap.create(
+        req.request.pixmap,
+        &import_dmabuf,
+        request_context.server,
+        request_context.client,
+        request_context.allocator,
+    );
     errdefer pixmap.destroy();
 
     // TODO: If import dmabuf fails then return match error
-    pixmap.texture_id = try request_context.server.display.create_texture_from_pixmap(pixmap);
+    pixmap.graphics_backend_id = try request_context.server.display.create_texture_from_pixmap(pixmap);
 }
 
 fn fence_from_fd(request_context: xph.RequestContext) !void {
@@ -269,11 +275,17 @@ fn pixmap_from_buffers(request_context: xph.RequestContext) !void {
         import_dmabuf.modifier[i] = req.request.modifier;
     }
 
-    var pixmap = try xph.Pixmap.create(req.request.pixmap, &import_dmabuf, request_context.client, request_context.allocator);
+    var pixmap = try xph.Pixmap.create(
+        req.request.pixmap,
+        &import_dmabuf,
+        request_context.server,
+        request_context.client,
+        request_context.allocator,
+    );
     errdefer pixmap.destroy();
 
     // TODO: If import dmabuf fails then return match error
-    pixmap.texture_id = try request_context.server.display.create_texture_from_pixmap(pixmap);
+    pixmap.graphics_backend_id = try request_context.server.display.create_texture_from_pixmap(pixmap);
 }
 
 fn depth_is_supported(depth: u8) bool {

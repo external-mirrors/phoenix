@@ -148,6 +148,7 @@ fn create_window(request_context: xph.RequestContext) !void {
         req.request.window,
         &window_attributes,
         event_mask,
+        request_context.server,
         request_context.client,
         request_context.allocator,
     )) |window| window else |err| switch (err) {

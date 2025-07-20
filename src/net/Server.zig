@@ -136,7 +136,7 @@ fn create_root_window(root_client: *xph.Client, allocator: std.mem.Allocator) !*
         .override_redirect = false,
     };
 
-    var root_window = try xph.Window.create(null, root_window_id, &window_attributes, @bitCast(@as(u32, 0)), root_client, allocator);
+    var root_window = try xph.Window.create(null, root_window_id, &window_attributes, @bitCast(@as(u32, 0)), null, root_client, allocator);
     errdefer root_window.destroy();
 
     try root_window.set_property_string8(xph.AtomManager.Predefined.resource_manager, "*background:\t#222222");

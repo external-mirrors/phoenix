@@ -6,13 +6,20 @@ const Self = @This();
 
 allocator: std.mem.Allocator,
 dmabuf_data: xph.Graphics.DmabufImport,
+server: *xph.Server,
 client_owner: *xph.Client, // Reference
 
 id: x11.Pixmap,
-texture_id: u32,
+graphics_backend_id: u32,
 
 /// The dmabuf fds are cleaned up if this fails
-pub fn create(id: x11.Pixmap, dmabuf_data: *const xph.Graphics.DmabufImport, client_owner: *xph.Client, allocator: std.mem.Allocator) !*Self {
+pub fn create(
+    id: x11.Pixmap,
+    dmabuf_data: *const xph.Graphics.DmabufImport,
+    server: *xph.Server,
+    client_owner: *xph.Client,
+    allocator: std.mem.Allocator,
+) !*Self {
     var pixmap = allocator.create(Self) catch |err| {
         for (dmabuf_data.fd[0..dmabuf_data.num_items]) |dmabuf_fd| {
             if (dmabuf_fd > 0)
@@ -25,10 +32,11 @@ pub fn create(id: x11.Pixmap, dmabuf_data: *const xph.Graphics.DmabufImport, cli
     pixmap.* = .{
         .allocator = allocator,
         .dmabuf_data = dmabuf_data.*,
+        .server = server,
         .client_owner = client_owner,
 
         .id = id,
-        .texture_id = 0,
+        .graphics_backend_id = 0,
     };
 
     try pixmap.client_owner.add_pixmap(pixmap);
@@ -36,6 +44,8 @@ pub fn create(id: x11.Pixmap, dmabuf_data: *const xph.Graphics.DmabufImport, cli
 }
 
 pub fn destroy(self: *Self) void {
+    self.server.display.destroy_pixmap(self);
+
     for (self.dmabuf_data.fd[0..self.dmabuf_data.num_items]) |dmabuf_fd| {
         if (dmabuf_fd > 0)
             std.posix.close(dmabuf_fd);

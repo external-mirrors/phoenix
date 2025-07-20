@@ -45,7 +45,7 @@ egl_surface: c.EGLSurface,
 egl_context: c.EGLContext,
 dri_card_fd: std.posix.fd_t,
 
-pixmap_textures: std.ArrayList(Texture),
+pixmap_textures: std.ArrayList(PixmapTexture),
 dmabufs_to_import: std.ArrayList(DmabufToImport),
 texture_id_counter: u32,
 framebuffer: u32,
@@ -196,9 +196,9 @@ pub fn deinit(self: *Self) void {
     if (self.framebuffer > 0)
         c.glDeleteFramebuffers(1, &self.framebuffer);
 
-    for (self.pixmap_textures.items) |texture| {
-        if (texture.gl_texture_id > 0)
-            c.glDeleteTextures(1, &texture.gl_texture_id);
+    for (self.pixmap_textures.items) |*pixmap_texture| {
+        if (pixmap_texture.gl_texture_id > 0)
+            c.glDeleteTextures(1, &pixmap_texture.gl_texture_id);
     }
     self.pixmap_textures.deinit();
     self.dmabufs_to_import.deinit();
@@ -223,9 +223,9 @@ pub fn get_dri_card_fd(self: *Self) std.posix.fd_t {
 }
 
 fn get_pixmap_gl_texture_by_id(self: *Self, texture_id: u32) ?u32 {
-    for (self.pixmap_textures.items) |texture| {
-        if (texture.id == texture_id)
-            return texture.gl_texture_id;
+    for (self.pixmap_textures.items) |*pixmap_texture| {
+        if (pixmap_texture.id == texture_id)
+            return pixmap_texture.gl_texture_id;
     }
     return null;
 }
@@ -252,6 +252,28 @@ fn clear_graphics_window(self: *Self, graphics_window: *const GraphicsWindow) vo
     c.glClearColor(0.0, 0.0, 0.0, 1.0);
     c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT | c.GL_STENCIL_BUFFER_BIT);
     c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+}
+
+fn destroy_pending_resources(self: *Self) void {
+    var i: usize = 0;
+    while (i < self.windows.items.len) {
+        if (self.windows.items[i].delete) {
+            c.glDeleteTextures(1, &self.windows.items[i].gl_texture_id);
+            _ = self.windows.orderedRemove(i);
+        } else {
+            i += 1;
+        }
+    }
+
+    i = 0;
+    while (i < self.pixmap_textures.items.len) {
+        if (self.pixmap_textures.items[i].delete) {
+            c.glDeleteTextures(1, &self.pixmap_textures.items[i].gl_texture_id);
+            _ = self.pixmap_textures.orderedRemove(i);
+        } else {
+            i += 1;
+        }
+    }
 }
 
 fn create_graphics_windows_textures(self: *Self) void {
@@ -351,6 +373,7 @@ pub fn render(self: *Self) !void {
 
     // TODO: Remove this long lock. We can instead copy the data that we want to use and unlock the mutex immediately
     self.mutex.lock();
+    self.destroy_pending_resources();
     self.create_graphics_windows_textures();
     self.perform_present_pixmap_operations();
     self.render_graphics_windows();
@@ -396,6 +419,18 @@ pub fn create_window(self: *Self, window: *const xph.Window) !u32 {
     return id;
 }
 
+pub fn destroy_window(self: *Self, window: *const xph.Window) void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    for (self.windows.items) |*graphics_window| {
+        if (graphics_window.id == window.graphics_backend_id) {
+            graphics_window.delete = true;
+            return;
+        }
+    }
+}
+
 /// Returns a texture id
 pub fn create_texture_from_pixmap(self: *Self, pixmap: *const xph.Pixmap) !u32 {
     std.debug.assert(pixmap.dmabuf_data.num_items <= drm_num_buf_attrs);
@@ -413,11 +448,24 @@ pub fn create_texture_from_pixmap(self: *Self, pixmap: *const xph.Pixmap) !u32 {
     return texture_id;
 }
 
+pub fn destroy_pixmap(self: *Self, pixmap: *const xph.Pixmap) void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    for (self.pixmap_textures.items) |*pixmap_texture| {
+        if (pixmap_texture.id == pixmap.graphics_backend_id) {
+            pixmap_texture.delete = true;
+            return;
+        }
+    }
+}
+
 pub fn present_pixmap(self: *Self, pixmap: *const xph.Pixmap, window: *const xph.Window, target_msc: u64) !void {
     self.mutex.lock();
     defer self.mutex.unlock();
+
     return self.present_pixmap_operations.append(.{
-        .texture_id = pixmap.texture_id,
+        .texture_id = pixmap.graphics_backend_id,
         .graphics_window_id = window.graphics_backend_id,
         .target_msc = target_msc,
     });
@@ -595,9 +643,10 @@ const DmabufToImport = struct {
     dmabuf_import: xph.Graphics.DmabufImport,
 };
 
-const Texture = struct {
+const PixmapTexture = struct {
     id: u32,
     gl_texture_id: u32,
+    delete: bool = false,
 };
 
 const GraphicsWindow = struct {
@@ -607,6 +656,7 @@ const GraphicsWindow = struct {
     y: i32,
     width: i32,
     height: i32,
+    delete: bool = false,
 };
 
 const PresentPixmapOperation = struct {

@@ -60,6 +60,7 @@ pub fn add_client(self: *Self, client: xph.Client) !*xph.Client {
 
 pub fn remove_client(self: *Self, client_to_remove_fd: std.posix.socket_t) bool {
     if (self.clients_by_fd.fetchRemove(client_to_remove_fd)) |removed_item| {
+        self.clients[removed_item.value].?.deinit();
         self.allocator.destroy(self.clients[removed_item.value].?);
         self.clients[removed_item.value] = null;
         return true;

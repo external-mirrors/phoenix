@@ -76,7 +76,7 @@ fn present_pixmap(request_context: xph.RequestContext) !void {
     // TODO: Implement properly
     // TODO: Handle wait_fence
 
-    std.log.err("present pixmap: {s}", .{x11.stringify_fmt(req.request)});
+    //std.log.err("present pixmap: {s}", .{x11.stringify_fmt(req.request)});
 
     var idle_notify_event = PresentIdleNotifyEvent{
         .sequence_number = request_context.sequence_number,

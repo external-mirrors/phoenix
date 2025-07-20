@@ -7,6 +7,7 @@ const Self = @This();
 allocator: std.mem.Allocator,
 parent: ?*Self,
 children: std.ArrayList(*Self),
+server: ?*xph.Server,
 client_owner: *xph.Client, // Reference
 deleting_self: bool,
 
@@ -22,6 +23,7 @@ pub fn create(
     id: x11.Window,
     attributes: *const Attributes,
     initial_event_mask: xph.core.EventMask,
+    server: ?*xph.Server,
     client_owner: *xph.Client,
     allocator: std.mem.Allocator,
 ) !*Self {
@@ -32,6 +34,7 @@ pub fn create(
         .allocator = allocator,
         .parent = parent,
         .children = .init(allocator),
+        .server = server,
         .client_owner = client_owner,
         .deleting_self = false,
 
@@ -55,6 +58,9 @@ pub fn create(
 
 pub fn destroy(self: *Self) void {
     self.deleting_self = true;
+
+    if (self.server) |server|
+        server.display.destroy_window(self);
 
     if (self.parent) |parent|
         parent.remove_child(self);

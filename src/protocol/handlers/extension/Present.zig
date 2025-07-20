@@ -66,11 +66,10 @@ fn present_pixmap(request_context: xph.RequestContext) !void {
     _ = pixmap;
 
     if (req.request.idle_fence.to_id().to_int() != 0) {
-        const idle_fence = request_context.server.get_fence(req.request.idle_fence) orelse {
-            std.log.err("Received invalid idle fence {d} in PresentPixmap request", .{req.request.idle_fence});
-            return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.idle_fence));
-        };
-        _ = idle_fence.shm_fence.trigger();
+        // TODO: Should this be an error instead?
+        if (request_context.server.get_fence(req.request.idle_fence)) |idle_fence| {
+            _ = idle_fence.shm_fence.trigger();
+        }
     }
 
     // TODO: Implement properly
@@ -87,17 +86,6 @@ fn present_pixmap(request_context: xph.RequestContext) !void {
     };
     window.write_extension_event_to_event_listeners(&idle_notify_event);
 
-    var complete_event = PresentCompleteNotifyEvent{
-        .sequence_number = request_context.sequence_number,
-        .kind = .pixmap,
-        .mode = .suboptimal_copy,
-        .window = req.request.window,
-        .serial = req.request.serial,
-        .ust = 0,
-        .msc = req.request.target_msc,
-    };
-    window.write_extension_event_to_event_listeners(&complete_event);
-
     for (req.request.notifies.items) |notify| {
         const notify_window = request_context.server.get_window(notify.window) orelse unreachable;
         var complete_event_notify = PresentCompleteNotifyEvent{
@@ -111,6 +99,17 @@ fn present_pixmap(request_context: xph.RequestContext) !void {
         };
         notify_window.write_extension_event_to_event_listeners(&complete_event_notify);
     }
+
+    var complete_event = PresentCompleteNotifyEvent{
+        .sequence_number = request_context.sequence_number,
+        .kind = .pixmap,
+        .mode = .suboptimal_copy,
+        .window = req.request.window,
+        .serial = req.request.serial,
+        .ust = 0,
+        .msc = req.request.target_msc,
+    };
+    window.write_extension_event_to_event_listeners(&complete_event);
 }
 
 fn select_input(request_context: xph.RequestContext) !void {

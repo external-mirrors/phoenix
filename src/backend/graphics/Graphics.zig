@@ -51,10 +51,23 @@ pub fn resize(self: *Self, width: u32, height: u32) void {
     }
 }
 
+/// Returns a graphics window id
+pub fn create_window(self: *Self, window: *const xph.Window) !u32 {
+    return switch (self.impl) {
+        inline else => |item| item.create_window(window),
+    };
+}
+
 /// Returns a texture id
-pub fn create_texture_from_pixmap(self: *Self, pixmap: *xph.Pixmap) !u32 {
+pub fn create_texture_from_pixmap(self: *Self, pixmap: *const xph.Pixmap) !u32 {
     return switch (self.impl) {
         inline else => |item| item.create_texture_from_pixmap(pixmap),
+    };
+}
+
+pub fn present_pixmap(self: *Self, pixmap: *const xph.Pixmap, window: *const xph.Window, target_msc: u64) !void {
+    return switch (self.impl) {
+        inline else => |item| item.present_pixmap(pixmap, window, target_msc),
     };
 }
 

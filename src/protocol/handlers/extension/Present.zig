@@ -63,7 +63,8 @@ fn present_pixmap(request_context: xph.RequestContext) !void {
         std.log.err("Received invalid pixmap {d} in PresentPixmap request", .{req.request.pixmap});
         return request_context.client.write_error(request_context, .pixmap, @intFromEnum(req.request.pixmap));
     };
-    _ = pixmap;
+
+    try request_context.server.display.present_pixmap(pixmap, window, req.request.target_msc);
 
     if (req.request.idle_fence.to_id().to_int() != 0) {
         // TODO: Should this be an error instead?
@@ -75,7 +76,7 @@ fn present_pixmap(request_context: xph.RequestContext) !void {
     // TODO: Implement properly
     // TODO: Handle wait_fence
 
-    std.log.err("present pixmap: {s}", .{x11.stringify_fmt(req.request)});
+    //std.log.err("present pixmap: {s}", .{x11.stringify_fmt(req.request)});
 
     var idle_notify_event = PresentIdleNotifyEvent{
         .sequence_number = request_context.sequence_number,

@@ -120,7 +120,7 @@ pub const PropertyValue = union(enum) {
 
     pub fn deinit(self: *PropertyValue) void {
         switch (self.*) {
-            inline else => |*item| item.*.deinit(),
+            inline else => |*item| item.deinit(),
         }
     }
 };

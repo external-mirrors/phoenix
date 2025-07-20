@@ -38,20 +38,28 @@ const PFNEGLQUERYDISPLAYATTRIBEXTPROC = *const fn (c.EGLDisplay, c.EGLint, [*c]c
 const PFNEGLQUERYDEVICESTRINGEXTPROC = *const fn (c.EGLDeviceEXT, c.EGLint) callconv(.c) [*c]const u8;
 const PFNGLEGLIMAGETARGETTEXTURE2DOESPROC = *const fn (c.GLenum, c.GLeglImageOES) callconv(.c) void;
 const PFNEGLQUERYDMABUFMODIFIERSEXTPROC = *const fn (c.EGLDisplay, c.EGLint, c.EGLint, [*c]c.EGLuint64KHR, [*c]c.EGLBoolean, [*c]c.EGLint) callconv(.c) c.EGLBoolean;
+const PFNGLCOPYIMAGESUBDATAPROC = *const fn (c.GLuint, c.GLenum, c.GLint, c.GLint, c.GLint, c.GLint, c.GLuint, c.GLenum, c.GLint, c.GLint, c.GLint, c.GLint, c.GLsizei, c.GLsizei, c.GLsizei) callconv(.c) void;
 
 egl_display: c.EGLDisplay,
 egl_surface: c.EGLSurface,
 egl_context: c.EGLContext,
 dri_card_fd: std.posix.fd_t,
 
-textures: std.ArrayList(c.GLuint),
-dmabufs_to_import: std.ArrayList(xph.Graphics.DmabufImport),
+pixmap_textures: std.ArrayList(Texture),
+dmabufs_to_import: std.ArrayList(DmabufToImport),
+texture_id_counter: u32,
+framebuffer: u32,
 mutex: std.Thread.Mutex,
 width: u32,
 height: u32,
 
+windows: std.ArrayList(GraphicsWindow),
+windows_id_counter: u32,
+present_pixmap_operations: std.ArrayList(PresentPixmapOperation),
+
 glEGLImageTargetTexture2DOES: PFNGLEGLIMAGETARGETTEXTURE2DOESPROC,
 eglQueryDmaBufModifiersEXT: PFNEGLQUERYDMABUFMODIFIERSEXTPROC,
+glCopyImageSubData: PFNGLCOPYIMAGESUBDATAPROC,
 
 pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplayType, window_id: c.EGLNativeWindowType, debug: bool, allocator: std.mem.Allocator) !Self {
     const context_attr = [_]c.EGLint{
@@ -64,6 +72,7 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
 
     const glDebugMessageCallback: PFNGLDEBUGMESSAGECALLBACKPROC = @ptrCast(c.eglGetProcAddress("glDebugMessageCallback") orelse return error.FailedToResolveOpenglProc);
     const eglGetPlatformDisplayEXT: PFNEGLGETPLATFORMDISPLAYEXTPROC = @ptrCast(c.eglGetProcAddress("eglGetPlatformDisplayEXT") orelse return error.FailedToResolveOpenglProc);
+    const glCopyImageSubData: PFNGLCOPYIMAGESUBDATAPROC = @ptrCast(c.eglGetProcAddress("glCopyImageSubData") orelse return error.FailedToResolveOpenglProc);
 
     const eglQueryDisplayAttribEXT: PFNEGLQUERYDISPLAYATTRIBEXTPROC = @ptrCast(c.eglGetProcAddress("eglQueryDisplayAttribEXT") orelse return error.FailedToResolveOpenglProc);
     const eglQueryDeviceStringEXT: PFNEGLQUERYDEVICESTRINGEXTPROC = @ptrCast(c.eglGetProcAddress("eglQueryDeviceStringEXT") orelse return error.FailedToResolveOpenglProc);
@@ -126,10 +135,19 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
         std.log.warn("Failed to enable egl vsync", .{});
 
     c.glEnable(c.GL_BLEND);
-    c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
+    //c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
     c.glEnable(c.GL_TEXTURE_2D);
+    c.glEnable(c.GL_SCISSOR_TEST);
     //c.glDisable(c.GL_DEPTH_TEST);
     c.glDisable(c.GL_CULL_FACE);
+
+    c.glPixelStorei(c.GL_PACK_ALIGNMENT, 1);
+    c.glPixelStorei(c.GL_UNPACK_ALIGNMENT, 1);
+
+    c.glBlendFuncSeparate(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA, c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
+    c.glEnableClientState(c.GL_VERTEX_ARRAY);
+    c.glEnableClientState(c.GL_TEXTURE_COORD_ARRAY);
+    c.glEnableClientState(c.GL_COLOR_ARRAY);
 
     //c.glMatrixMode(c.GL_PROJECTION);
     //c.glOrtho(0, 1920, 0, 1080, -1, 1);
@@ -137,6 +155,14 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
 
     //c.glViewport(0, 0, 1920, 1080);
     //c.glOrtho(0, @floatFromInt(width), 0, @floatFromInt(height), -1, 1);
+
+    const draw_buffer: c.GLenum = c.GL_COLOR_ATTACHMENT0;
+    var framebuffer: c.GLuint = 0;
+    c.glGenFramebuffers(1, &framebuffer);
+    if (c.glGetError() != 0) return error.FailedToGenerateFramebuffer;
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, framebuffer);
+    c.glDrawBuffers(1, &draw_buffer);
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
 
     if (c.eglMakeCurrent(egl_display, null, null, null) == c.EGL_FALSE)
         return error.FailedToMakeEglContextCurrent;
@@ -147,35 +173,166 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
         .egl_context = egl_context,
         .dri_card_fd = dri_card_fd.?,
 
-        .textures = .init(allocator),
+        .pixmap_textures = .init(allocator),
         .dmabufs_to_import = .init(allocator),
+        .texture_id_counter = 0,
+        .framebuffer = framebuffer,
         .mutex = .{},
         // TODO:
         .width = 1920,
         .height = 1080,
 
+        .windows = .init(allocator),
+        .windows_id_counter = 0,
+        .present_pixmap_operations = .init(allocator),
+
         .glEGLImageTargetTexture2DOES = glEGLImageTargetTexture2DOES,
         .eglQueryDmaBufModifiersEXT = eglQueryDmaBufModifiersEXT,
+        .glCopyImageSubData = glCopyImageSubData,
     };
 }
 
 pub fn deinit(self: *Self) void {
-    c.glDeleteTextures(@intCast(self.textures.items.len), self.textures.items.ptr);
+    if (self.framebuffer > 0)
+        c.glDeleteFramebuffers(1, &self.framebuffer);
+
+    for (self.pixmap_textures.items) |texture| {
+        if (texture.gl_texture_id > 0)
+            c.glDeleteTextures(1, &texture.gl_texture_id);
+    }
+    self.pixmap_textures.deinit();
     self.dmabufs_to_import.deinit();
-    self.textures.deinit();
+
+    for (self.windows.items) |*graphics_window| {
+        if (graphics_window.gl_texture_id > 0)
+            c.glDeleteTextures(1, &graphics_window.gl_texture_id);
+    }
+    self.windows.deinit();
+    self.present_pixmap_operations.deinit();
+
     std.posix.close(self.dri_card_fd);
+
     _ = c.eglMakeCurrent(self.egl_display, null, null, null);
     _ = c.eglDestroyContext(self.egl_display, self.egl_context);
     _ = c.eglDestroySurface(self.egl_display, self.egl_surface);
     _ = c.eglTerminate(self.egl_display);
-
-    self.egl_context = undefined;
-    self.egl_surface = undefined;
-    self.egl_display = undefined;
 }
 
 pub fn get_dri_card_fd(self: *Self) std.posix.fd_t {
     return self.dri_card_fd;
+}
+
+fn get_pixmap_gl_texture_by_id(self: *Self, texture_id: u32) ?u32 {
+    for (self.pixmap_textures.items) |texture| {
+        if (texture.id == texture_id)
+            return texture.gl_texture_id;
+    }
+    return null;
+}
+
+fn get_graphics_window_by_id(self: *Self, window_id: u32) ?*const GraphicsWindow {
+    for (self.windows.items) |*graphics_window| {
+        if (graphics_window.id == window_id)
+            return graphics_window;
+    }
+    return null;
+}
+
+fn graphics_window_intersects_framebuffer(graphics_window: *const GraphicsWindow, framebuffer_width: i32, framebuffer_height: i32) bool {
+    const x = graphics_window.x;
+    const y = graphics_window.y;
+    const w = graphics_window.width;
+    const h = graphics_window.height;
+    return (x + w > 0 or x < framebuffer_width) and (y + h > 0 or y < framebuffer_height);
+}
+
+fn clear_graphics_window(self: *Self, graphics_window: *const GraphicsWindow) void {
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.framebuffer);
+    c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT0, c.GL_TEXTURE_2D, graphics_window.gl_texture_id, 0);
+    c.glClearColor(0.0, 0.0, 0.0, 1.0);
+    c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT | c.GL_STENCIL_BUFFER_BIT);
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+}
+
+fn create_graphics_windows_textures(self: *Self) void {
+    for (self.windows.items) |*graphics_window| {
+        if (graphics_window.gl_texture_id != 0)
+            continue;
+
+        var texture: c.GLuint = 0;
+        c.glGenTextures(1, &texture);
+        c.glBindTexture(c.GL_TEXTURE_2D, texture);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, c.GL_LINEAR);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_LINEAR);
+        // TODO: If this fails then mark the window as failed and return error to client and destroy the window.
+        // Maybe dont create the window until this has been created.
+        c.glTexImage2D(c.GL_TEXTURE_2D, 0, c.GL_RGBA8, graphics_window.width, graphics_window.height, 0, c.GL_RGBA, c.GL_UNSIGNED_BYTE, null);
+        c.glBindTexture(c.GL_TEXTURE_2D, 0);
+
+        self.clear_graphics_window(graphics_window);
+        graphics_window.gl_texture_id = texture;
+    }
+}
+
+fn perform_present_pixmap_operations(self: *Self) void {
+    // TODO: Only render and remove items if target_msc is <= current_msc
+    for (self.present_pixmap_operations.items) |present_pixmap_operation| {
+        const pixmap_texture = self.get_pixmap_gl_texture_by_id(present_pixmap_operation.texture_id) orelse continue;
+        const graphics_window = self.get_graphics_window_by_id(present_pixmap_operation.graphics_window_id) orelse continue;
+        if (graphics_window.gl_texture_id == 0)
+            continue;
+
+        // TODO: Use copy coordinates and size from present pixmap request if available, otherwise use 0, 0, window_width, window_height.
+        // TODO: Use framebuffer and regular shader rendering code instead of glCopyImageSubData which is only avaiable since OpenGL 4.3.
+        // TODO: Dont do this copy if the pixmap fills the whole window. Instead draw the pixmap as the window.
+        // TODO: If there is a fullscreen window (with no transparency) then present the pixmap directly on the screen instead of any copying.
+        // TODO: Only clear window background before copying if the pixmap doesn't fill the whole window or has transparency.
+        self.clear_graphics_window(graphics_window);
+        // TODO: The client application draws background with 0, 0, 0, 1; which the driver interprets as fully transparent (it ignores the alpha value).
+        // The reason why the window background gets replaced as well is because glCopyImageSubData doesn't do alpha blending. When this is replaced with shader rendering code
+        // then the window will correctly have the window background instead of it getting replaced.
+        self.glCopyImageSubData(pixmap_texture, c.GL_TEXTURE_2D, 0, 0, 0, 0, graphics_window.gl_texture_id, c.GL_TEXTURE_2D, 0, 0, 0, 0, graphics_window.width, graphics_window.height, 1);
+    }
+    // TODO: Dont do this, the above code removes items if needed
+    self.present_pixmap_operations.clearRetainingCapacity();
+}
+
+fn render_graphics_windows(self: *Self) void {
+    const framebuffer_width: i32 = @intCast(self.width);
+    const framebuffer_height: i32 = @intCast(self.height);
+
+    for (self.windows.items) |*graphics_window| {
+        if (graphics_window.gl_texture_id == 0)
+            continue;
+
+        if (!graphics_window_intersects_framebuffer(graphics_window, framebuffer_width, framebuffer_height))
+            continue;
+
+        const x: f32 = @floatFromInt(graphics_window.x);
+        const y: f32 = @floatFromInt(graphics_window.y);
+        const w: f32 = @floatFromInt(graphics_window.width);
+        const h: f32 = @floatFromInt(graphics_window.height);
+
+        c.glBindTexture(c.GL_TEXTURE_2D, graphics_window.gl_texture_id);
+        //std.log.info("texture: {d}", .{texture});
+
+        // TODO: Optimize. Use vertex buffers, etc.
+        c.glBegin(c.GL_QUADS);
+        {
+            c.glTexCoord2f(0.0, 0.0);
+            c.glVertex2f(x, y);
+
+            c.glTexCoord2f(1.0, 0.0);
+            c.glVertex2f(x + w, y);
+
+            c.glTexCoord2f(1.0, 1.0);
+            c.glVertex2f(x + w, y + h);
+
+            c.glTexCoord2f(0.0, 1.0);
+            c.glVertex2f(x, y + h);
+        }
+        c.glEnd();
+    }
 }
 
 pub fn render(self: *Self) !void {
@@ -189,32 +346,18 @@ pub fn render(self: *Self) !void {
 
     self.run_updates();
 
-    c.glClearColor(0.0, 0.0, 0.0, 1.0);
+    c.glClearColor(0.0, 0.47450, 0.73725, 1.0);
     c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT | c.GL_STENCIL_BUFFER_BIT);
 
-    for (self.textures.items) |texture| {
-        c.glBindTexture(c.GL_TEXTURE_2D, texture);
-        //std.log.info("texture: {d}", .{texture});
-
-        // TODO: Optimize. Use vertex buffers, etc.
-        c.glBegin(c.GL_QUADS);
-        {
-            c.glTexCoord2f(0.0, 0.0);
-            c.glVertex2f(0.0, 0.0);
-
-            c.glTexCoord2f(1.0, 0.0);
-            c.glVertex2f(@floatFromInt(self.width), 0.0);
-
-            c.glTexCoord2f(1.0, 1.0);
-            c.glVertex2f(@floatFromInt(self.width), @floatFromInt(self.height));
-
-            c.glTexCoord2f(0.0, 1.0);
-            c.glVertex2f(0.0, @floatFromInt(self.height));
-        }
-        c.glEnd();
-    }
+    // TODO: Remove this long lock. We can instead copy the data that we want to use and unlock the mutex immediately
+    self.mutex.lock();
+    self.create_graphics_windows_textures();
+    self.perform_present_pixmap_operations();
+    self.render_graphics_windows();
+    self.mutex.unlock();
 
     c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    //c.glScissor(0, 0, @intCast(self.width), @intCast(self.height));
     _ = c.eglSwapBuffers(self.egl_display, self.egl_surface);
 }
 
@@ -230,49 +373,88 @@ pub fn resize(self: *Self, width: u32, height: u32) void {
 
     c.glMatrixMode(c.GL_MODELVIEW);
     c.glLoadIdentity();
+
+    c.glScissor(0, 0, @intCast(self.width), @intCast(self.height));
+}
+
+/// Returns a graphics window id
+pub fn create_window(self: *Self, window: *const xph.Window) !u32 {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    const id = self.windows_id_counter;
+    try self.windows.append(.{
+        .id = id,
+        .gl_texture_id = 0,
+        .x = window.attributes.geometry.x,
+        .y = window.attributes.geometry.y,
+        .width = window.attributes.geometry.width,
+        .height = window.attributes.geometry.height,
+    });
+    self.windows_id_counter +%= 1;
+
+    return id;
 }
 
 /// Returns a texture id
-pub fn create_texture_from_pixmap(self: *Self, pixmap: *xph.Pixmap) !u32 {
+pub fn create_texture_from_pixmap(self: *Self, pixmap: *const xph.Pixmap) !u32 {
+    std.debug.assert(pixmap.dmabuf_data.num_items <= drm_num_buf_attrs);
+
     self.mutex.lock();
     defer self.mutex.unlock();
-    try self.dmabufs_to_import.append(pixmap.dmabuf_data);
-    return @intCast(self.textures.items.len);
+
+    const texture_id = self.texture_id_counter;
+    try self.dmabufs_to_import.append(.{
+        .texture_id = texture_id,
+        .dmabuf_import = pixmap.dmabuf_data,
+    });
+    self.texture_id_counter +%= 1;
+
+    return texture_id;
 }
 
-fn import_dmabuf_internal(self: *Self, import: *const xph.Graphics.DmabufImport) !void {
-    std.debug.assert(import.num_items <= drm_num_buf_attrs);
+pub fn present_pixmap(self: *Self, pixmap: *const xph.Pixmap, window: *const xph.Window, target_msc: u64) !void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+    return self.present_pixmap_operations.append(.{
+        .texture_id = pixmap.texture_id,
+        .graphics_window_id = window.graphics_backend_id,
+        .target_msc = target_msc,
+    });
+}
+
+fn import_dmabuf_internal(self: *Self, import: *const DmabufToImport) !void {
     var attr: [64]c.EGLAttrib = undefined;
 
-    std.log.info("depth: {d}, bpp: {d}", .{ import.depth, import.bpp });
+    std.log.info("depth: {d}, bpp: {d}", .{ import.dmabuf_import.depth, import.dmabuf_import.bpp });
     var attr_index: usize = 0;
 
     attr[attr_index + 0] = c.EGL_LINUX_DRM_FOURCC_EXT;
-    attr[attr_index + 1] = try depth_to_fourcc(import.depth);
+    attr[attr_index + 1] = try depth_to_fourcc(import.dmabuf_import.depth);
     attr_index += 2;
 
     attr[attr_index + 0] = c.EGL_WIDTH;
-    attr[attr_index + 1] = import.width;
+    attr[attr_index + 1] = import.dmabuf_import.width;
     attr_index += 2;
 
     attr[attr_index + 0] = c.EGL_HEIGHT;
-    attr[attr_index + 1] = import.height;
+    attr[attr_index + 1] = import.dmabuf_import.height;
     attr_index += 2;
 
-    for (0..import.num_items) |i| {
+    for (0..import.dmabuf_import.num_items) |i| {
         attr[attr_index + 0] = plane_fd_attrs[i];
-        attr[attr_index + 1] = import.fd[i];
+        attr[attr_index + 1] = import.dmabuf_import.fd[i];
         attr_index += 2;
 
         attr[attr_index + 0] = plane_offset_attrs[i];
-        attr[attr_index + 1] = import.offset[i];
+        attr[attr_index + 1] = import.dmabuf_import.offset[i];
         attr_index += 2;
 
         attr[attr_index + 0] = plane_pitch_attrs[i];
-        attr[attr_index + 1] = import.stride[i];
+        attr[attr_index + 1] = import.dmabuf_import.stride[i];
         attr_index += 2;
 
-        if (import.modifier[i]) |mod| {
+        if (import.dmabuf_import.modifier[i]) |mod| {
             attr[attr_index + 0] = plane_modifier_lo_attrs[i];
             attr[attr_index + 1] = @intCast(mod & 0xFFFFFFFF);
             attr_index += 2;
@@ -285,19 +467,19 @@ fn import_dmabuf_internal(self: *Self, import: *const xph.Graphics.DmabufImport)
         var path_buf: [std.fs.max_path_bytes]u8 = undefined;
         var resolved_path_buf: [std.fs.max_path_bytes]u8 = undefined;
 
-        const path = try std.fmt.bufPrint(&path_buf, "/proc/self/fd/{d}", .{import.fd[i]});
+        const path = try std.fmt.bufPrint(&path_buf, "/proc/self/fd/{d}", .{import.dmabuf_import.fd[i]});
         const resolved_path = std.posix.readlink(path, &resolved_path_buf) catch "unknown";
-        std.log.info("import dmabuf: {d}: {s}", .{ import.fd[i], resolved_path });
+        std.log.info("import dmabuf: {d}: {s}", .{ import.dmabuf_import.fd[i], resolved_path });
 
         std.log.info("import fd[{d}]: {d}, depth: {d}, width: {d}, height: {d}, offset: {d}, pitch: {d}, modifier: {any}", .{
             i,
-            import.fd[i],
-            import.depth,
-            import.width,
-            import.height,
-            import.offset[i],
-            import.stride[i],
-            import.modifier[i],
+            import.dmabuf_import.fd[i],
+            import.dmabuf_import.depth,
+            import.dmabuf_import.width,
+            import.dmabuf_import.height,
+            import.dmabuf_import.offset[i],
+            import.dmabuf_import.stride[i],
+            import.dmabuf_import.modifier[i],
         });
     }
 
@@ -325,7 +507,10 @@ fn import_dmabuf_internal(self: *Self, import: *const xph.Graphics.DmabufImport)
     std.log.info("success: {d}, texture: {d}, egl error: {d}", .{ c.glGetError(), texture, c.eglGetError() });
     c.glBindTexture(c.GL_TEXTURE_2D, 0);
 
-    try self.textures.append(texture);
+    try self.pixmap_textures.append(.{
+        .id = import.texture_id,
+        .gl_texture_id = texture,
+    });
 
     //if (c.eglMakeCurrent(self.egl_display, null, null, null) == c.EGL_FALSE)
     //    return error.FailedToMakeEglContextCurrent;
@@ -338,7 +523,8 @@ fn import_dmabufs_internal(self: *Self) void {
     for (self.dmabufs_to_import.items) |*dmabuf_to_import| {
         // TODO: Report success/failure back to x11 protocol handler
         self.import_dmabuf_internal(dmabuf_to_import) catch |err| {
-            std.log.err("GraphicsEgl.import_dmabufs_internal: failed to import dmabuf {d}, error: {s}", .{ dmabuf_to_import.fd[0..dmabuf_to_import.num_items], @errorName(err) });
+            const dmabuf_fds = dmabuf_to_import.dmabuf_import.fd[0..dmabuf_to_import.dmabuf_import.num_items];
+            std.log.err("GraphicsEgl.import_dmabufs_internal: failed to import dmabuf {d}, error: {s}", .{ dmabuf_fds, @errorName(err) });
         };
     }
     self.dmabufs_to_import.clearRetainingCapacity();
@@ -403,6 +589,31 @@ fn depth_to_fourcc(depth: u8) !u32 {
 fn fourcc(a: u8, b: u8, cc: u8, d: u8) u32 {
     return @as(u32, a) | @as(u32, b) << 8 | @as(u32, cc) << 16 | @as(u32, d) << 24;
 }
+
+const DmabufToImport = struct {
+    texture_id: u32,
+    dmabuf_import: xph.Graphics.DmabufImport,
+};
+
+const Texture = struct {
+    id: u32,
+    gl_texture_id: u32,
+};
+
+const GraphicsWindow = struct {
+    id: u32,
+    gl_texture_id: u32,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+};
+
+const PresentPixmapOperation = struct {
+    texture_id: u32,
+    graphics_window_id: u32,
+    target_msc: u64,
+};
 
 const drm_num_buf_attrs: usize = 4;
 

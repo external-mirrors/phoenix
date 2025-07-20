@@ -68,7 +68,7 @@ pub fn deinit(self: *Self) void {
 
     var resources_it = self.resources.valueIterator();
     while (resources_it.next()) |res_val| {
-        res_val.*.deinit();
+        res_val.deinit();
     }
     self.resources.deinit();
 

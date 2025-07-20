@@ -15,6 +15,7 @@ attributes: Attributes,
 properties: x11.PropertyHashMap,
 core_event_listeners: std.ArrayList(CoreEventListener),
 extension_event_listeners: std.ArrayList(ExtensionEventListener),
+graphics_backend_id: u32,
 
 pub fn create(
     parent: ?*Self,
@@ -39,6 +40,7 @@ pub fn create(
         .properties = .init(allocator),
         .core_event_listeners = .init(allocator),
         .extension_event_listeners = .init(allocator),
+        .graphics_backend_id = 0,
     };
 
     try window.client_owner.add_window(window);

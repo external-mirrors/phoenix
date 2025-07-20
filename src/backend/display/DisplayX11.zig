@@ -103,13 +103,18 @@ pub fn get_drm_card_fd(self: *Self) std.posix.fd_t {
     return self.graphics.get_dri_card_fd();
 }
 
-pub fn create_window(self: *Self) !void {
-    _ = self;
+/// Returns a graphics window id
+pub fn create_window(self: *Self, window: *const xph.Window) !u32 {
+    return self.graphics.create_window(window);
 }
 
 /// Returns a texture id
-pub fn create_texture_from_pixmap(self: *Self, pixmap: *xph.Pixmap) !u32 {
+pub fn create_texture_from_pixmap(self: *Self, pixmap: *const xph.Pixmap) !u32 {
     return self.graphics.create_texture_from_pixmap(pixmap);
+}
+
+pub fn present_pixmap(self: *Self, pixmap: *const xph.Pixmap, window: *const xph.Window, target_msc: u64) !void {
+    return self.graphics.present_pixmap(pixmap, window, target_msc);
 }
 
 pub fn get_supported_modifiers(self: *Self, window: *xph.Window, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {

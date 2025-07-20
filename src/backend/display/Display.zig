@@ -11,9 +11,9 @@ pub fn create_x11(allocator: std.mem.Allocator) !Self {
     errdefer allocator.destroy(x11);
 
     x11.* = try .init(allocator);
-    errdefer x11.*.deinit();
+    errdefer x11.deinit();
 
-    try x11.*.run_update_thread();
+    try x11.run_update_thread();
 
     return .{
         .allocator = allocator,
@@ -37,16 +37,23 @@ pub fn get_drm_card_fd(self: *Self) std.posix.fd_t {
     }
 }
 
-pub fn create_window(self: *Self) !void {
+/// Returns a graphics window id
+pub fn create_window(self: *Self, window: *const xph.Window) !u32 {
     switch (self.impl) {
-        inline else => |item| return item.create_window(),
+        inline else => |item| return item.create_window(window),
     }
 }
 
 /// Returns a texture id
-pub fn create_texture_from_pixmap(self: *Self, pixmap: *xph.Pixmap) !u32 {
+pub fn create_texture_from_pixmap(self: *Self, pixmap: *const xph.Pixmap) !u32 {
     return switch (self.impl) {
         inline else => |item| item.create_texture_from_pixmap(pixmap),
+    };
+}
+
+pub fn present_pixmap(self: *Self, pixmap: *const xph.Pixmap, window: *const xph.Window, target_msc: u64) !void {
+    return switch (self.impl) {
+        inline else => |item| item.present_pixmap(pixmap, window, target_msc),
     };
 }
 

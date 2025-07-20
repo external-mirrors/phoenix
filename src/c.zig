@@ -1,6 +1,7 @@
 const config = @import("config");
 
 pub usingnamespace @cImport({
+    @cDefine("GL_GLEXT_PROTOTYPES", "1");
     @cInclude("GL/gl.h");
     @cInclude("GL/glext.h");
 

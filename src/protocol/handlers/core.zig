@@ -332,6 +332,7 @@ fn query_extension(request_context: xph.RequestContext) !void {
     } else if (std.mem.eql(u8, req.request.name.items, "SYNC")) {
         rep.present = true;
         rep.major_opcode = @intFromEnum(xph.opcode.Major.sync);
+        rep.first_error = xph.err.sync_first_error;
     } else {
         std.log.err("QueryExtension: unsupported extension: {s}", .{req.request.name.items});
     }

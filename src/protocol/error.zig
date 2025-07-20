@@ -19,7 +19,11 @@ pub const ErrorType = enum(x11.Card8) {
     name = 15,
     length = 16,
     implementation = 17,
+    _,
 };
+
+pub const sync_first_error: x11.Card8 = 20;
+pub const sync_error_fence: ErrorType = @enumFromInt(sync_first_error + 2);
 
 pub const Error = extern struct {
     type: x11.Card8 = 0, // 0 = error

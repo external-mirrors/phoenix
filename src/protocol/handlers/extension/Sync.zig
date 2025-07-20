@@ -15,6 +15,7 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
 
     switch (minor_opcode) {
         .initialize => return initialize(request_context),
+        .destroy_fence => return destroy_fence(request_context),
     }
 }
 
@@ -38,8 +39,21 @@ fn initialize(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn destroy_fence(request_context: xph.RequestContext) !void {
+    var req = try request_context.client.read_request(SyncDestroyFenceRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("SyncDestroyFence request: {s}", .{x11.stringify_fmt(req.request)});
+
+    var fence = request_context.server.get_fence(req.request.fence) orelse {
+        std.log.err("Received invalid fence {d} in SyncDestroyFence request", .{req.request.fence});
+        return request_context.client.write_error(request_context, xph.err.sync_error_fence, req.request.fence.to_id().to_int());
+    };
+    fence.destroy();
+}
+
 const MinorOpcode = enum(x11.Card8) {
     initialize = 0,
+    destroy_fence = 17,
 };
 
 pub const Fence = enum(x11.Card32) {
@@ -67,4 +81,11 @@ const SyncInitializeReply = struct {
     major_version: x11.Card8,
     minor_version: x11.Card8,
     pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
+};
+
+const SyncDestroyFenceRequest = struct {
+    major_opcode: x11.Card8, // opcode.Major
+    minor_opcode: x11.Card8, // MinorOpcode
+    length: x11.Card16,
+    fence: Fence,
 };

@@ -72,28 +72,29 @@ fn create_window(request_context: xph.RequestContext) !void {
     }
 
     const background_pixmap_arg = req.request.get_value(x11.Card32, "background_pixmap") orelse none;
-    const background_pixmap: ?x11.Pixmap = switch (background_pixmap_arg) {
+    const background_pixmap: ?*const xph.Pixmap = switch (background_pixmap_arg) {
         none => null,
         parent_relative => parent_window.attributes.background_pixmap,
-        else => @enumFromInt(background_pixmap_arg),
+        else => request_context.server.get_pixmap(@enumFromInt(background_pixmap_arg)) orelse {
+            return request_context.client.write_error(request_context, .pixmap, background_pixmap_arg);
+        },
     };
 
     const border_pixmap_arg = req.request.get_value(x11.Card32, "border_pixmap") orelse none;
-    const border_pixmap: ?x11.Pixmap = switch (border_pixmap_arg) {
+    const border_pixmap: ?*const xph.Pixmap = switch (border_pixmap_arg) {
         copy_from_parent => parent_window.attributes.border_pixmap,
-        else => @enumFromInt(border_pixmap_arg),
+        else => request_context.server.get_pixmap(@enumFromInt(border_pixmap_arg)) orelse {
+            return request_context.client.write_error(request_context, .pixmap, border_pixmap_arg);
+        },
     };
 
     const colormap_arg = req.request.get_value(x11.Card32, "colormap") orelse copy_from_parent;
-    var colormap: *const xph.Colormap = undefined;
-    switch (colormap_arg) {
-        copy_from_parent => colormap = parent_window.attributes.colormap,
-        else => {
-            colormap = request_context.server.get_colormap_by_id(@enumFromInt(colormap_arg)) orelse {
-                return request_context.client.write_error(request_context, .value, colormap_arg);
-            };
+    const colormap: *const xph.Colormap = switch (colormap_arg) {
+        copy_from_parent => parent_window.attributes.colormap,
+        else => request_context.server.get_colormap_by_id(@enumFromInt(colormap_arg)) orelse {
+            return request_context.client.write_error(request_context, .colormap, colormap_arg);
         },
-    }
+    };
 
     const bit_gravity_arg = req.request.get_value(x11.Card32, "bit_gravity") orelse @intFromEnum(BitGravity.forget);
     const bit_gravity = std.meta.intToEnum(BitGravity, bit_gravity_arg) catch |err| switch (err) {
@@ -194,7 +195,27 @@ fn map_window(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(MapWindowRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("MapWindow request: {s}", .{x11.stringify_fmt(req)});
-    // TODO: Implement
+
+    var window = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("Received invalid drawable {d} in MapWindow request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+    if (window.attributes.map_state != .unmapped)
+        return;
+
+    // TODO: Set to unviewable instead?
+    window.attributes.map_state = .viewable;
+
+    // TODO: Dont always do this, check protocol spec
+    const create_notify_event = xph.event.Event{
+        .map_notify = .{
+            .sequence_number = request_context.sequence_number,
+            .event = @enumFromInt(0), // TODO: ?
+            .window = req.request.window,
+            .override_redirect = window.attributes.override_redirect,
+        },
+    };
+    window.write_core_event_to_event_listeners(&create_notify_event);
 }
 
 fn get_geometry(request_context: xph.RequestContext) !void {

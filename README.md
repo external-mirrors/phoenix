@@ -1,5 +1,5 @@
 # Xphoenix
-Xphoenix is a new X server, written from scratch (not a fork of Xorg server) in Zig. This X server is designed to be a modern alternative to the Xorg server.
+Xphoenix is a new X server, written from scratch in Zig (not a fork of Xorg server). This X server is designed to be a modern alternative to the Xorg server.
 
 ## Current state
 Xphoenix is not ready to be used yet. At the moment it can render simple applications that do EGL graphics (fully hardware accelerated) nested in an existing X server.

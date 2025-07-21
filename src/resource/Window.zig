@@ -176,6 +176,7 @@ inline fn core_event_mask_matches_event_code(event_mask: xph.core.EventMask, eve
         .button_press => event_mask.button_press,
         .button_release => event_mask.button_release,
         .create_notify => false, // This only applies to parents
+        .map_notify => event_mask.structure_notify,
         .xge => false, // TODO:
     };
 }
@@ -296,9 +297,9 @@ pub const Attributes = struct {
     colormap: *const xph.Colormap, // Reference
     cursor: ?*const xph.Cursor, // Reference
     map_state: MapState,
-    background_pixmap: ?x11.Pixmap,
+    background_pixmap: ?*const xph.Pixmap,
     background_pixel: u32,
-    border_pixmap: ?x11.Pixmap,
+    border_pixmap: ?*const xph.Pixmap,
     border_pixel: u32,
     save_under: bool,
     override_redirect: bool,

@@ -3,7 +3,7 @@ const builtin = @import("builtin");
 const xph = @import("xphoenix.zig");
 
 pub const std_options = std.Options{
-    .log_level = .err,
+    .log_level = .debug,
 };
 
 pub fn main() !void {

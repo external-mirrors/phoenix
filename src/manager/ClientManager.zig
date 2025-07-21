@@ -72,42 +72,18 @@ pub fn get_client_by_fd(self: *Self, client_fd: std.posix.socket_t) ?*xph.Client
     return if (self.clients_by_fd.get(client_fd)) |client_index| self.clients[client_index] else null;
 }
 
-// TODO: This and get_pixmap and pretty much the same, the should be one function
-pub fn get_window(self: *Self, window_id: x11.Window) ?*xph.Window {
-    const client_index = xph.ResourceIdBaseManager.resource_id_get_base_index(window_id.to_id().to_int());
+pub fn get_resource_of_type(
+    self: *Self,
+    resource_id: x11.ResourceId,
+    comptime resource_tag: std.meta.Tag(xph.Resource),
+) ?std.meta.TagPayload(xph.Resource, resource_tag) {
+    const client_index = xph.ResourceIdBaseManager.resource_id_get_base_index(resource_id.to_int());
     if (self.clients[client_index]) |client| {
-        const resource = client.get_resource(window_id.to_id()) orelse return null;
-        return if (std.meta.activeTag(resource) == .window) resource.window else null;
-    } else {
-        return null;
-    }
-}
-
-pub fn get_pixmap(self: *Self, pixmap_id: x11.Pixmap) ?*xph.Pixmap {
-    const client_index = xph.ResourceIdBaseManager.resource_id_get_base_index(pixmap_id.to_id().to_int());
-    if (self.clients[client_index]) |client| {
-        const resource = client.get_resource(pixmap_id.to_id()) orelse return null;
-        return if (std.meta.activeTag(resource) == .pixmap) resource.pixmap else null;
-    } else {
-        return null;
-    }
-}
-
-pub fn get_fence(self: *Self, fence_id: xph.Sync.Fence) ?*xph.Fence {
-    const client_index = xph.ResourceIdBaseManager.resource_id_get_base_index(fence_id.to_id().to_int());
-    if (self.clients[client_index]) |client| {
-        const resource = client.get_resource(fence_id.to_id()) orelse return null;
-        return if (std.meta.activeTag(resource) == .fence) resource.fence else null;
-    } else {
-        return null;
-    }
-}
-
-pub fn get_colormap(self: *Self, colormap_id: x11.Colormap) ?xph.Colormap {
-    const client_index = xph.ResourceIdBaseManager.resource_id_get_base_index(colormap_id.to_id().to_int());
-    if (self.clients[client_index]) |client| {
-        const resource = client.get_resource(colormap_id.to_id()) orelse return null;
-        return if (std.meta.activeTag(resource) == .colormap) resource.colormap else null;
+        const resource = client.get_resource(resource_id) orelse return null;
+        return if (std.meta.activeTag(resource) == resource_tag)
+            @field(resource, @tagName(resource_tag))
+        else
+            null;
     } else {
         return null;
     }

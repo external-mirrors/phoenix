@@ -348,17 +348,17 @@ pub fn get_visual_by_id(self: *Self, visual_id: x11.VisualId) ?*const xph.Visual
 }
 
 pub fn get_window(self: *Self, window_id: x11.Window) ?*xph.Window {
-    return self.client_manager.get_window(window_id);
+    return self.client_manager.get_resource_of_type(window_id.to_id(), .window);
 }
 
 pub fn get_pixmap(self: *Self, pixmap_id: x11.Pixmap) ?*xph.Pixmap {
-    return self.client_manager.get_pixmap(pixmap_id);
+    return self.client_manager.get_resource_of_type(pixmap_id.to_id(), .pixmap);
 }
 
 pub fn get_fence(self: *Self, fence_id: xph.Sync.Fence) ?*xph.Fence {
-    return self.client_manager.get_fence(fence_id);
+    return self.client_manager.get_resource_of_type(fence_id.to_id(), .fence);
 }
 
 pub fn get_colormap(self: *Self, colormap_id: x11.Colormap) ?xph.Colormap {
-    return self.client_manager.get_colormap(colormap_id);
+    return self.client_manager.get_resource_of_type(colormap_id.to_id(), .colormap);
 }

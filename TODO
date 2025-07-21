@@ -17,3 +17,4 @@ Close the program if the nested x11 window is closed.
 Instead of creating and destroying opengl textures for each window/pixmap each time, create textures and re-use them; never destroying them.
     This is more efficient and leads to lower memory usage (nvidia leaks memory on texture create/destroy, on purpose).
 Draw windows in tree order (the grandchildren of root, then children then root).
+Client might set any of the top resource id bits to 1. What do?

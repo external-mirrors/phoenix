@@ -103,6 +103,16 @@ pub fn get_fence(self: *Self, fence_id: xph.Sync.Fence) ?*xph.Fence {
     }
 }
 
+pub fn get_colormap(self: *Self, colormap_id: x11.Colormap) ?xph.Colormap {
+    const client_index = xph.ResourceIdBaseManager.resource_id_get_base_index(colormap_id.to_id().to_int());
+    if (self.clients[client_index]) |client| {
+        const resource = client.get_resource(colormap_id.to_id()) orelse return null;
+        return if (std.meta.activeTag(resource) == .colormap) resource.colormap else null;
+    } else {
+        return null;
+    }
+}
+
 fn get_free_client_index(self: *Self) ?usize {
     for (self.clients, 0..) |client, i| {
         if (client == null)

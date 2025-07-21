@@ -35,7 +35,7 @@ pub fn handle_client_connect(server: *xph.Server, client: *xph.Client, root_wind
     std.log.info("Connection setup request: {}", .{x11.stringify_fmt(req)});
 
     const screen_visual = server.get_visual_by_id(xph.Server.screen_true_color_visual_id) orelse unreachable;
-    const screen_colormap = server.get_colormap_by_id(xph.Server.screen_true_color_colormap_id) orelse unreachable;
+    const screen_colormap = server.get_colormap(xph.Server.screen_true_color_colormap_id) orelse unreachable;
 
     var vendor_buf: [32]x11.Card8 = undefined;
     const ven = std.fmt.bufPrint(&vendor_buf, "{s}", .{xph.Server.vendor}) catch unreachable;

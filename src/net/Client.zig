@@ -239,6 +239,10 @@ pub fn add_event_context(self: *Self, event_context: xph.EventContext) !void {
     return self.add_resource(event_context.id, .{ .event_context = event_context });
 }
 
+pub fn add_colormap(self: *Self, colormap: xph.Colormap) !void {
+    return self.add_resource(colormap.id.to_id(), .{ .colormap = colormap });
+}
+
 pub fn add_pixmap(self: *Self, pixmap: *xph.Pixmap) !void {
     return self.add_resource(pixmap.id.to_id(), .{ .pixmap = pixmap });
 }

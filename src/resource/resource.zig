@@ -7,6 +7,7 @@ pub const Resource = union(enum) {
     pixmap: *xph.Pixmap,
     fence: *xph.Fence,
     event_context: xph.EventContext,
+    colormap: xph.Colormap,
 
     pub fn deinit(self: Resource) void {
         switch (self) {
@@ -14,6 +15,7 @@ pub const Resource = union(enum) {
             .pixmap => |item| item.destroy(),
             .fence => |item| item.destroy(),
             .event_context => {},
+            .colormap => {},
         }
     }
 };

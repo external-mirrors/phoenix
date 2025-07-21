@@ -13,6 +13,7 @@ pub const Major = enum(x11.Card8) {
     get_input_focus = 43,
     free_pixmap = 54,
     create_gc = 55,
+    create_colormap = 78,
     query_extension = 98,
 
     // Extension

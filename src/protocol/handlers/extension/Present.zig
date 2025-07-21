@@ -147,12 +147,10 @@ fn select_input(request_context: xph.RequestContext) !void {
         request_context.client.add_event_context(event_context) catch |err| switch (err) {
             error.ResourceNotOwnedByClient => {
                 std.log.err("Received event id {d} in PresentSelectInput request which doesn't belong to the client", .{req.request.event_id});
-                // TODO: What type of error should actually be generated?
-                return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.event_id));
+                return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.event_id));
             },
             error.ResourceAlreadyExists => {
                 std.log.err("Received event id {d} in CreateWindow request which already exists", .{req.request.event_id});
-                // TODO: What type of error should actually be generated?
                 return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.event_id));
             },
             error.OutOfMemory => {

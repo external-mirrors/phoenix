@@ -294,7 +294,7 @@ pub const Attributes = struct {
     backing_store: BackingStore,
     backing_planes: u32,
     backing_pixel: u32,
-    colormap: *const xph.Colormap, // Reference
+    colormap: xph.Colormap,
     cursor: ?*const xph.Cursor, // Reference
     map_state: MapState,
     background_pixmap: ?*const xph.Pixmap,

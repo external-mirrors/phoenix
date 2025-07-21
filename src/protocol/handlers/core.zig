@@ -23,6 +23,7 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
         .get_input_focus => return get_input_focus(request_context),
         .free_pixmap => return free_pixmap(request_context),
         .create_gc => return create_gc(request_context),
+        .create_colormap => return create_colormap(request_context),
         .query_extension => return query_extension(request_context),
         else => unreachable,
     }
@@ -64,12 +65,12 @@ fn create_window(request_context: xph.RequestContext) !void {
     if (!window_class_validate_attributes(class, &req.request))
         return request_context.client.write_error(request_context, .match, 0);
 
-    var visual = parent_window.attributes.visual;
-    if (@intFromEnum(req.request.visual) != copy_from_parent) {
-        visual = request_context.server.get_visual_by_id(req.request.visual) orelse {
+    const visual: *const xph.Visual = switch (@intFromEnum(req.request.visual)) {
+        copy_from_parent => parent_window.attributes.visual,
+        else => request_context.server.get_visual_by_id(req.request.visual) orelse {
             return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.visual));
-        };
-    }
+        },
+    };
 
     const background_pixmap_arg = req.request.get_value(x11.Card32, "background_pixmap") orelse none;
     const background_pixmap: ?*const xph.Pixmap = switch (background_pixmap_arg) {
@@ -89,9 +90,9 @@ fn create_window(request_context: xph.RequestContext) !void {
     };
 
     const colormap_arg = req.request.get_value(x11.Card32, "colormap") orelse copy_from_parent;
-    const colormap: *const xph.Colormap = switch (colormap_arg) {
+    const colormap: xph.Colormap = switch (colormap_arg) {
         copy_from_parent => parent_window.attributes.colormap,
-        else => request_context.server.get_colormap_by_id(@enumFromInt(colormap_arg)) orelse {
+        else => request_context.server.get_colormap(@enumFromInt(colormap_arg)) orelse {
             return request_context.client.write_error(request_context, .colormap, colormap_arg);
         },
     };
@@ -155,12 +156,10 @@ fn create_window(request_context: xph.RequestContext) !void {
     )) |window| window else |err| switch (err) {
         error.ResourceNotOwnedByClient => {
             std.log.err("Received invalid window {d} in CreateWindow request which doesn't belong to the client", .{req.request.window});
-            // TODO: What type of error should actually be generated?
-            return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.window));
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.window));
         },
         error.ResourceAlreadyExists => {
             std.log.err("Received window {d} in CreateWindow request which already exists", .{req.request.window});
-            // TODO: What type of error should actually be generated?
             return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.window));
         },
         error.OutOfMemory => {
@@ -327,6 +326,42 @@ fn free_pixmap(request_context: xph.RequestContext) !void {
 
 fn create_gc(_: xph.RequestContext) !void {
     std.log.err("Unimplemented request: CreateGC", .{});
+}
+
+fn create_colormap(request_context: xph.RequestContext) !void {
+    var req = try request_context.client.read_request(CreateColormapRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("CreateColormap request: {s}", .{x11.stringify_fmt(req.request)});
+
+    // TODO: Do something with req.request.alloc.
+
+    // The window in CreateColormap is for selecting the screen. In Xphoenix we only have one screen
+    // so we only verify if the window is valid.
+    _ = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in CreateColormap request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+
+    const visual = request_context.server.get_visual_by_id(req.request.visual_id) orelse {
+        std.log.err("Received invalid visual {d} in CreateColormap request", .{req.request.visual_id});
+        return request_context.client.write_error(request_context, .match, @intFromEnum(req.request.visual_id));
+    };
+
+    const colormap = xph.Colormap{ .id = req.request.colormap, .visual = visual };
+    request_context.client.add_colormap(colormap) catch |err| switch (err) {
+        error.ResourceNotOwnedByClient => {
+            std.log.err("Received colormap id {d} in CreateColormap request which doesn't belong to the client", .{req.request.colormap});
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.colormap));
+        },
+        error.ResourceAlreadyExists => {
+            std.log.err("Received colormap id {d} in CreateColormap request which already exists", .{req.request.colormap});
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.colormap));
+        },
+        error.OutOfMemory => {
+            return request_context.client.write_error(request_context, .alloc, 0);
+        },
+    };
+    errdefer request_context.client.remove_resource(colormap.id);
 }
 
 fn query_extension(request_context: xph.RequestContext) !void {
@@ -563,13 +598,6 @@ const GetInputFocusRequest = struct {
     length: x11.Card16,
 };
 
-const FreePixmapRequest = struct {
-    opcode: x11.Card8, // opcode.Major
-    pad1: x11.Card8,
-    length: x11.Card16,
-    pixmap: x11.Pixmap,
-};
-
 const GetInputFocusReply = struct {
     reply_type: xph.reply.ReplyType = .reply,
     revert_to: RevertTo,
@@ -577,6 +605,25 @@ const GetInputFocusReply = struct {
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
     focused_window: x11.Window,
     pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
+};
+
+const FreePixmapRequest = struct {
+    opcode: x11.Card8, // opcode.Major
+    pad1: x11.Card8,
+    length: x11.Card16,
+    pixmap: x11.Pixmap,
+};
+
+const CreateColormapRequest = struct {
+    opcode: x11.Card8, // opcode.Major
+    alloc: enum(x11.Card8) {
+        none = 0,
+        all = 1,
+    },
+    length: x11.Card16,
+    colormap: x11.Colormap,
+    window: x11.Window,
+    visual_id: x11.VisualId,
 };
 
 const QueryExtensionRequest = struct {

@@ -27,7 +27,7 @@ atom_manager: xph.AtomManager,
 client_manager: xph.ClientManager,
 display: xph.Display,
 
-installed_colormaps: std.ArrayList(*const xph.Colormap),
+installed_colormaps: std.ArrayList(xph.Colormap),
 
 /// The server will catch sigint and close down (if |run| has been executed)
 pub fn init(allocator: std.mem.Allocator) !Self {
@@ -73,16 +73,19 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         .address = server.listen_address,
     };
 
-    const root_client = add_client_internal(epoll_fd, server_connection, &client_manager, &resource_id_base_manager, allocator) catch |err| {
+    var root_client = add_client_internal(epoll_fd, server_connection, &client_manager, &resource_id_base_manager, allocator) catch |err| {
         std.log.err("Failed to add client: {d}, disconnecting client. Error: {s}", .{ server_connection.stream.handle, @errorName(err) });
         server_connection.stream.close();
         return error.FailedToSetupRootClient;
     };
 
-    var installed_colormaps = std.ArrayList(*const xph.Colormap).init(allocator);
+    // TODO: Is this correct?
+    try root_client.add_colormap(screen_true_color_colormap);
+
+    var installed_colormaps = std.ArrayList(xph.Colormap).init(allocator);
     errdefer installed_colormaps.deinit();
 
-    try installed_colormaps.append(&screen_true_color_colormap);
+    try installed_colormaps.append(screen_true_color_colormap);
 
     const root_window = try create_root_window(root_client, allocator);
 
@@ -125,7 +128,7 @@ fn create_root_window(root_client: *xph.Client, allocator: std.mem.Allocator) !*
         .backing_store = .never,
         .backing_planes = 0xFFFFFFFF,
         .backing_pixel = 0,
-        .colormap = &screen_true_color_colormap,
+        .colormap = screen_true_color_colormap,
         .cursor = null, // TODO: Add a cursor
         .map_state = .viewable,
         .background_pixmap = null,
@@ -344,15 +347,6 @@ pub fn get_visual_by_id(self: *Self, visual_id: x11.VisualId) ?*const xph.Visual
     }
 }
 
-pub fn get_colormap_by_id(self: *Self, colormap_id: x11.Colormap) ?*const xph.Colormap {
-    _ = self;
-    if (colormap_id == screen_true_color_colormap_id) {
-        return &screen_true_color_colormap;
-    } else {
-        return null;
-    }
-}
-
 pub fn get_window(self: *Self, window_id: x11.Window) ?*xph.Window {
     return self.client_manager.get_window(window_id);
 }
@@ -363,4 +357,8 @@ pub fn get_pixmap(self: *Self, pixmap_id: x11.Pixmap) ?*xph.Pixmap {
 
 pub fn get_fence(self: *Self, fence_id: xph.Sync.Fence) ?*xph.Fence {
     return self.client_manager.get_fence(fence_id);
+}
+
+pub fn get_colormap(self: *Self, colormap_id: x11.Colormap) ?xph.Colormap {
+    return self.client_manager.get_colormap(colormap_id);
 }

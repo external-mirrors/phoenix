@@ -476,6 +476,23 @@ pub const ContextId = enum(x11.Card32) {
     }
 };
 
+// One of x11.WindowId, PbufferId, PixmapId, WindowId
+const DrawableId = enum(x11.Card32) {
+    _,
+};
+
+const PbufferId = enum(x11.Card32) {
+    _,
+};
+
+const PixmapId = enum(x11.Card32) {
+    _,
+};
+
+const WindowId = enum(x11.Card32) {
+    _,
+};
+
 fn null_term_to_slice(str: []const u8) []const u8 {
     return if (str.len > 0 and str[str.len - 1] == '\x00') str[0 .. str.len - 1] else str;
 }

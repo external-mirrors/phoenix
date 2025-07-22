@@ -57,3 +57,12 @@ pub fn destroy(self: *Self) void {
     self.client_owner.remove_resource(self.id.to_id());
     self.allocator.destroy(self);
 }
+
+pub fn get_geometry(self: *Self) xph.Geometry {
+    return .{
+        .x = 0,
+        .y = 0,
+        .width = @intCast(self.dmabuf_data.width),
+        .height = @intCast(self.dmabuf_data.height),
+    };
+}

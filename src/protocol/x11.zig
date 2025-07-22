@@ -78,12 +78,9 @@ pub const PixmapId = enum(Card32) {
     }
 };
 
+// One of WindowId, PixmapId
 pub const DrawableId = enum(Card32) {
     _,
-
-    pub fn to_window(self: DrawableId) WindowId {
-        return @enumFromInt(@intFromEnum(self));
-    }
 
     pub fn to_id(self: DrawableId) ResourceId {
         return @enumFromInt(@intFromEnum(self));

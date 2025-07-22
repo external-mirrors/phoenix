@@ -357,6 +357,15 @@ pub fn get_pixmap(self: *Self, pixmap_id: x11.PixmapId) ?*xph.Pixmap {
     return self.client_manager.get_resource_of_type(pixmap_id.to_id(), .pixmap);
 }
 
+pub fn get_drawable(self: *Self, drawable_id: x11.DrawableId) ?xph.Drawable {
+    const resource = self.client_manager.get_resource(drawable_id.to_id()) orelse return null;
+    return switch (resource) {
+        .window => |window| xph.Drawable.init_window(window),
+        .pixmap => |pixmap| xph.Drawable.init_pixmap(pixmap),
+        else => null,
+    };
+}
+
 pub fn get_fence(self: *Self, fence_id: xph.Sync.FenceId) ?*xph.Fence {
     return self.client_manager.get_resource_of_type(fence_id.to_id(), .fence);
 }

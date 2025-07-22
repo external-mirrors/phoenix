@@ -88,6 +88,10 @@ pub fn destroy(self: *Self) void {
     self.allocator.destroy(self);
 }
 
+pub fn get_geometry(self: *Self) xph.Geometry {
+    return self.attributes.geometry;
+}
+
 pub fn get_property(self: *Self, atom: x11.Atom) ?*x11.PropertyValue {
     return self.properties.getPtr(atom);
 }

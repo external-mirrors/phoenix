@@ -47,6 +47,7 @@ fn window_class_validate_attributes(class: x11.Class, req: *const CreateWindowRe
 }
 
 // TODO: Handle all params properly
+// TODO: Only one client at a time should be allowed to use redirect event mask and buttonpress on a window (or its parent)
 fn create_window(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(CreateWindowRequest, request_context.allocator);
     defer req.deinit();
@@ -234,20 +235,20 @@ fn get_geometry(request_context: xph.RequestContext) !void {
     defer req.deinit();
     std.log.info("GetGeometry request: {s}", .{x11.stringify_fmt(req.request)});
 
-    // TODO: Support types other than window
-    const window = request_context.server.get_window(req.request.drawable.to_window()) orelse {
+    const drawable = request_context.server.get_drawable(req.request.drawable) orelse {
         std.log.err("Received invalid drawable {d} in GetGeometry request", .{req.request.drawable});
         return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.drawable));
     };
+    const geometry = drawable.get_geometry();
 
     var rep = GetGeometryReply{
         .depth = 32, // TODO: Use real value
         .sequence_number = request_context.sequence_number,
         .root = request_context.server.root_window.id,
-        .x = @intCast(window.attributes.geometry.x),
-        .y = @intCast(window.attributes.geometry.y),
-        .width = @intCast(window.attributes.geometry.width),
-        .height = @intCast(window.attributes.geometry.height),
+        .x = @intCast(geometry.x),
+        .y = @intCast(geometry.y),
+        .width = @intCast(geometry.width),
+        .height = @intCast(geometry.height),
         .border_width = 1, // TODO: Use real value
     };
     try request_context.client.write_reply(&rep);

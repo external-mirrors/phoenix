@@ -366,6 +366,15 @@ pub fn get_drawable(self: *Self, drawable_id: x11.DrawableId) ?xph.Drawable {
     };
 }
 
+pub fn get_glx_drawable(self: *Self, drawable_id: xph.Glx.DrawableId) ?xph.GlxDrawable {
+    const resource = self.client_manager.get_resource(drawable_id.to_id()) orelse return null;
+    return switch (resource) {
+        .window => |window| xph.GlxDrawable.init_window(window),
+        // TODO: add more items here once they are implemented
+        else => null,
+    };
+}
+
 pub fn get_fence(self: *Self, fence_id: xph.Sync.FenceId) ?*xph.Fence {
     return self.client_manager.get_resource_of_type(fence_id.to_id(), .fence);
 }

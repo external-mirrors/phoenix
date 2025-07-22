@@ -27,6 +27,7 @@ pub const sync_error_fence: ErrorType = @enumFromInt(sync_first_error + 2);
 
 pub const glx_first_error: x11.Card8 = 30;
 pub const glx_error_bad_context: ErrorType = @enumFromInt(glx_first_error + 0);
+pub const glx_error_bad_drawable: ErrorType = @enumFromInt(glx_first_error + 2);
 
 pub const Error = extern struct {
     type: x11.Card8 = 0, // 0 = error

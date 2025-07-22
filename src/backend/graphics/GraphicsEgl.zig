@@ -239,10 +239,10 @@ fn get_graphics_window_by_id(self: *Self, window_id: u32) ?*const GraphicsWindow
 }
 
 fn graphics_window_intersects_framebuffer(graphics_window: *const GraphicsWindow, framebuffer_width: i32, framebuffer_height: i32) bool {
-    const x = graphics_window.x;
-    const y = graphics_window.y;
-    const w = graphics_window.width;
-    const h = graphics_window.height;
+    const x: i32 = graphics_window.x;
+    const y: i32 = graphics_window.y;
+    const w: i32 = @intCast(graphics_window.width);
+    const h: i32 = @intCast(graphics_window.height);
     return (x + w > 0 or x < framebuffer_width) and (y + h > 0 or y < framebuffer_height);
 }
 
@@ -288,7 +288,7 @@ fn create_graphics_windows_textures(self: *Self) void {
         c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_LINEAR);
         // TODO: If this fails then mark the window as failed and return error to client and destroy the window.
         // Maybe dont create the window until this has been created.
-        c.glTexImage2D(c.GL_TEXTURE_2D, 0, c.GL_RGBA8, graphics_window.width, graphics_window.height, 0, c.GL_RGBA, c.GL_UNSIGNED_BYTE, null);
+        c.glTexImage2D(c.GL_TEXTURE_2D, 0, c.GL_RGBA8, @intCast(graphics_window.width), @intCast(graphics_window.height), 0, c.GL_RGBA, c.GL_UNSIGNED_BYTE, null);
         c.glBindTexture(c.GL_TEXTURE_2D, 0);
 
         self.clear_graphics_window(graphics_window);
@@ -313,7 +313,23 @@ fn perform_present_pixmap_operations(self: *Self) void {
         // TODO: The client application draws background with 0, 0, 0, 1; which the driver interprets as fully transparent (it ignores the alpha value).
         // The reason why the window background gets replaced as well is because glCopyImageSubData doesn't do alpha blending. When this is replaced with shader rendering code
         // then the window will correctly have the window background instead of it getting replaced.
-        self.glCopyImageSubData(pixmap_texture, c.GL_TEXTURE_2D, 0, 0, 0, 0, graphics_window.gl_texture_id, c.GL_TEXTURE_2D, 0, 0, 0, 0, graphics_window.width, graphics_window.height, 1);
+        self.glCopyImageSubData(
+            pixmap_texture,
+            c.GL_TEXTURE_2D,
+            0,
+            0,
+            0,
+            0,
+            graphics_window.gl_texture_id,
+            c.GL_TEXTURE_2D,
+            0,
+            0,
+            0,
+            0,
+            @intCast(graphics_window.width),
+            @intCast(graphics_window.height),
+            1,
+        );
     }
     // TODO: Dont do this, the above code removes items if needed
     self.present_pixmap_operations.clearRetainingCapacity();
@@ -658,8 +674,8 @@ const GraphicsWindow = struct {
     gl_texture_id: u32,
     x: i32,
     y: i32,
-    width: i32,
-    height: i32,
+    width: u32,
+    height: u32,
     delete: bool = false,
 };
 

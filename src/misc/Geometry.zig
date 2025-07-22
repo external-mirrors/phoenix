@@ -1,4 +1,4 @@
 x: i32,
 y: i32,
-width: i32,
-height: i32,
+width: u32,
+height: u32,

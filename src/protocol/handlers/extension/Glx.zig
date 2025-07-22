@@ -27,6 +27,7 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
         .get_visual_configs => return get_visual_configs(request_context),
         .query_server_string => return query_server_string(request_context),
         .get_fb_configs => return get_fb_configs(request_context),
+        .get_drawable_attributes => return get_drawable_attributes(request_context),
         .set_client_info_arb => return set_client_info_arb(request_context),
         .set_client_info2_arb => return set_client_info2_arb(request_context),
     }
@@ -262,6 +263,8 @@ fn get_fb_configs(request_context: xph.RequestContext) !void {
     var properties = std.ArrayList(FbAttributePair).init(fba.allocator());
     defer properties.deinit();
 
+    // TODO: Associate fbconfig with a window when creating a regular window as well
+    var fbconfig_id: x11.Card32 = 0;
     var num_properties: x11.Card32 = 0;
     for (alpha_size_values) |alpha_size| {
         for (double_buffer_values) |double_buffer| {
@@ -270,31 +273,33 @@ fn get_fb_configs(request_context: xph.RequestContext) !void {
                     const properties_size_start: u32 = @intCast(properties.items.len);
 
                     if (server_glx_version >= version_1_3) {
-                        properties.append(.{ .type = FbAttributeType.visual_id, .value = @intFromEnum(screen_visual.id) }) catch unreachable;
+                        properties.append(.{ .type = .visual_id, .value = @intFromEnum(screen_visual.id) }) catch unreachable;
                         switch (screen_visual.class) {
-                            .true_color => properties.append(.{ .type = FbAttributeType.x_visual_type, .value = GLX_TRUE_COLOR }) catch unreachable,
+                            .true_color => properties.append(.{ .type = .x_visual_type, .value = GLX_TRUE_COLOR }) catch unreachable,
                         }
+                        properties.append(.{ .type = .fbconfig_id, .value = fbconfig_id }) catch unreachable;
                     }
 
-                    properties.append(.{ .type = FbAttributeType.rgba, .value = @intFromBool(true) }) catch unreachable;
-                    properties.append(.{ .type = FbAttributeType.red_size, .value = screen_visual.bits_per_color_component }) catch unreachable;
-                    properties.append(.{ .type = FbAttributeType.green_size, .value = screen_visual.bits_per_color_component }) catch unreachable;
-                    properties.append(.{ .type = FbAttributeType.blue_size, .value = screen_visual.bits_per_color_component }) catch unreachable;
-                    properties.append(.{ .type = FbAttributeType.alpha_size, .value = alpha_size }) catch unreachable;
-                    properties.append(.{ .type = FbAttributeType.accum_red_size, .value = 0 }) catch unreachable;
-                    properties.append(.{ .type = FbAttributeType.accum_green_size, .value = 0 }) catch unreachable;
-                    properties.append(.{ .type = FbAttributeType.accum_blue_size, .value = 0 }) catch unreachable;
-                    properties.append(.{ .type = FbAttributeType.accum_alpha_size, .value = 0 }) catch unreachable;
-                    properties.append(.{ .type = FbAttributeType.doublebuffer, .value = @intFromEnum(double_buffer) }) catch unreachable;
-                    properties.append(.{ .type = FbAttributeType.stereo, .value = @intFromBool(false) }) catch unreachable;
-                    properties.append(.{ .type = FbAttributeType.buffer_size, .value = screen_visual.bits_per_color_component * 3 + alpha_size }) catch unreachable;
-                    properties.append(.{ .type = FbAttributeType.depth_size, .value = depth_size }) catch unreachable;
-                    properties.append(.{ .type = FbAttributeType.stencil_size, .value = stencil_size }) catch unreachable;
-                    properties.append(.{ .type = FbAttributeType.aux_buffers, .value = 0 }) catch unreachable;
-                    properties.append(.{ .type = FbAttributeType.level, .value = 0 }) catch unreachable;
+                    properties.append(.{ .type = .rgba, .value = @intFromBool(true) }) catch unreachable;
+                    properties.append(.{ .type = .red_size, .value = screen_visual.bits_per_color_component }) catch unreachable;
+                    properties.append(.{ .type = .green_size, .value = screen_visual.bits_per_color_component }) catch unreachable;
+                    properties.append(.{ .type = .blue_size, .value = screen_visual.bits_per_color_component }) catch unreachable;
+                    properties.append(.{ .type = .alpha_size, .value = alpha_size }) catch unreachable;
+                    properties.append(.{ .type = .accum_red_size, .value = 0 }) catch unreachable;
+                    properties.append(.{ .type = .accum_green_size, .value = 0 }) catch unreachable;
+                    properties.append(.{ .type = .accum_blue_size, .value = 0 }) catch unreachable;
+                    properties.append(.{ .type = .accum_alpha_size, .value = 0 }) catch unreachable;
+                    properties.append(.{ .type = .doublebuffer, .value = @intFromEnum(double_buffer) }) catch unreachable;
+                    properties.append(.{ .type = .stereo, .value = @intFromBool(false) }) catch unreachable;
+                    properties.append(.{ .type = .buffer_size, .value = screen_visual.bits_per_color_component * 3 + alpha_size }) catch unreachable;
+                    properties.append(.{ .type = .depth_size, .value = depth_size }) catch unreachable;
+                    properties.append(.{ .type = .stencil_size, .value = stencil_size }) catch unreachable;
+                    properties.append(.{ .type = .aux_buffers, .value = 0 }) catch unreachable;
+                    properties.append(.{ .type = .level, .value = 0 }) catch unreachable;
 
                     const properties_size_end: u32 = @intCast(properties.items.len);
                     num_properties = properties_size_end - properties_size_start;
+                    fbconfig_id += 1;
                 }
             }
         }
@@ -305,6 +310,40 @@ fn get_fb_configs(request_context: xph.RequestContext) !void {
         .num_fbconfigs = num_fbconfigs,
         .num_properties = num_properties,
         .properties = .{ .items = properties.items },
+    };
+    try request_context.client.write_reply(&rep);
+}
+
+fn get_drawable_attributes(request_context: xph.RequestContext) !void {
+    var req = try request_context.client.read_request(GlxGetDrawableAttributesRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("GlxGetDrawableAttributes request: {s}", .{x11.stringify_fmt(req.request)});
+
+    const drawable = request_context.server.get_glx_drawable(req.request.drawable) orelse {
+        std.log.err("Received invalid glx drawable {d} in GlxGetDrawableAttributes request", .{req.request.drawable});
+        return request_context.client.write_error(request_context, xph.err.glx_error_bad_drawable, @intFromEnum(req.request.drawable));
+    };
+    const geometry = drawable.get_geometry();
+
+    // TODO: Implement for non-window types
+    std.debug.assert(std.meta.activeTag(drawable.item) == .window);
+
+    // TODO: Check version?? why doesn't xorg server do that
+    var properties = [_]FbAttributePair{
+        .{ .type = .y_inverted_ext, .value = @intFromBool(false) },
+        .{ .type = .width, .value = @intCast(geometry.width) },
+        .{ .type = .height, .value = @intCast(geometry.height) },
+        .{ .type = .screen, .value = @intFromEnum(request_context.server.screen) },
+        .{ .type = .texture_target_ext, .value = GLX_TEXTURE_2D_EXT },
+        .{ .type = .event_mask, .value = 0 }, // TODO: Return a real value
+        .{ .type = .fbconfig_id, .value = 0 }, // TODO: Return a real value
+        .{ .type = .stereo_tree_ext, .value = @intFromBool(false) },
+        .{ .type = .drawable_type, .value = GLX_WINDOW_BIT },
+    };
+
+    var rep = GlxGetDrawableAttributesReply{
+        .sequence_number = request_context.sequence_number,
+        .properties = .{ .items = &properties },
     };
     try request_context.client.write_reply(&rep);
 }
@@ -338,6 +377,7 @@ const MinorOpcode = enum(x11.Card8) {
     get_visual_configs = 14,
     query_server_string = 19,
     get_fb_configs = 21,
+    get_drawable_attributes = 29,
     set_client_info_arb = 33,
     set_client_info2_arb = 35,
 };
@@ -407,6 +447,7 @@ const GLX_DONT_CARE: x11.Card32 = 0xFFFFFFFF;
 const GLX_WINDOW_BIT: x11.Card32 = 0x00000001;
 const GLX_PIXMAP_BIT: x11.Card32 = 0x00000002;
 const GLX_PBUFFER_BIT: x11.Card32 = 0x00000004;
+const GLX_TEXTURE_2D_EXT: x11.Card32 = 0x20DC;
 
 const FbAttributeType = enum(x11.Card32) {
     use_gl = 1,
@@ -442,6 +483,12 @@ const FbAttributeType = enum(x11.Card32) {
     pbuffer = 0x8023,
     pbuffer_height = 0x8040,
     pbuffer_width = 0x8041,
+    // TODO: Is this part of GLX 1.3?
+    y_inverted_ext = 0x20D4,
+    texture_target_ext = 0x20D6,
+    event_mask = 0x801F,
+    fbconfig_id = 0x8013,
+    stereo_tree_ext = 0x20F5,
 
     // GLX 1.4 and later
     sample_buffers = 0x186a0,
@@ -477,8 +524,12 @@ pub const ContextId = enum(x11.Card32) {
 };
 
 // One of x11.WindowId, PbufferId, PixmapId, WindowId
-const DrawableId = enum(x11.Card32) {
+pub const DrawableId = enum(x11.Card32) {
     _,
+
+    pub fn to_id(self: DrawableId) x11.ResourceId {
+        return @enumFromInt(@intFromEnum(self));
+    }
 };
 
 const PbufferId = enum(x11.Card32) {
@@ -602,6 +653,23 @@ const GlxGetFbConfigsReply = struct {
     num_properties: x11.Card32,
     pad2: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
     properties: x11.ListOf(FbAttributePair, .{ .length_field = null }),
+};
+
+const GlxGetDrawableAttributesRequest = struct {
+    major_opcode: x11.Card8, // opcode.Major
+    minor_opcode: x11.Card8, // MinorOpcode
+    length: x11.Card16,
+    drawable: DrawableId,
+};
+
+const GlxGetDrawableAttributesReply = struct {
+    type: xph.reply.ReplyType = .reply,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16,
+    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+    num_attributes: x11.Card32 = 0,
+    pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
+    properties: x11.ListOf(FbAttributePair, .{ .length_field = "num_attributes" }),
 };
 
 const GlxSetClientInfoArbRequest = struct {

@@ -9,12 +9,12 @@ dmabuf_data: xph.Graphics.DmabufImport,
 server: *xph.Server,
 client_owner: *xph.Client, // Reference
 
-id: x11.Pixmap,
+id: x11.PixmapId,
 graphics_backend_id: u32,
 
 /// The dmabuf fds are cleaned up if this fails
 pub fn create(
-    id: x11.Pixmap,
+    id: x11.PixmapId,
     dmabuf_data: *const xph.Graphics.DmabufImport,
     server: *xph.Server,
     client_owner: *xph.Client,

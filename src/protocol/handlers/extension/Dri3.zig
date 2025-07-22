@@ -302,6 +302,10 @@ const MinorOpcode = enum(x11.Card8) {
     pixmap_from_buffers = 7,
 };
 
+pub const Provider = enum(x11.Card32) {
+    _,
+};
+
 const Dri3QueryExtensionRequest = struct {
     major_opcode: x11.Card8, // opcode.Major
     minor_opcode: x11.Card8, // MinorOpcode
@@ -324,8 +328,8 @@ const Dri3OpenRequest = struct {
     major_opcode: x11.Card8, // opcode.Major
     minor_opcode: x11.Card8, // MinorOpcode
     length: x11.Card16,
-    drawable: x11.Drawable,
-    provider: x11.Provider,
+    drawable: x11.DrawableId,
+    provider: Provider,
 };
 
 const Dri3OpenReply = struct {
@@ -341,8 +345,8 @@ const Dri3PixmapFromBufferRequest = struct {
     major_opcode: x11.Card8, // opcode.Major
     minor_opcode: x11.Card8, // MinorOpcode
     length: x11.Card16,
-    pixmap: x11.Pixmap,
-    drawable: x11.Drawable,
+    pixmap: x11.PixmapId,
+    drawable: x11.DrawableId,
     size: x11.Card32,
     width: x11.Card16,
     height: x11.Card16,
@@ -356,8 +360,8 @@ const Dri3FenceFromFdRequest = struct {
     major_opcode: x11.Card8, // opcode.Major
     minor_opcode: x11.Card8, // MinorOpcode
     length: x11.Card16,
-    drawable: x11.Drawable,
-    fence: xph.Sync.Fence,
+    drawable: x11.DrawableId,
+    fence: xph.Sync.FenceId,
     initially_triggered: bool,
     pad1: x11.Card8,
     pad2: x11.Card16,
@@ -368,7 +372,7 @@ const Dri3GetSupportedModifiersRequest = struct {
     major_opcode: x11.Card8, // opcode.Major
     minor_opcode: x11.Card8, // MinorOpcode
     length: x11.Card16,
-    window: x11.Window,
+    window: x11.WindowId,
     depth: x11.Card8,
     bpp: x11.Card8,
     pad1: x11.Card16,
@@ -390,8 +394,8 @@ const Dri3PixmapFromBuffersRequest = struct {
     major_opcode: x11.Card8, // opcode.Major
     minor_opcode: x11.Card8, // MinorOpcode
     length: x11.Card16,
-    pixmap: x11.Pixmap,
-    window: x11.Window,
+    pixmap: x11.PixmapId,
+    window: x11.WindowId,
     num_buffers: x11.Card8,
     pad1: x11.Card8,
     pad2: x11.Card16,

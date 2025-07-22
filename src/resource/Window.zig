@@ -11,7 +11,7 @@ server: ?*xph.Server,
 client_owner: *xph.Client, // Reference
 deleting_self: bool,
 
-id: x11.Window,
+id: x11.WindowId,
 attributes: Attributes,
 properties: x11.PropertyHashMap,
 core_event_listeners: std.ArrayList(CoreEventListener),
@@ -20,7 +20,7 @@ graphics_backend_id: u32,
 
 pub fn create(
     parent: ?*Self,
-    id: x11.Window,
+    id: x11.WindowId,
     attributes: *const Attributes,
     initial_event_mask: xph.core.EventMask,
     server: ?*xph.Server,

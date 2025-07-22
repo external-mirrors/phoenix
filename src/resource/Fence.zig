@@ -9,10 +9,10 @@ fence_fd: std.posix.fd_t,
 shm_fence: *xph.xshmfence.xshmfence,
 client_owner: *xph.Client, // Reference
 
-id: xph.Sync.Fence,
+id: xph.Sync.FenceId,
 
 /// The fence_fd is cleaned up if this fails
-pub fn create_from_fd(id: xph.Sync.Fence, fence_fd: std.posix.fd_t, client_owner: *xph.Client, allocator: std.mem.Allocator) !*Self {
+pub fn create_from_fd(id: xph.Sync.FenceId, fence_fd: std.posix.fd_t, client_owner: *xph.Client, allocator: std.mem.Allocator) !*Self {
     var fence = allocator.create(Self) catch |err| {
         if (fence_fd > 0)
             std.posix.close(fence_fd);

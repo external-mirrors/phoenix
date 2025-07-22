@@ -461,9 +461,9 @@ const ValueMask = packed struct(x11.Card32) {
 
 const none: x11.Card32 = 0;
 const parent_relative: x11.Card32 = 1;
-const window_none: x11.Window = 0;
-const pixmap_none: x11.Pixmap = 0;
-const window_pointer_root: x11.Window = 1;
+const window_none: x11.WindowId = 0;
+const pixmap_none: x11.PixmapId = 0;
+const window_pointer_root: x11.WindowId = 1;
 const copy_from_parent: x11.Card32 = 0;
 
 pub const BitGravity = enum(x11.Card32) {
@@ -587,8 +587,8 @@ const CreateWindowRequest = struct {
     opcode: x11.Card8, // opcode.Major
     depth: x11.Card8,
     length: x11.Card16,
-    window: x11.Window,
-    parent: x11.Window,
+    window: x11.WindowId,
+    parent: x11.WindowId,
     x: i16,
     y: i16,
     width: x11.Card16,
@@ -614,7 +614,7 @@ const MapWindowRequest = struct {
     opcode: x11.Card8, // opcode.Major
     pad1: x11.Card8,
     length: x11.Card16,
-    window: x11.Window,
+    window: x11.WindowId,
 };
 
 const GetInputFocusRequest = struct {
@@ -628,7 +628,7 @@ const GetInputFocusReply = struct {
     revert_to: RevertTo,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    focused_window: x11.Window,
+    focused_window: x11.WindowId,
     pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
 };
 
@@ -636,7 +636,7 @@ const FreePixmapRequest = struct {
     opcode: x11.Card8, // opcode.Major
     pad1: x11.Card8,
     length: x11.Card16,
-    pixmap: x11.Pixmap,
+    pixmap: x11.PixmapId,
 };
 
 const CreateColormapRequest = struct {
@@ -646,8 +646,8 @@ const CreateColormapRequest = struct {
         all = 1,
     },
     length: x11.Card16,
-    colormap: x11.Colormap,
-    window: x11.Window,
+    colormap: x11.ColormapId,
+    window: x11.WindowId,
     visual_id: x11.VisualId,
 };
 
@@ -676,7 +676,7 @@ const GetPropertyRequest = struct {
     opcode: x11.Card8, // opcode.Major
     delete: bool,
     length: x11.Card16, // 6
-    window: x11.Window,
+    window: x11.WindowId,
     property: x11.Atom,
     type: x11.Atom,
     long_offset: x11.Card32,
@@ -705,7 +705,7 @@ const GetGeometryRequest = struct {
     opcode: x11.Card8, // opcode.Major
     pad1: x11.Card8,
     length: x11.Card16,
-    drawable: x11.Drawable,
+    drawable: x11.DrawableId,
 };
 
 const GetGeometryReply = struct {
@@ -713,7 +713,7 @@ const GetGeometryReply = struct {
     depth: x11.Card8,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    root: x11.Window,
+    root: x11.WindowId,
     x: i16,
     y: i16,
     width: x11.Card16,

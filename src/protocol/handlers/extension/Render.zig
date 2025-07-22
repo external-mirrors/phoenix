@@ -102,5 +102,5 @@ pub const PictFormInfo = struct {
     type: PictType,
     depth: u8,
     direct: DirectFormat,
-    colormap: x11.Colormap,
+    colormap: x11.ColormapId,
 };

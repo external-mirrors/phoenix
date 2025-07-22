@@ -167,7 +167,7 @@ const MinorOpcode = enum(x11.Card8) {
 };
 
 const PresentNotify = struct {
-    window: x11.Window,
+    window: x11.WindowId,
     serial: x11.Card32,
 };
 
@@ -262,16 +262,16 @@ const PresentPixmapRequest = struct {
     major_opcode: x11.Card8, // opcode.Major
     minor_opcode: x11.Card8, // MinorOpcode
     length: x11.Card16,
-    window: x11.Window,
-    pixmap: x11.Pixmap,
+    window: x11.WindowId,
+    pixmap: x11.PixmapId,
     serial: x11.Card32,
     valid_area: Xfixes.Region,
     update_area: Xfixes.Region,
     x_off: i16,
     y_off: i16,
     target_crtc: Randr.Crtc,
-    wait_fence: xph.Sync.Fence,
-    idle_fence: xph.Sync.Fence,
+    wait_fence: xph.Sync.FenceId,
+    idle_fence: xph.Sync.FenceId,
     options: PresentOptions,
     pad1: x11.Card32,
     target_msc: x11.Card64,
@@ -285,7 +285,7 @@ const PresentSelectInputRequest = struct {
     minor_opcode: x11.Card8, // MinorOpcode
     length: x11.Card16,
     event_id: PresentEventId,
-    window: x11.Window,
+    window: x11.WindowId,
     event_mask: PresentEventMask,
 };
 
@@ -298,7 +298,7 @@ const PresentCompleteNotifyEvent = extern struct {
     kind: PresentCompleteKind,
     mode: PresentCompleteMode,
     event_id: PresentEventId = @enumFromInt(0), // This is automatically updated with the event id from the event listener
-    window: x11.Window,
+    window: x11.WindowId,
     serial: x11.Card32,
     ust: x11.Card64,
     msc: x11.Card64,
@@ -328,10 +328,10 @@ const PresentIdleNotifyEvent = extern struct {
     present_event_code: PresentEventCode = .idle_notify,
     pad1: x11.Card16 = 0,
     event_id: PresentEventId = @enumFromInt(0), // This is automatically updated with the event id from the event listener
-    window: x11.Window,
+    window: x11.WindowId,
     serial: x11.Card32,
-    pixmap: x11.Pixmap,
-    idle_fence: xph.Sync.Fence,
+    pixmap: x11.PixmapId,
+    idle_fence: xph.Sync.FenceId,
 
     pub fn get_extension_major_opcode(self: *const PresentIdleNotifyEvent) xph.opcode.Major {
         _ = self;

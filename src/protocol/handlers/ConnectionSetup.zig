@@ -204,8 +204,8 @@ const Depth = struct {
 };
 
 const Screen = struct {
-    root_window: x11.Window,
-    colormap: x11.Colormap,
+    root_window: x11.WindowId,
+    colormap: x11.ColormapId,
     white_pixel: x11.Card32,
     black_pixel: x11.Card32,
     current_input_masks: x11.Card32,

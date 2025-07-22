@@ -53,10 +53,10 @@ const MinorOpcode = enum(x11.Card8) {
     destroy_fence = 17,
 };
 
-pub const Fence = enum(x11.Card32) {
+pub const FenceId = enum(x11.Card32) {
     _,
 
-    pub fn to_id(self: Fence) x11.ResourceId {
+    pub fn to_id(self: FenceId) x11.ResourceId {
         return @enumFromInt(@intFromEnum(self));
     }
 };
@@ -84,5 +84,5 @@ const SyncDestroyFenceRequest = struct {
     major_opcode: x11.Card8, // opcode.Major
     minor_opcode: x11.Card8, // MinorOpcode
     length: x11.Card16,
-    fence: Fence,
+    fence: FenceId,
 };

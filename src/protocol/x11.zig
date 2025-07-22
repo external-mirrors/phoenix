@@ -42,7 +42,7 @@ pub fn String8(comptime options: String8Options) type {
     return ListOf(Card8, .{ .length_field = options.length_field, .padding = 4 });
 }
 
-pub const Screen = enum(Card32) {
+pub const ScreenId = enum(Card32) {
     _,
 };
 
@@ -54,48 +54,40 @@ pub const ResourceId = enum(Card32) {
     }
 };
 
-pub const Window = enum(Card32) {
+pub const WindowId = enum(Card32) {
     _,
 
-    pub fn to_id(self: Window) ResourceId {
+    pub fn to_id(self: WindowId) ResourceId {
         return @enumFromInt(@intFromEnum(self));
     }
 };
 
-pub const Colormap = enum(Card32) {
+pub const ColormapId = enum(Card32) {
     _,
 
-    pub fn to_id(self: Colormap) ResourceId {
+    pub fn to_id(self: ColormapId) ResourceId {
         return @enumFromInt(@intFromEnum(self));
     }
 };
 
-pub const Pixmap = enum(Card32) {
+pub const PixmapId = enum(Card32) {
     _,
 
-    pub fn to_id(self: Pixmap) ResourceId {
+    pub fn to_id(self: PixmapId) ResourceId {
         return @enumFromInt(@intFromEnum(self));
     }
 };
 
-pub const Drawable = enum(Card32) {
+pub const DrawableId = enum(Card32) {
     _,
 
-    pub fn to_window(self: Drawable) Window {
+    pub fn to_window(self: DrawableId) WindowId {
         return @enumFromInt(@intFromEnum(self));
     }
 
-    pub fn to_id(self: Drawable) ResourceId {
+    pub fn to_id(self: DrawableId) ResourceId {
         return @enumFromInt(@intFromEnum(self));
     }
-};
-
-pub const KeyCode = enum(Card8) {
-    _,
-};
-
-pub const Button = enum(Card8) {
-    _,
 };
 
 pub const VisualId = enum(Card32) {
@@ -106,13 +98,17 @@ pub const Atom = enum(Card32) {
     _,
 };
 
+pub const KeyCode = enum(Card8) {
+    _,
+};
+
+pub const Button = enum(Card8) {
+    _,
+};
+
 pub const Class = enum(Card16) {
     input_output = 1,
     input_only = 2,
-};
-
-pub const Provider = enum(Card32) {
-    _,
 };
 
 pub const Timestamp = Card32;

@@ -9,13 +9,13 @@ pub const vendor = "Xphoenix";
 pub const screen_true_color_visual_id: x11.VisualId = @enumFromInt(0x21);
 const screen_true_color_visual = xph.Visual.create_true_color(screen_true_color_visual_id);
 
-pub const screen_true_color_colormap_id: x11.Colormap = @enumFromInt(0x20);
+pub const screen_true_color_colormap_id: x11.ColormapId = @enumFromInt(0x20);
 const screen_true_color_colormap = xph.Colormap{
     .id = screen_true_color_colormap_id,
     .visual = &screen_true_color_visual,
 };
 
-screen: x11.Screen = @enumFromInt(0),
+screen: x11.ScreenId = @enumFromInt(0),
 
 allocator: std.mem.Allocator,
 root_client: *xph.Client,
@@ -115,7 +115,7 @@ pub fn deinit(self: *Self) void {
 }
 
 fn create_root_window(root_client: *xph.Client, allocator: std.mem.Allocator) !*xph.Window {
-    const root_window_id: x11.Window = @enumFromInt(0x3b2 | root_client.resource_id_base);
+    const root_window_id: x11.WindowId = @enumFromInt(0x3b2 | root_client.resource_id_base);
     const window_attributes = xph.Window.Attributes{
         .geometry = .{
             .x = 0,
@@ -349,22 +349,22 @@ pub fn get_visual_by_id(self: *Self, visual_id: x11.VisualId) ?*const xph.Visual
     }
 }
 
-pub fn get_window(self: *Self, window_id: x11.Window) ?*xph.Window {
+pub fn get_window(self: *Self, window_id: x11.WindowId) ?*xph.Window {
     return self.client_manager.get_resource_of_type(window_id.to_id(), .window);
 }
 
-pub fn get_pixmap(self: *Self, pixmap_id: x11.Pixmap) ?*xph.Pixmap {
+pub fn get_pixmap(self: *Self, pixmap_id: x11.PixmapId) ?*xph.Pixmap {
     return self.client_manager.get_resource_of_type(pixmap_id.to_id(), .pixmap);
 }
 
-pub fn get_fence(self: *Self, fence_id: xph.Sync.Fence) ?*xph.Fence {
+pub fn get_fence(self: *Self, fence_id: xph.Sync.FenceId) ?*xph.Fence {
     return self.client_manager.get_resource_of_type(fence_id.to_id(), .fence);
 }
 
-pub fn get_colormap(self: *Self, colormap_id: x11.Colormap) ?xph.Colormap {
+pub fn get_colormap(self: *Self, colormap_id: x11.ColormapId) ?xph.Colormap {
     return self.client_manager.get_resource_of_type(colormap_id.to_id(), .colormap);
 }
 
-pub fn get_glx_context(self: *Self, glx_context_id: xph.Glx.Context) ?xph.GlxContext {
+pub fn get_glx_context(self: *Self, glx_context_id: xph.Glx.ContextId) ?xph.GlxContext {
     return self.client_manager.get_resource_of_type(glx_context_id.to_id(), .glx_context);
 }

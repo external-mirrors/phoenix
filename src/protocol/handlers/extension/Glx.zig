@@ -451,6 +451,10 @@ const FbAttributeType = enum(x11.Card32) {
 const FbAttributePair = extern struct {
     type: FbAttributeType,
     value: x11.Card32,
+
+    comptime {
+        std.debug.assert(@sizeOf(FbAttributePair) == 8);
+    }
 };
 
 const ContextVersion = struct {
@@ -464,10 +468,10 @@ const ContextVersion2 = struct {
     profile_mask: x11.Card32,
 };
 
-pub const Context = enum(x11.Card32) {
+pub const ContextId = enum(x11.Card32) {
     _,
 
-    pub fn to_id(self: Context) x11.ResourceId {
+    pub fn to_id(self: ContextId) x11.ResourceId {
         return @enumFromInt(@intFromEnum(self));
     }
 };
@@ -480,10 +484,10 @@ const GlxCreateContextRequest = struct {
     major_opcode: x11.Card8, // opcode.Major
     minor_opcode: x11.Card8, // MinorOpcode
     length: x11.Card16,
-    context: Context,
+    context: ContextId,
     visual: x11.VisualId,
-    screen: x11.Screen,
-    share_list: Context,
+    screen: x11.ScreenId,
+    share_list: ContextId,
     is_direct: bool,
     pad1: x11.Card8,
     pad2: x11.Card16,
@@ -493,7 +497,7 @@ const GlxIsDirectRequest = struct {
     major_opcode: x11.Card8, // opcode.Major
     minor_opcode: x11.Card8, // MinorOpcode
     length: x11.Card16,
-    context: Context,
+    context: ContextId,
 };
 
 const GlxIsDirectReply = struct {
@@ -527,7 +531,7 @@ const GlxGetVisualConfigsRequest = struct {
     major_opcode: x11.Card8, // opcode.Major
     minor_opcode: x11.Card8, // MinorOpcode
     length: x11.Card16,
-    screen: x11.Screen,
+    screen: x11.ScreenId,
 };
 
 const GlxGetVisualConfigsReply = struct {
@@ -545,7 +549,7 @@ const GlxQueryServerStringRequest = struct {
     major_opcode: x11.Card8, // opcode.Major
     minor_opcode: x11.Card8, // MinorOpcode
     length: x11.Card16,
-    screen: x11.Screen,
+    screen: x11.ScreenId,
     name: enum(x11.Card32) {
         vendor = 0x1,
         version = 0x2,
@@ -569,7 +573,7 @@ const GlxGetFbConfigsRequest = struct {
     major_opcode: x11.Card8, // opcode.Major
     minor_opcode: x11.Card8, // MinorOpcode
     length: x11.Card16,
-    screen: x11.Screen,
+    screen: x11.ScreenId,
 };
 
 const GlxGetFbConfigsReply = struct {

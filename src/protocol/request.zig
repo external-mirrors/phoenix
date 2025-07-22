@@ -82,7 +82,8 @@ fn read_request_with_size_calculation(comptime T: type, reader: anytype, request
                 try reader.skipBytes(num_bytes_to_skip, .{});
                 request_size.* += num_bytes_to_skip;
             },
-            else => @compileError("Only enum, integer and struct types are supported in requests right now, got: " ++ @tagName(@typeInfo(field.type))),
+            else => @compileError("Only enum, integer and struct types are supported in requests right now, got: " ++
+                @tagName(@typeInfo(field.type)) ++ " for " ++ @typeName(T) ++ "." ++ field.name),
         }
     }
     return request;

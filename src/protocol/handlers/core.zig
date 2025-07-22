@@ -69,6 +69,7 @@ fn create_window(request_context: xph.RequestContext) !void {
     const visual: *const xph.Visual = switch (@intFromEnum(req.request.visual)) {
         copy_from_parent => parent_window.attributes.visual,
         else => request_context.server.get_visual_by_id(req.request.visual) orelse {
+            std.log.err("Received invalid visual {d} in CreateWindow request", .{req.request.visual});
             return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.visual));
         },
     };
@@ -78,6 +79,7 @@ fn create_window(request_context: xph.RequestContext) !void {
         none => null,
         parent_relative => parent_window.attributes.background_pixmap,
         else => request_context.server.get_pixmap(@enumFromInt(background_pixmap_arg)) orelse {
+            std.log.err("Received invalid pixmap {d} in CreateWindow request", .{background_pixmap_arg});
             return request_context.client.write_error(request_context, .pixmap, background_pixmap_arg);
         },
     };
@@ -86,6 +88,7 @@ fn create_window(request_context: xph.RequestContext) !void {
     const border_pixmap: ?*const xph.Pixmap = switch (border_pixmap_arg) {
         copy_from_parent => parent_window.attributes.border_pixmap,
         else => request_context.server.get_pixmap(@enumFromInt(border_pixmap_arg)) orelse {
+            std.log.err("Received invalid border pixmap {d} in CreateWindow request", .{border_pixmap_arg});
             return request_context.client.write_error(request_context, .pixmap, border_pixmap_arg);
         },
     };
@@ -94,23 +97,33 @@ fn create_window(request_context: xph.RequestContext) !void {
     const colormap: xph.Colormap = switch (colormap_arg) {
         copy_from_parent => parent_window.attributes.colormap,
         else => request_context.server.get_colormap(@enumFromInt(colormap_arg)) orelse {
+            std.log.err("Received invalid colormap {d} in CreateWindow request", .{colormap_arg});
             return request_context.client.write_error(request_context, .colormap, colormap_arg);
         },
     };
 
     const bit_gravity_arg = req.request.get_value(x11.Card32, "bit_gravity") orelse @intFromEnum(BitGravity.forget);
     const bit_gravity = std.meta.intToEnum(BitGravity, bit_gravity_arg) catch |err| switch (err) {
-        error.InvalidEnumTag => return request_context.client.write_error(request_context, .value, bit_gravity_arg),
+        error.InvalidEnumTag => {
+            std.log.err("Received invalid bit gravity {d} in CreateWindow request", .{bit_gravity_arg});
+            return request_context.client.write_error(request_context, .value, bit_gravity_arg);
+        },
     };
 
     const win_gravity_arg = req.request.get_value(x11.Card32, "win_gravity") orelse @intFromEnum(WinGravity.north_west);
     const win_gravity = std.meta.intToEnum(WinGravity, win_gravity_arg) catch |err| switch (err) {
-        error.InvalidEnumTag => return request_context.client.write_error(request_context, .value, win_gravity_arg),
+        error.InvalidEnumTag => {
+            std.log.err("Received invalid win gravity {d} in CreateWindow request", .{win_gravity_arg});
+            return request_context.client.write_error(request_context, .value, win_gravity_arg);
+        },
     };
 
     const backing_store_arg = req.request.get_value(x11.Card32, "backing_store") orelse 0;
     const backing_store = std.meta.intToEnum(xph.Window.BackingStore, backing_store_arg) catch |err| switch (err) {
-        error.InvalidEnumTag => return request_context.client.write_error(request_context, .value, backing_store_arg),
+        error.InvalidEnumTag => {
+            std.log.err("Received invalid backing store {d} in CreateWindow request", .{backing_store_arg});
+            return request_context.client.write_error(request_context, .value, backing_store_arg);
+        },
     };
 
     const backing_planes = req.request.get_value(x11.Card32, "backing_planes") orelse 0xFFFFFFFF;
@@ -396,6 +409,7 @@ fn query_extension(request_context: xph.RequestContext) !void {
     } else if (std.mem.eql(u8, req.request.name.items, "GLX")) {
         rep.present = true;
         rep.major_opcode = @intFromEnum(xph.opcode.Major.glx);
+        rep.first_error = xph.err.glx_first_error;
     } else {
         std.log.err("QueryExtension: unsupported extension: {s}", .{req.request.name.items});
     }

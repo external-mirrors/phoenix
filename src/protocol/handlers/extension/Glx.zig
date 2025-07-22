@@ -2,9 +2,9 @@ const std = @import("std");
 const xph = @import("../../../xphoenix.zig");
 const x11 = xph.x11;
 
-const server_vendor_name = "SGI";
-const server_version_str = "1.4";
-const glvnd = "mesa"; // TODO: gbm_device_get_backend_name
+const server_vendor_name = "SGI\x00";
+const server_version_str = "1.4\x00";
+const glvnd = "mesa\x00"; // TODO: gbm_device_get_backend_name
 
 pub fn handle_request(request_context: xph.RequestContext) !void {
     std.log.info("Handling glx request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
@@ -18,6 +18,8 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
     };
 
     switch (minor_opcode) {
+        .create_context => return create_context(request_context),
+        .is_direct => return is_direct(request_context),
         .query_version => return query_version(request_context),
         .get_visual_configs => return get_visual_configs(request_context),
         .query_server_string => return query_server_string(request_context),
@@ -25,6 +27,66 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
         .set_client_info_arb => return set_client_info_arb(request_context),
         .set_client_info2_arb => return set_client_info2_arb(request_context),
     }
+}
+
+fn create_context(request_context: xph.RequestContext) !void {
+    var req = try request_context.client.read_request(GlxCreateContextRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("GlxCreateContext request: {s}", .{x11.stringify_fmt(req.request)});
+
+    // TODO: Maybe force direct? does that work? the client does glXIsDirect afterwards
+    // so maybe it works
+    if (!req.request.is_direct) {
+        std.log.err("Received indirect GlxCreateContext which isn't supported", .{});
+        return request_context.client.write_error(request_context, .implementation, 0);
+    }
+
+    if (req.request.screen != request_context.server.screen) {
+        std.log.err("Received invalid screen {d} in GlxCreateContext request", .{req.request.screen});
+        return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.screen));
+    }
+
+    const visual = request_context.server.get_visual_by_id(req.request.visual) orelse {
+        std.log.err("Received invalid visual {d} in GlxCreateContext request", .{req.request.visual});
+        return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.visual));
+    };
+
+    // TODO: Use req.request.share_list
+    const glx_context = xph.GlxContext{
+        .id = req.request.context,
+        .visual = visual,
+        .is_direct = req.request.is_direct,
+    };
+    request_context.client.add_glx_context(glx_context) catch |err| switch (err) {
+        error.ResourceNotOwnedByClient => {
+            std.log.err("Received glx context id {d} in GlxCreateContext request which doesn't belong to the client", .{req.request.context});
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.context));
+        },
+        error.ResourceAlreadyExists => {
+            std.log.err("Received glx context id {d} in GlxCreateContext request which already exists", .{req.request.context});
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.context));
+        },
+        error.OutOfMemory => {
+            return request_context.client.write_error(request_context, .alloc, 0);
+        },
+    };
+}
+
+fn is_direct(request_context: xph.RequestContext) !void {
+    var req = try request_context.client.read_request(GlxIsDirectRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("GlxIsDirect request: {s}", .{x11.stringify_fmt(req.request)});
+
+    const glx_context = request_context.server.get_glx_context(req.request.context) orelse {
+        std.log.err("Received invalid glx context {d} in GlxIsDirect request", .{req.request.context});
+        return request_context.client.write_error(request_context, xph.err.glx_error_bad_context, @intFromEnum(req.request.context));
+    };
+
+    var rep = GlxIsDirectReply{
+        .sequence_number = request_context.sequence_number,
+        .is_direct = glx_context.is_direct,
+    };
+    try request_context.client.write_reply(&rep);
 }
 
 fn query_version(request_context: xph.RequestContext) !void {
@@ -266,6 +328,8 @@ fn set_client_info2_arb(request_context: xph.RequestContext) !void {
 }
 
 const MinorOpcode = enum(x11.Card8) {
+    create_context = 3,
+    is_direct = 6,
     query_version = 7,
     get_visual_configs = 14,
     query_server_string = 19,
@@ -394,6 +458,43 @@ const ContextVersion2 = struct {
     major: x11.Card32,
     minor: x11.Card32,
     profile_mask: x11.Card32,
+};
+
+pub const Context = enum(x11.Card32) {
+    _,
+
+    pub fn to_id(self: Context) x11.ResourceId {
+        return @enumFromInt(@intFromEnum(self));
+    }
+};
+
+const GlxCreateContextRequest = struct {
+    major_opcode: x11.Card8, // opcode.Major
+    minor_opcode: x11.Card8, // MinorOpcode
+    length: x11.Card16,
+    context: Context,
+    visual: x11.VisualId,
+    screen: x11.Screen,
+    share_list: Context,
+    is_direct: bool,
+    pad1: x11.Card8,
+    pad2: x11.Card16,
+};
+
+const GlxIsDirectRequest = struct {
+    major_opcode: x11.Card8, // opcode.Major
+    minor_opcode: x11.Card8, // MinorOpcode
+    length: x11.Card16,
+    context: Context,
+};
+
+const GlxIsDirectReply = struct {
+    type: xph.reply.ReplyType = .reply,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16,
+    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+    is_direct: bool,
+    pad2: [23]x11.Card8 = [_]x11.Card8{0} ** 23,
 };
 
 const GlxQueryVersionRequest = struct {

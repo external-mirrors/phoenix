@@ -260,6 +260,10 @@ pub fn add_fence(self: *Self, fence: *xph.Fence) !void {
     return self.add_resource(fence.id.to_id(), .{ .fence = fence });
 }
 
+pub fn add_glx_context(self: *Self, glx_context: xph.GlxContext) !void {
+    return self.add_resource(glx_context.id.to_id(), .{ .glx_context = glx_context });
+}
+
 pub fn remove_resource(self: *Self, id: x11.ResourceId) void {
     if (self.deleting_self)
         return;

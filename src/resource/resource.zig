@@ -8,14 +8,14 @@ pub const Resource = union(enum) {
     fence: *xph.Fence,
     event_context: xph.EventContext,
     colormap: xph.Colormap,
+    glx_context: xph.GlxContext,
 
     pub fn deinit(self: Resource) void {
         switch (self) {
             .window => |item| item.destroy(),
             .pixmap => |item| item.destroy(),
             .fence => |item| item.destroy(),
-            .event_context => {},
-            .colormap => {},
+            .event_context, .colormap, .glx_context => {},
         }
     }
 };

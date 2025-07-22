@@ -364,3 +364,7 @@ pub fn get_fence(self: *Self, fence_id: xph.Sync.Fence) ?*xph.Fence {
 pub fn get_colormap(self: *Self, colormap_id: x11.Colormap) ?xph.Colormap {
     return self.client_manager.get_resource_of_type(colormap_id.to_id(), .colormap);
 }
+
+pub fn get_glx_context(self: *Self, glx_context_id: xph.Glx.Context) ?xph.GlxContext {
+    return self.client_manager.get_resource_of_type(glx_context_id.to_id(), .glx_context);
+}

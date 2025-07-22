@@ -2,9 +2,12 @@ const std = @import("std");
 const xph = @import("../../../xphoenix.zig");
 const x11 = xph.x11;
 
-const server_vendor_name = "SGI\x00";
-const server_version_str = "1.4\x00";
-const glvnd = "mesa\x00"; // TODO: gbm_device_get_backend_name
+// For some reason string8 is null terminated in glx but not in the core x11 protocol.
+// This is not documented anywhere.
+
+const server_vendor_name = "SGI";
+const server_version_str = "1.4";
+const glvnd = "mesa"; // TODO: gbm_device_get_backend_name
 
 pub fn handle_request(request_context: xph.RequestContext) !void {
     std.log.info("Handling glx request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
@@ -197,15 +200,16 @@ fn query_server_string(request_context: xph.RequestContext) !void {
     defer result_string.deinit();
 
     switch (req.request.name) {
-        .vendor => result_string.appendSlice(server_vendor_name) catch unreachable,
-        .version => result_string.appendSlice(server_version_str) catch unreachable,
+        .vendor => result_string.appendSlice(server_vendor_name ++ "\x00") catch unreachable,
+        .version => result_string.appendSlice(server_version_str ++ "\x00") catch unreachable,
         .extensions => {
             for (extensions) |extension| {
                 result_string.appendSlice(extension) catch unreachable;
-                result_string.appendSlice(" ") catch unreachable;
+                result_string.append(' ') catch unreachable;
             }
+            result_string.append('\x00') catch unreachable;
         },
-        .vendor_names => result_string.appendSlice(glvnd) catch unreachable,
+        .vendor_names => result_string.appendSlice(glvnd ++ "\x00") catch unreachable,
     }
 
     var rep = GlxQueryServerStringReply{
@@ -467,6 +471,10 @@ pub const Context = enum(x11.Card32) {
         return @enumFromInt(@intFromEnum(self));
     }
 };
+
+fn null_term_to_slice(str: []const u8) []const u8 {
+    return if (str.len > 0 and str[str.len - 1] == '\x00') str[0 .. str.len - 1] else str;
+}
 
 const GlxCreateContextRequest = struct {
     major_opcode: x11.Card8, // opcode.Major

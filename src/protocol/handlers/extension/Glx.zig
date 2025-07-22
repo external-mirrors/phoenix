@@ -22,6 +22,8 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
         .get_visual_configs => return get_visual_configs(request_context),
         .query_server_string => return query_server_string(request_context),
         .get_fb_configs => return get_fb_configs(request_context),
+        .set_client_info_arb => return set_client_info_arb(request_context),
+        .set_client_info2_arb => return set_client_info2_arb(request_context),
     }
 }
 
@@ -32,12 +34,12 @@ fn query_version(request_context: xph.RequestContext) !void {
 
     const server_version = xph.Version{ .major = 1, .minor = 4 };
     const client_version = xph.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
-    request_context.client.extension_versions.glx = xph.Version.min(server_version, client_version);
+    request_context.client.extension_versions.server_glx = xph.Version.min(server_version, client_version);
 
     var rep = GlxQueryVersionReply{
         .sequence_number = request_context.sequence_number,
-        .major_version = request_context.client.extension_versions.glx.major,
-        .minor_version = request_context.client.extension_versions.glx.minor,
+        .major_version = request_context.client.extension_versions.server_glx.major,
+        .minor_version = request_context.client.extension_versions.server_glx.minor,
     };
     try request_context.client.write_reply(&rep);
 }
@@ -162,6 +164,8 @@ fn get_fb_configs(request_context: xph.RequestContext) !void {
     }
 
     const screen_visual = request_context.server.get_visual_by_id(xph.Server.screen_true_color_visual_id) orelse unreachable;
+    const version_1_3 = (xph.Version{ .major = 1, .minor = 3 }).to_int();
+    const server_glx_version = request_context.client.extension_versions.server_glx.to_int();
 
     const alpha_size_values = [_]x11.Card32{
         screen_visual.bits_per_color_component,
@@ -199,8 +203,7 @@ fn get_fb_configs(request_context: xph.RequestContext) !void {
                 for (stencil_size_values) |stencil_size| {
                     const properties_size_start: u32 = @intCast(properties.items.len);
 
-                    const version_1_3 = (xph.Version{ .major = 1, .minor = 3 }).to_int();
-                    if (request_context.client.extension_versions.glx.to_int() >= version_1_3) {
+                    if (server_glx_version >= version_1_3) {
                         properties.append(.{ .type = FbAttributeType.visual_id, .value = @intFromEnum(screen_visual.id) }) catch unreachable;
                         switch (screen_visual.class) {
                             .true_color => properties.append(.{ .type = FbAttributeType.x_visual_type, .value = GLX_TRUE_COLOR }) catch unreachable,
@@ -240,11 +243,35 @@ fn get_fb_configs(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn set_client_info_arb(request_context: xph.RequestContext) !void {
+    var req = try request_context.client.read_request(GlxSetClientInfoArbRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("GlxSetClientInfoArb request: {s}", .{x11.stringify_fmt(req.request)});
+
+    const server_version = xph.Version{ .major = 1, .minor = 4 };
+    const client_version = xph.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
+    request_context.client.extension_versions.client_glx = xph.Version.min(server_version, client_version);
+    // TODO: Do something with the data
+}
+
+fn set_client_info2_arb(request_context: xph.RequestContext) !void {
+    var req = try request_context.client.read_request(GlxSetClientInfo2ArbRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("GlxSetClientInfo2Arb request: {s}", .{x11.stringify_fmt(req.request)});
+
+    const server_version = xph.Version{ .major = 1, .minor = 4 };
+    const client_version = xph.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
+    request_context.client.extension_versions.client_glx = xph.Version.min(server_version, client_version);
+    // TODO: Do something with the data
+}
+
 const MinorOpcode = enum(x11.Card8) {
     query_version = 7,
     get_visual_configs = 14,
     query_server_string = 19,
     get_fb_configs = 21,
+    set_client_info_arb = 33,
+    set_client_info2_arb = 35,
 };
 
 const extensions = &[_][]const u8{
@@ -358,6 +385,17 @@ const FbAttributePair = extern struct {
     value: x11.Card32,
 };
 
+const ContextVersion = struct {
+    major: x11.Card32,
+    minor: x11.Card32,
+};
+
+const ContextVersion2 = struct {
+    major: x11.Card32,
+    minor: x11.Card32,
+    profile_mask: x11.Card32,
+};
+
 const GlxQueryVersionRequest = struct {
     major_opcode: x11.Card8, // opcode.Major
     minor_opcode: x11.Card8, // MinorOpcode
@@ -434,4 +472,32 @@ const GlxGetFbConfigsReply = struct {
     num_properties: x11.Card32,
     pad2: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
     properties: x11.ListOf(FbAttributePair, .{ .length_field = null }),
+};
+
+const GlxSetClientInfoArbRequest = struct {
+    major_opcode: x11.Card8, // opcode.Major
+    minor_opcode: x11.Card8, // MinorOpcode
+    length: x11.Card16,
+    major_version: x11.Card32,
+    minor_version: x11.Card32,
+    num_context_versions: x11.Card32,
+    gl_extension_string_length: x11.Card32,
+    glx_extension_string_length: x11.Card32,
+    context_versions: x11.ListOf(ContextVersion, .{ .length_field = "num_context_versions" }),
+    gl_extension_string: x11.String8(.{ .length_field = "gl_extension_string_length" }),
+    glx_extension_string: x11.String8(.{ .length_field = "glx_extension_string_length" }),
+};
+
+const GlxSetClientInfo2ArbRequest = struct {
+    major_opcode: x11.Card8, // opcode.Major
+    minor_opcode: x11.Card8, // MinorOpcode
+    length: x11.Card16,
+    major_version: x11.Card32,
+    minor_version: x11.Card32,
+    num_context_versions: x11.Card32,
+    gl_extension_string_length: x11.Card32,
+    glx_extension_string_length: x11.Card32,
+    context_versions: x11.ListOf(ContextVersion2, .{ .length_field = "num_context_versions" }),
+    gl_extension_string: x11.String8(.{ .length_field = "gl_extension_string_length" }),
+    glx_extension_string: x11.String8(.{ .length_field = "glx_extension_string_length" }),
 };

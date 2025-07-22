@@ -24,7 +24,8 @@ listening_to_windows: std.ArrayList(*xph.Window), // Reference
 deleting_self: bool,
 
 extension_versions: ExtensionVersions = .{
-    .glx = .{ .major = 1, .minor = 0 },
+    .client_glx = .{ .major = 1, .minor = 0 },
+    .server_glx = .{ .major = 1, .minor = 0 },
     .dri3 = .{ .major = 1, .minor = 0 },
     .present = .{ .major = 1, .minor = 0 },
     .sync = .{ .major = 1, .minor = 0 },
@@ -284,7 +285,8 @@ const State = enum {
 };
 
 const ExtensionVersions = struct {
-    glx: xph.Version,
+    client_glx: xph.Version,
+    server_glx: xph.Version,
     dri3: xph.Version,
     present: xph.Version,
     sync: xph.Version,

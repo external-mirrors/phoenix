@@ -324,11 +324,11 @@ fn free_pixmap(request_context: xph.RequestContext) !void {
 }
 
 fn create_gc(_: xph.RequestContext) !void {
-    std.log.err("Unimplemented request: CreateGC", .{});
+    std.log.err("Request stub: CreateGC", .{});
 }
 
 fn free_gc(_: xph.RequestContext) !void {
-    std.log.err("Unimplemented request: FreeGC", .{});
+    std.log.err("Request stub: FreeGC", .{});
 }
 
 fn create_colormap(request_context: xph.RequestContext) !void {
@@ -442,33 +442,6 @@ const ValueMask = packed struct(x11.Card32) {
     comptime {
         std.debug.assert(@sizeOf(@This()) == @sizeOf(x11.Card32));
         std.debug.assert(@bitSizeOf(@This()) == @bitSizeOf(x11.Card32));
-    }
-};
-
-const CreateWindowRequest = struct {
-    opcode: x11.Card8, // opcode.Major
-    depth: x11.Card8,
-    length: x11.Card16,
-    window: x11.Window,
-    parent: x11.Window,
-    x: i16,
-    y: i16,
-    width: x11.Card16,
-    height: x11.Card16,
-    border_width: x11.Card16,
-    class: x11.Card16, // x11.Class, or 0 (Copy from parent)
-    visual: x11.VisualId,
-    value_mask: ValueMask,
-    value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
-
-    pub fn get_value(self: *const CreateWindowRequest, comptime T: type, comptime value_mask_field: []const u8) ?T {
-        if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
-            // The protocol specifies that all uninteresting bits are undefined, so we need to set them to 0
-            comptime std.debug.assert(@bitSizeOf(T) % 8 == 0);
-            return @intCast(self.value_list.items[index] & ((1 << @bitSizeOf(T)) - 1));
-        } else {
-            return null;
-        }
     }
 };
 
@@ -589,6 +562,38 @@ const RevertTo = enum(x11.Card8) {
     none = 0,
     pointer_root = 1,
     parent = 2,
+};
+
+const String8WithLength = struct {
+    length: x11.Card8,
+    data: x11.ListOf(x11.Card8, .{ .length_field = "length" }),
+};
+
+const CreateWindowRequest = struct {
+    opcode: x11.Card8, // opcode.Major
+    depth: x11.Card8,
+    length: x11.Card16,
+    window: x11.Window,
+    parent: x11.Window,
+    x: i16,
+    y: i16,
+    width: x11.Card16,
+    height: x11.Card16,
+    border_width: x11.Card16,
+    class: x11.Card16, // x11.Class, or 0 (Copy from parent)
+    visual: x11.VisualId,
+    value_mask: ValueMask,
+    value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
+
+    pub fn get_value(self: *const CreateWindowRequest, comptime T: type, comptime value_mask_field: []const u8) ?T {
+        if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
+            // The protocol specifies that all uninteresting bits are undefined, so we need to set them to 0
+            comptime std.debug.assert(@bitSizeOf(T) % 8 == 0);
+            return @intCast(self.value_list.items[index] & ((1 << @bitSizeOf(T)) - 1));
+        } else {
+            return null;
+        }
+    }
 };
 
 const MapWindowRequest = struct {
@@ -721,16 +726,11 @@ const InternAtomReply = struct {
     pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
 };
 
-const Str = struct {
-    length: x11.Card8,
-    data: x11.ListOf(x11.Card8, .{ .length_field = "length" }),
-};
-
 const ListExtensionsReply = struct {
     reply_type: xph.reply.ReplyType = .reply,
     num_strs: x11.Card8,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
     pad1: [24]x11.Card8 = [_]x11.Card8{0} ** 24,
-    names: x11.ListOf(Str, .{ .length_field = "num_strs", .padding = 4 }),
+    names: x11.ListOf(String8WithLength, .{ .length_field = "num_strs", .padding = 4 }),
 };

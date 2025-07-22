@@ -23,6 +23,7 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
         .get_input_focus => return get_input_focus(request_context),
         .free_pixmap => return free_pixmap(request_context),
         .create_gc => return create_gc(request_context),
+        .free_gc => return free_gc(request_context),
         .create_colormap => return create_colormap(request_context),
         .query_extension => return query_extension(request_context),
         else => unreachable,
@@ -326,6 +327,10 @@ fn free_pixmap(request_context: xph.RequestContext) !void {
 
 fn create_gc(_: xph.RequestContext) !void {
     std.log.err("Unimplemented request: CreateGC", .{});
+}
+
+fn free_gc(_: xph.RequestContext) !void {
+    std.log.err("Unimplemented request: FreeGC", .{});
 }
 
 fn create_colormap(request_context: xph.RequestContext) !void {

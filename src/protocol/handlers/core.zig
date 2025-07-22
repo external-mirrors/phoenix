@@ -390,6 +390,9 @@ fn query_extension(request_context: xph.RequestContext) !void {
         rep.present = true;
         rep.major_opcode = @intFromEnum(xph.opcode.Major.sync);
         rep.first_error = xph.err.sync_first_error;
+    } else if (std.mem.eql(u8, req.request.name.items, "GLX")) {
+        rep.present = true;
+        rep.major_opcode = @intFromEnum(xph.opcode.Major.glx);
     } else {
         std.log.err("QueryExtension: unsupported extension: {s}", .{req.request.name.items});
     }

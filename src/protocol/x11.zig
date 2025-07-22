@@ -42,6 +42,10 @@ pub fn String8(comptime options: String8Options) type {
     return ListOf(Card8, .{ .length_field = options.length_field, .padding = 4 });
 }
 
+pub const Screen = enum(Card32) {
+    _,
+};
+
 pub const ResourceId = enum(Card32) {
     _,
 

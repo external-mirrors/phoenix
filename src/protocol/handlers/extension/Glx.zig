@@ -48,35 +48,22 @@ fn query_server_string(request_context: xph.RequestContext) !void {
     defer req.deinit();
     std.log.info("GlxQueryServerString request: {s}", .{x11.stringify_fmt(req.request)});
 
-    var result_string = std.ArrayList(u8).init(request_context.allocator);
+    var buffer: [2048]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+
+    var result_string = std.ArrayList(u8).init(fba.allocator());
     defer result_string.deinit();
 
     switch (req.request.name) {
-        .vendor => {
-            result_string.appendSlice(server_vendor_name) catch |err| switch (err) {
-                error.OutOfMemory => return request_context.client.write_error(request_context, .alloc, 0),
-            };
-        },
-        .version => {
-            result_string.appendSlice(server_version) catch |err| switch (err) {
-                error.OutOfMemory => return request_context.client.write_error(request_context, .alloc, 0),
-            };
-        },
+        .vendor => result_string.appendSlice(server_vendor_name) catch unreachable,
+        .version => result_string.appendSlice(server_version) catch unreachable,
         .extensions => {
             for (extensions) |extension| {
-                result_string.appendSlice(extension) catch |err| switch (err) {
-                    error.OutOfMemory => return request_context.client.write_error(request_context, .alloc, 0),
-                };
-                result_string.appendSlice(" ") catch |err| switch (err) {
-                    error.OutOfMemory => return request_context.client.write_error(request_context, .alloc, 0),
-                };
+                result_string.appendSlice(extension) catch unreachable;
+                result_string.appendSlice(" ") catch unreachable;
             }
         },
-        .vendor_names => {
-            result_string.appendSlice(glvnd) catch |err| switch (err) {
-                error.OutOfMemory => return request_context.client.write_error(request_context, .alloc, 0),
-            };
-        },
+        .vendor_names => result_string.appendSlice(glvnd) catch unreachable,
     }
 
     var rep = GlxQueryServerStringReply{

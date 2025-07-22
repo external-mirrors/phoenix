@@ -71,24 +71,26 @@ pub fn handle_client_connect(server: *xph.Server, client: *xph.Client, root_wind
         },
     };
 
-    var screens = [_]Screen{.{
-        .root_window = root_window.id,
-        .colormap = screen_colormap.id,
-        .white_pixel = 0x00ffffff,
-        .black_pixel = 0x00000000,
-        .current_input_masks = 0, // TODO: KeyPressMask, KeyReleaseMask, etc
-        .width_pixels = 3840,
-        .height_pixels = 2160,
-        .width_mm = 1016,
-        .height_mm = 571,
-        .min_installed_colormaps = 1,
-        .max_installed_colormaps = 1,
-        .root_visual = screen_visual.id,
-        .backing_stores = .when_mapped,
-        .save_unders = true,
-        .root_depth = 32,
-        .allowed_depths = .{ .items = &depths },
-    }};
+    var screens = [_]Screen{
+        .{
+            .root_window = root_window.id,
+            .colormap = screen_colormap.id,
+            .white_pixel = 0x00ffffff,
+            .black_pixel = 0x00000000,
+            .current_input_masks = 0, // TODO: KeyPressMask, KeyReleaseMask, etc
+            .width_pixels = 3840,
+            .height_pixels = 2160,
+            .width_mm = 1016,
+            .height_mm = 571,
+            .min_installed_colormaps = 1,
+            .max_installed_colormaps = 1,
+            .root_visual = screen_visual.id,
+            .backing_stores = .when_mapped,
+            .save_unders = true,
+            .root_depth = 32,
+            .allowed_depths = .{ .items = &depths },
+        },
+    };
 
     var rep = ConnectionSetupSuccessReply{
         .release_number = 10000000,

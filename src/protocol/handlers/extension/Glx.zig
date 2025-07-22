@@ -19,6 +19,7 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
 
     switch (minor_opcode) {
         .query_version => return query_version(request_context),
+        .get_visual_configs => return get_visual_configs(request_context),
         .query_server_string => return query_server_string(request_context),
     }
 }
@@ -43,10 +44,197 @@ fn query_version(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn get_visual_configs(request_context: xph.RequestContext) !void {
+    var req = try request_context.client.read_request(GlxGetVisualConfigsRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("GlxGetVisualConfigs request: {s}", .{x11.stringify_fmt(req.request)});
+
+    if (req.request.screen != request_context.server.screen) {
+        std.log.err("Received invalid screen {d} in GlxGetVisualConfigs request", .{req.request.screen});
+        return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.screen));
+    }
+
+    const screen_visual = request_context.server.get_visual_by_id(xph.Server.screen_true_color_visual_id) orelse unreachable;
+
+    var properties = [_]VisualProperties{
+        .{
+            .visual = screen_visual.id,
+            .class = @intFromEnum(screen_visual.class),
+            .rgba = .true,
+            .red_size = screen_visual.bits_per_color_component,
+            .green_size = screen_visual.bits_per_color_component,
+            .blue_size = screen_visual.bits_per_color_component,
+            .alpha_size = screen_visual.bits_per_color_component,
+            .accum_red_size = 0,
+            .accum_green_size = 0,
+            .accum_blue_size = 0,
+            .accum_alpha_size = 0,
+            .double_buffer = .true,
+            .stereo = .false,
+            .buffer_size = screen_visual.bits_per_color_component * 4,
+            .depth_size = screen_visual.bits_per_color_component * 3,
+            .stencil_size = screen_visual.bits_per_color_component,
+            .aux_buffers = 0,
+            .level = 0,
+        },
+        .{
+            .visual = screen_visual.id,
+            .class = @intFromEnum(screen_visual.class),
+            .rgba = .true,
+            .red_size = screen_visual.bits_per_color_component,
+            .green_size = screen_visual.bits_per_color_component,
+            .blue_size = screen_visual.bits_per_color_component,
+            .alpha_size = 0,
+            .accum_red_size = 0,
+            .accum_green_size = 0,
+            .accum_blue_size = 0,
+            .accum_alpha_size = 0,
+            .double_buffer = .true,
+            .stereo = .false,
+            .buffer_size = screen_visual.bits_per_color_component * 3,
+            .depth_size = screen_visual.bits_per_color_component * 3,
+            .stencil_size = screen_visual.bits_per_color_component,
+            .aux_buffers = 0,
+            .level = 0,
+        },
+        .{
+            .visual = screen_visual.id,
+            .class = @intFromEnum(screen_visual.class),
+            .rgba = .true,
+            .red_size = screen_visual.bits_per_color_component,
+            .green_size = screen_visual.bits_per_color_component,
+            .blue_size = screen_visual.bits_per_color_component,
+            .alpha_size = screen_visual.bits_per_color_component,
+            .accum_red_size = 0,
+            .accum_green_size = 0,
+            .accum_blue_size = 0,
+            .accum_alpha_size = 0,
+            .double_buffer = .false,
+            .stereo = .false,
+            .buffer_size = screen_visual.bits_per_color_component * 4,
+            .depth_size = screen_visual.bits_per_color_component * 3,
+            .stencil_size = screen_visual.bits_per_color_component,
+            .aux_buffers = 0,
+            .level = 0,
+        },
+        .{
+            .visual = screen_visual.id,
+            .class = @intFromEnum(screen_visual.class),
+            .rgba = .true,
+            .red_size = screen_visual.bits_per_color_component,
+            .green_size = screen_visual.bits_per_color_component,
+            .blue_size = screen_visual.bits_per_color_component,
+            .alpha_size = 0,
+            .accum_red_size = 0,
+            .accum_green_size = 0,
+            .accum_blue_size = 0,
+            .accum_alpha_size = 0,
+            .double_buffer = .false,
+            .stereo = .false,
+            .buffer_size = screen_visual.bits_per_color_component * 3,
+            .depth_size = screen_visual.bits_per_color_component * 3,
+            .stencil_size = screen_visual.bits_per_color_component,
+            .aux_buffers = 0,
+            .level = 0,
+        },
+        .{
+            .visual = screen_visual.id,
+            .class = @intFromEnum(screen_visual.class),
+            .rgba = .true,
+            .red_size = screen_visual.bits_per_color_component,
+            .green_size = screen_visual.bits_per_color_component,
+            .blue_size = screen_visual.bits_per_color_component,
+            .alpha_size = screen_visual.bits_per_color_component,
+            .accum_red_size = 0,
+            .accum_green_size = 0,
+            .accum_blue_size = 0,
+            .accum_alpha_size = 0,
+            .double_buffer = .true,
+            .stereo = .false,
+            .buffer_size = screen_visual.bits_per_color_component * 4,
+            .depth_size = 0,
+            .stencil_size = 0,
+            .aux_buffers = 0,
+            .level = 0,
+        },
+        .{
+            .visual = screen_visual.id,
+            .class = @intFromEnum(screen_visual.class),
+            .rgba = .true,
+            .red_size = screen_visual.bits_per_color_component,
+            .green_size = screen_visual.bits_per_color_component,
+            .blue_size = screen_visual.bits_per_color_component,
+            .alpha_size = screen_visual.bits_per_color_component,
+            .accum_red_size = 0,
+            .accum_green_size = 0,
+            .accum_blue_size = 0,
+            .accum_alpha_size = 0,
+            .double_buffer = .false,
+            .stereo = .false,
+            .buffer_size = screen_visual.bits_per_color_component * 4,
+            .depth_size = 0,
+            .stencil_size = 0,
+            .aux_buffers = 0,
+            .level = 0,
+        },
+        .{
+            .visual = screen_visual.id,
+            .class = @intFromEnum(screen_visual.class),
+            .rgba = .true,
+            .red_size = screen_visual.bits_per_color_component,
+            .green_size = screen_visual.bits_per_color_component,
+            .blue_size = screen_visual.bits_per_color_component,
+            .alpha_size = 0,
+            .accum_red_size = 0,
+            .accum_green_size = 0,
+            .accum_blue_size = 0,
+            .accum_alpha_size = 0,
+            .double_buffer = .true,
+            .stereo = .false,
+            .buffer_size = screen_visual.bits_per_color_component * 3,
+            .depth_size = 0,
+            .stencil_size = 0,
+            .aux_buffers = 0,
+            .level = 0,
+        },
+        .{
+            .visual = screen_visual.id,
+            .class = @intFromEnum(screen_visual.class),
+            .rgba = .true,
+            .red_size = screen_visual.bits_per_color_component,
+            .green_size = screen_visual.bits_per_color_component,
+            .blue_size = screen_visual.bits_per_color_component,
+            .alpha_size = 0,
+            .accum_red_size = 0,
+            .accum_green_size = 0,
+            .accum_blue_size = 0,
+            .accum_alpha_size = 0,
+            .double_buffer = .false,
+            .stereo = .false,
+            .buffer_size = screen_visual.bits_per_color_component * 3,
+            .depth_size = 0,
+            .stencil_size = 0,
+            .aux_buffers = 0,
+            .level = 0,
+        },
+    };
+
+    var rep = GlxGetVisualConfigsReply{
+        .sequence_number = request_context.sequence_number,
+        .properties = .{ .items = &properties },
+    };
+    try request_context.client.write_reply(&rep);
+}
+
 fn query_server_string(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(GlxQueryServerStringRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxQueryServerString request: {s}", .{x11.stringify_fmt(req.request)});
+
+    if (req.request.screen != request_context.server.screen) {
+        std.log.err("Received invalid screen {d} in GlxQueryServerString request", .{req.request.screen});
+        return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.screen));
+    }
 
     var buffer: [2048]u8 = undefined;
     var fba = std.heap.FixedBufferAllocator.init(&buffer);
@@ -75,6 +263,7 @@ fn query_server_string(request_context: xph.RequestContext) !void {
 
 const MinorOpcode = enum(x11.Card8) {
     query_version = 7,
+    get_visual_configs = 14,
     query_server_string = 19,
 };
 
@@ -106,6 +295,32 @@ const extensions = &[_][]const u8{
     "GLX_SGI_make_current_read",
 };
 
+const Bool32 = enum(x11.Card32) {
+    false,
+    true,
+};
+
+const VisualProperties = struct {
+    visual: x11.VisualId,
+    class: x11.Card32,
+    rgba: Bool32,
+    red_size: x11.Card32,
+    green_size: x11.Card32,
+    blue_size: x11.Card32,
+    alpha_size: x11.Card32,
+    accum_red_size: x11.Card32,
+    accum_green_size: x11.Card32,
+    accum_blue_size: x11.Card32,
+    accum_alpha_size: x11.Card32,
+    double_buffer: Bool32,
+    stereo: Bool32,
+    buffer_size: x11.Card32,
+    depth_size: x11.Card32,
+    stencil_size: x11.Card32,
+    aux_buffers: x11.Card32,
+    level: i32,
+};
+
 const GlxQueryVersionRequest = struct {
     major_opcode: x11.Card8, // opcode.Major
     minor_opcode: x11.Card8, // MinorOpcode
@@ -122,6 +337,24 @@ const GlxQueryVersionReply = struct {
     major_version: x11.Card32,
     minor_version: x11.Card32,
     pad2: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
+};
+
+const GlxGetVisualConfigsRequest = struct {
+    major_opcode: x11.Card8, // opcode.Major
+    minor_opcode: x11.Card8, // MinorOpcode
+    length: x11.Card16,
+    screen: x11.Screen,
+};
+
+const GlxGetVisualConfigsReply = struct {
+    type: xph.reply.ReplyType = .reply,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16,
+    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+    num_visuals: x11.Card32 = 0,
+    num_properties: x11.Card32 = 18, // The number of fields in VisualProperties
+    pad2: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
+    properties: x11.ListOf(VisualProperties, .{ .length_field = "num_visuals" }),
 };
 
 const GlxQueryServerStringRequest = struct {

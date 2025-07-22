@@ -6,14 +6,16 @@ const Self = @This();
 
 pub const vendor = "Xphoenix";
 
+pub const screen_true_color_visual_id: x11.VisualId = @enumFromInt(0x21);
+const screen_true_color_visual = xph.Visual.create_true_color(screen_true_color_visual_id);
+
 pub const screen_true_color_colormap_id: x11.Colormap = @enumFromInt(0x20);
 const screen_true_color_colormap = xph.Colormap{
     .id = screen_true_color_colormap_id,
     .visual = &screen_true_color_visual,
 };
 
-pub const screen_true_color_visual_id: x11.VisualId = @enumFromInt(0x21);
-const screen_true_color_visual = xph.Visual.create_true_color(screen_true_color_visual_id);
+screen: x11.Screen = @enumFromInt(0),
 
 allocator: std.mem.Allocator,
 root_client: *xph.Client,

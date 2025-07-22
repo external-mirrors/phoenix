@@ -39,6 +39,9 @@ pub fn create(
         .graphics_backend_id = 0,
     };
 
+    // TODO: If import dmabuf fails then return match error
+    pixmap.graphics_backend_id = try server.display.create_texture_from_pixmap(pixmap);
+
     try pixmap.client_owner.add_pixmap(pixmap);
     return pixmap;
 }

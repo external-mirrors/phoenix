@@ -175,7 +175,7 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
 
         .pixmap_textures = .init(allocator),
         .dmabufs_to_import = .init(allocator),
-        .texture_id_counter = 0,
+        .texture_id_counter = 1,
         .framebuffer = framebuffer,
         .mutex = .{},
         // TODO:
@@ -183,7 +183,7 @@ pub fn init(platform: c_uint, screen_type: c_int, connection: c.EGLNativeDisplay
         .height = 1080,
 
         .windows = .init(allocator),
-        .windows_id_counter = 0,
+        .windows_id_counter = 1,
         .present_pixmap_operations = .init(allocator),
 
         .glEGLImageTargetTexture2DOES = glEGLImageTargetTexture2DOES,
@@ -400,7 +400,7 @@ pub fn resize(self: *Self, width: u32, height: u32) void {
     c.glScissor(0, 0, @intCast(self.width), @intCast(self.height));
 }
 
-/// Returns a graphics window id
+/// Returns a graphics window id. This will never return 0
 pub fn create_window(self: *Self, window: *const xph.Window) !u32 {
     self.mutex.lock();
     defer self.mutex.unlock();
@@ -415,6 +415,8 @@ pub fn create_window(self: *Self, window: *const xph.Window) !u32 {
         .height = window.attributes.geometry.height,
     });
     self.windows_id_counter +%= 1;
+    if (self.windows_id_counter == 0)
+        self.windows_id_counter = 1;
 
     return id;
 }
@@ -431,7 +433,7 @@ pub fn destroy_window(self: *Self, window: *const xph.Window) void {
     }
 }
 
-/// Returns a texture id
+/// Returns a texture id. This will never return 0
 pub fn create_texture_from_pixmap(self: *Self, pixmap: *const xph.Pixmap) !u32 {
     std.debug.assert(pixmap.dmabuf_data.num_items <= drm_num_buf_attrs);
 
@@ -444,6 +446,8 @@ pub fn create_texture_from_pixmap(self: *Self, pixmap: *const xph.Pixmap) !u32 {
         .dmabuf_import = pixmap.dmabuf_data,
     });
     self.texture_id_counter +%= 1;
+    if (self.texture_id_counter == 0)
+        self.texture_id_counter = 1;
 
     return texture_id;
 }

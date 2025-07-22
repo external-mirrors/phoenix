@@ -18,3 +18,4 @@ Instead of creating and destroying opengl textures for each window/pixmap each t
     This is more efficient and leads to lower memory usage (nvidia leaks memory on texture create/destroy, on purpose).
 Draw windows in tree order (the grandchildren of root, then children then root).
 Client might set any of the top resource id bits to 1. What do?
+Eglgears_x11 crashes after a few seconds because there is an x11 error in the reply to getInputFocus (not the first one) and it happens near the end of the second sequence_number wrap.

@@ -173,8 +173,6 @@ fn create_window(request_context: xph.RequestContext) !void {
     };
     errdefer window.destroy();
 
-    window.graphics_backend_id = try request_context.server.display.create_window(window);
-
     const create_notify_event = xph.event.Event{
         .create_notify = .{
             .sequence_number = request_context.sequence_number,

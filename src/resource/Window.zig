@@ -46,6 +46,9 @@ pub fn create(
         .graphics_backend_id = 0,
     };
 
+    if (server) |serv|
+        window.graphics_backend_id = try serv.display.create_window(window);
+
     try window.client_owner.add_window(window);
     if (!initial_event_mask.is_empty())
         try window.add_core_event_listener(window.client_owner, initial_event_mask);

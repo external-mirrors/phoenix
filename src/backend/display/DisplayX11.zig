@@ -103,7 +103,7 @@ pub fn get_drm_card_fd(self: *Self) std.posix.fd_t {
     return self.graphics.get_dri_card_fd();
 }
 
-/// Returns a graphics window id
+/// Returns a graphics window id. This will never return 0
 pub fn create_window(self: *Self, window: *const xph.Window) !u32 {
     return self.graphics.create_window(window);
 }
@@ -112,7 +112,7 @@ pub fn destroy_window(self: *Self, window: *const xph.Window) void {
     self.graphics.destroy_window(window);
 }
 
-/// Returns a texture id
+/// Returns a texture id. This will never return 0
 pub fn create_texture_from_pixmap(self: *Self, pixmap: *const xph.Pixmap) !u32 {
     return self.graphics.create_texture_from_pixmap(pixmap);
 }

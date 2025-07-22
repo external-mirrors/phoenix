@@ -156,9 +156,6 @@ fn pixmap_from_buffer(request_context: xph.RequestContext) !void {
         request_context.allocator,
     );
     errdefer pixmap.destroy();
-
-    // TODO: If import dmabuf fails then return match error
-    pixmap.graphics_backend_id = try request_context.server.display.create_texture_from_pixmap(pixmap);
 }
 
 fn fence_from_fd(request_context: xph.RequestContext) !void {
@@ -280,9 +277,6 @@ fn pixmap_from_buffers(request_context: xph.RequestContext) !void {
         request_context.allocator,
     );
     errdefer pixmap.destroy();
-
-    // TODO: If import dmabuf fails then return match error
-    pixmap.graphics_backend_id = try request_context.server.display.create_texture_from_pixmap(pixmap);
 }
 
 fn depth_is_supported(depth: u8) bool {

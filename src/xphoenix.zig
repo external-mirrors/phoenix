@@ -48,5 +48,6 @@ pub const Resource = resource.Resource;
 pub const ResourceHashMap = resource.ResourceHashMap;
 
 pub const Geometry = @import("misc/Geometry.zig");
+pub const Version = @import("misc/Version.zig");
 
 pub const c = @import("c.zig");

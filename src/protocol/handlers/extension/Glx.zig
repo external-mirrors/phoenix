@@ -3,7 +3,7 @@ const xph = @import("../../../xphoenix.zig");
 const x11 = xph.x11;
 
 const server_vendor_name = "SGI";
-const server_version = "1.4";
+const server_version_str = "1.4";
 const glvnd = "mesa"; // TODO: gbm_device_get_backend_name
 
 pub fn handle_request(request_context: xph.RequestContext) !void {
@@ -21,6 +21,7 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
         .query_version => return query_version(request_context),
         .get_visual_configs => return get_visual_configs(request_context),
         .query_server_string => return query_server_string(request_context),
+        .get_fb_configs => return get_fb_configs(request_context),
     }
 }
 
@@ -29,17 +30,14 @@ fn query_version(request_context: xph.RequestContext) !void {
     defer req.deinit();
     std.log.info("GlxQueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
-    var server_major_version: u32 = 1;
-    var server_minor_version: u32 = 4;
-    if (req.request.major_version < server_major_version or (req.request.major_version == server_major_version and req.request.minor_version < server_minor_version)) {
-        server_major_version = req.request.major_version;
-        server_minor_version = req.request.minor_version;
-    }
+    const server_version = xph.Version{ .major = 1, .minor = 4 };
+    const client_version = xph.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
+    request_context.client.extension_versions.glx = xph.Version.min(server_version, client_version);
 
     var rep = GlxQueryVersionReply{
         .sequence_number = request_context.sequence_number,
-        .major_version = server_major_version,
-        .minor_version = server_minor_version,
+        .major_version = request_context.client.extension_versions.glx.major,
+        .minor_version = request_context.client.extension_versions.glx.minor,
     };
     try request_context.client.write_reply(&rep);
 }
@@ -77,15 +75,15 @@ fn get_visual_configs(request_context: xph.RequestContext) !void {
         0,
     };
 
-    const num_properties = alpha_size_values.len * double_buffer_values.len * depth_size_values.len * stencil_size_values.len;
-    var properties: [num_properties]VisualProperties = undefined;
+    const num_visuals = alpha_size_values.len * double_buffer_values.len * depth_size_values.len * stencil_size_values.len;
+    var visuals: [num_visuals]VisualProperties = undefined;
     var i: usize = 0;
 
     for (alpha_size_values) |alpha_size| {
         for (double_buffer_values) |double_buffer| {
             for (depth_size_values) |depth_size| {
                 for (stencil_size_values) |stencil_size| {
-                    properties[i] = VisualProperties{
+                    visuals[i] = .{
                         .visual = screen_visual.id,
                         .class = @intFromEnum(screen_visual.class),
                         .rgba = .true,
@@ -113,7 +111,7 @@ fn get_visual_configs(request_context: xph.RequestContext) !void {
 
     var rep = GlxGetVisualConfigsReply{
         .sequence_number = request_context.sequence_number,
-        .properties = .{ .items = &properties },
+        .properties = .{ .items = &visuals },
     };
     try request_context.client.write_reply(&rep);
 }
@@ -136,7 +134,7 @@ fn query_server_string(request_context: xph.RequestContext) !void {
 
     switch (req.request.name) {
         .vendor => result_string.appendSlice(server_vendor_name) catch unreachable,
-        .version => result_string.appendSlice(server_version) catch unreachable,
+        .version => result_string.appendSlice(server_version_str) catch unreachable,
         .extensions => {
             for (extensions) |extension| {
                 result_string.appendSlice(extension) catch unreachable;
@@ -153,10 +151,100 @@ fn query_server_string(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn get_fb_configs(request_context: xph.RequestContext) !void {
+    var req = try request_context.client.read_request(GlxGetFbConfigsRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("GlxGetFbConfigs request: {s}", .{x11.stringify_fmt(req.request)});
+
+    if (req.request.screen != request_context.server.screen) {
+        std.log.err("Received invalid screen {d} in GlxGetFbConfigs request", .{req.request.screen});
+        return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.screen));
+    }
+
+    const screen_visual = request_context.server.get_visual_by_id(xph.Server.screen_true_color_visual_id) orelse unreachable;
+
+    const alpha_size_values = [_]x11.Card32{
+        screen_visual.bits_per_color_component,
+        0,
+    };
+
+    const double_buffer_values = [_]Bool32{
+        .true,
+        .false,
+    };
+
+    const depth_size_values = [_]x11.Card32{
+        screen_visual.bits_per_color_component * 4,
+        screen_visual.bits_per_color_component * 3,
+        0,
+    };
+
+    const stencil_size_values = [_]x11.Card32{
+        screen_visual.bits_per_color_component,
+        0,
+    };
+
+    const num_fbconfigs = alpha_size_values.len * double_buffer_values.len * depth_size_values.len * stencil_size_values.len;
+
+    var buffer: [8192]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+
+    var properties = std.ArrayList(FbAttributePair).init(fba.allocator());
+    defer properties.deinit();
+
+    var num_properties: x11.Card32 = 0;
+    for (alpha_size_values) |alpha_size| {
+        for (double_buffer_values) |double_buffer| {
+            for (depth_size_values) |depth_size| {
+                for (stencil_size_values) |stencil_size| {
+                    const properties_size_start: u32 = @intCast(properties.items.len);
+
+                    const version_1_3 = (xph.Version{ .major = 1, .minor = 3 }).to_int();
+                    if (request_context.client.extension_versions.glx.to_int() >= version_1_3) {
+                        properties.append(.{ .type = FbAttributeType.visual_id, .value = @intFromEnum(screen_visual.id) }) catch unreachable;
+                        switch (screen_visual.class) {
+                            .true_color => properties.append(.{ .type = FbAttributeType.x_visual_type, .value = GLX_TRUE_COLOR }) catch unreachable,
+                        }
+                    }
+
+                    properties.append(.{ .type = FbAttributeType.rgba, .value = @intFromBool(true) }) catch unreachable;
+                    properties.append(.{ .type = FbAttributeType.red_size, .value = screen_visual.bits_per_color_component }) catch unreachable;
+                    properties.append(.{ .type = FbAttributeType.green_size, .value = screen_visual.bits_per_color_component }) catch unreachable;
+                    properties.append(.{ .type = FbAttributeType.blue_size, .value = screen_visual.bits_per_color_component }) catch unreachable;
+                    properties.append(.{ .type = FbAttributeType.alpha_size, .value = alpha_size }) catch unreachable;
+                    properties.append(.{ .type = FbAttributeType.accum_red_size, .value = 0 }) catch unreachable;
+                    properties.append(.{ .type = FbAttributeType.accum_green_size, .value = 0 }) catch unreachable;
+                    properties.append(.{ .type = FbAttributeType.accum_blue_size, .value = 0 }) catch unreachable;
+                    properties.append(.{ .type = FbAttributeType.accum_alpha_size, .value = 0 }) catch unreachable;
+                    properties.append(.{ .type = FbAttributeType.doublebuffer, .value = @intFromEnum(double_buffer) }) catch unreachable;
+                    properties.append(.{ .type = FbAttributeType.stereo, .value = @intFromBool(false) }) catch unreachable;
+                    properties.append(.{ .type = FbAttributeType.buffer_size, .value = screen_visual.bits_per_color_component * 3 + alpha_size }) catch unreachable;
+                    properties.append(.{ .type = FbAttributeType.depth_size, .value = depth_size }) catch unreachable;
+                    properties.append(.{ .type = FbAttributeType.stencil_size, .value = stencil_size }) catch unreachable;
+                    properties.append(.{ .type = FbAttributeType.aux_buffers, .value = 0 }) catch unreachable;
+                    properties.append(.{ .type = FbAttributeType.level, .value = 0 }) catch unreachable;
+
+                    const properties_size_end: u32 = @intCast(properties.items.len);
+                    num_properties = properties_size_end - properties_size_start;
+                }
+            }
+        }
+    }
+
+    var rep = GlxGetFbConfigsReply{
+        .sequence_number = request_context.sequence_number,
+        .num_fbconfigs = num_fbconfigs,
+        .num_properties = num_properties,
+        .properties = .{ .items = properties.items },
+    };
+    try request_context.client.write_reply(&rep);
+}
+
 const MinorOpcode = enum(x11.Card8) {
     query_version = 7,
     get_visual_configs = 14,
     query_server_string = 19,
+    get_fb_configs = 21,
 };
 
 const extensions = &[_][]const u8{
@@ -213,6 +301,63 @@ const VisualProperties = struct {
     level: i32,
 };
 
+const GLX_TRUE_COLOR: x11.Card32 = 0x8002;
+const GLX_DIRECT_COLOR: x11.Card32 = 0x8003;
+const GLX_PSEUDO_COLOR: x11.Card32 = 0x8004;
+const GLX_STATIC_COLOR: x11.Card32 = 0x8005;
+const GLX_GRAY_SCALE: x11.Card32 = 0x8006;
+const GLX_STATIC_GRAY: x11.Card32 = 0x8007;
+const GLX_NONE: x11.Card32 = 0x8000;
+const GLX_DONT_CARE: x11.Card32 = 0xFFFFFFFF;
+const GLX_WINDOW_BIT: x11.Card32 = 0x00000001;
+const GLX_PIXMAP_BIT: x11.Card32 = 0x00000002;
+const GLX_PBUFFER_BIT: x11.Card32 = 0x00000004;
+
+const FbAttributeType = enum(x11.Card32) {
+    use_gl = 1,
+    buffer_size = 2,
+    level = 3,
+    rgba = 4,
+    doublebuffer = 5,
+    stereo = 6,
+    aux_buffers = 7,
+    red_size = 8,
+    green_size = 9,
+    blue_size = 10,
+    alpha_size = 11,
+    depth_size = 12,
+    stencil_size = 13,
+    accum_red_size = 14,
+    accum_green_size = 15,
+    accum_blue_size = 16,
+    accum_alpha_size = 17,
+
+    // GLX 1.3 and later
+    config_caveat = 0x20,
+    x_visual_type = 0x22,
+    drawable_type = 0x8010,
+    render_type = 0x8011,
+    visual_id = 0x800B,
+    screen = 0x800C,
+    rgba_type = 0x8014,
+    preserved_contents = 0x801B,
+    width = 0x801D,
+    height = 0x801E,
+    window = 0x8022,
+    pbuffer = 0x8023,
+    pbuffer_height = 0x8040,
+    pbuffer_width = 0x8041,
+
+    // GLX 1.4 and later
+    sample_buffers = 0x186a0,
+    samples = 0x186a1,
+};
+
+const FbAttributePair = extern struct {
+    type: FbAttributeType,
+    value: x11.Card32,
+};
+
 const GlxQueryVersionRequest = struct {
     major_opcode: x11.Card8, // opcode.Major
     minor_opcode: x11.Card8, // MinorOpcode
@@ -244,7 +389,7 @@ const GlxGetVisualConfigsReply = struct {
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
     num_visuals: x11.Card32 = 0,
-    num_properties: x11.Card32 = 18, // The number of fields in VisualProperties
+    num_properties: x11.Card32 = @typeInfo(VisualProperties).@"struct".fields.len,
     pad2: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
     properties: x11.ListOf(VisualProperties, .{ .length_field = "num_visuals" }),
 };
@@ -271,4 +416,22 @@ const GlxQueryServerStringReply = struct {
     string_length: x11.Card32 = 0,
     pad3: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
     string: x11.String8(.{ .length_field = "string_length" }),
+};
+
+const GlxGetFbConfigsRequest = struct {
+    major_opcode: x11.Card8, // opcode.Major
+    minor_opcode: x11.Card8, // MinorOpcode
+    length: x11.Card16,
+    screen: x11.Screen,
+};
+
+const GlxGetFbConfigsReply = struct {
+    type: xph.reply.ReplyType = .reply,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16,
+    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+    num_fbconfigs: x11.Card32,
+    num_properties: x11.Card32,
+    pad2: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
+    properties: x11.ListOf(FbAttributePair, .{ .length_field = null }),
 };

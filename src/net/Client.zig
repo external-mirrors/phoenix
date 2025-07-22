@@ -23,6 +23,14 @@ listening_to_windows: std.ArrayList(*xph.Window), // Reference
 
 deleting_self: bool,
 
+extension_versions: ExtensionVersions = .{
+    .glx = .{ .major = 1, .minor = 0 },
+    .dri3 = .{ .major = 1, .minor = 0 },
+    .present = .{ .major = 1, .minor = 0 },
+    .sync = .{ .major = 1, .minor = 0 },
+    .xfixes = .{ .major = 1, .minor = 0 },
+},
+
 pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, allocator: std.mem.Allocator) Self {
     return .{
         .allocator = allocator,
@@ -273,4 +281,12 @@ const ReplyFdsBuffer = std.fifo.LinearFifo(xph.message.ReplyFd, .Dynamic);
 const State = enum {
     connecting,
     connected,
+};
+
+const ExtensionVersions = struct {
+    glx: xph.Version,
+    dri3: xph.Version,
+    present: xph.Version,
+    sync: xph.Version,
+    xfixes: xph.Version,
 };

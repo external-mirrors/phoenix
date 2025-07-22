@@ -29,17 +29,14 @@ fn query_version(request_context: xph.RequestContext) !void {
     defer req.deinit();
     std.log.info("DRI3QueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
-    var server_major_version: u32 = 1;
-    var server_minor_version: u32 = 4;
-    if (req.request.major_version < server_major_version or (req.request.major_version == server_major_version and req.request.minor_version < server_minor_version)) {
-        server_major_version = req.request.major_version;
-        server_minor_version = req.request.minor_version;
-    }
+    const server_version = xph.Version{ .major = 1, .minor = 4 };
+    const client_version = xph.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
+    request_context.client.extension_versions.dri3 = xph.Version.min(server_version, client_version);
 
     var rep = Dri3QueryExtensionReply{
         .sequence_number = request_context.sequence_number,
-        .major_version = server_major_version,
-        .minor_version = server_minor_version,
+        .major_version = request_context.client.extension_versions.dri3.major,
+        .minor_version = request_context.client.extension_versions.dri3.minor,
     };
     try request_context.client.write_reply(&rep);
 }

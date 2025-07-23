@@ -5,6 +5,7 @@ pub const Major = enum(x11.Card8) {
     create_window = 1,
     //pub const change_window_attributes: x11.Card8 = 2;
     //pub const get_window_attributes: x11.Card8 = 3;
+    destroy_window = 4,
     map_window = 8,
     get_geometry = 14,
     intern_atom = 16,

@@ -15,6 +15,7 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
 
     switch (major_opcode) {
         .create_window => return create_window(request_context),
+        .destroy_window => return destroy_window(request_context),
         .map_window => return map_window(request_context),
         .get_geometry => return get_geometry(request_context),
         .intern_atom => return intern_atom(request_context),
@@ -203,13 +204,25 @@ fn create_window(request_context: xph.RequestContext) !void {
     window.write_core_event_to_event_listeners(&create_notify_event);
 }
 
+fn destroy_window(request_context: xph.RequestContext) !void {
+    var req = try request_context.client.read_request(DestroyWindowRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("DestroyWindow request: {s}", .{x11.stringify_fmt(req)});
+
+    var window = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in DestroyWindow request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+    window.destroy();
+}
+
 fn map_window(request_context: xph.RequestContext) !void {
     var req = try request_context.client.read_request(MapWindowRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("MapWindow request: {s}", .{x11.stringify_fmt(req)});
 
     var window = request_context.server.get_window(req.request.window) orelse {
-        std.log.err("Received invalid drawable {d} in MapWindow request", .{req.request.window});
+        std.log.err("Received invalid window {d} in MapWindow request", .{req.request.window});
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
     if (window.attributes.map_state != .unmapped)
@@ -609,6 +622,13 @@ const CreateWindowRequest = struct {
             return null;
         }
     }
+};
+
+const DestroyWindowRequest = struct {
+    opcode: x11.Card8, // opcode.Major
+    pad1: x11.Card8,
+    length: x11.Card16,
+    window: x11.WindowId,
 };
 
 const MapWindowRequest = struct {

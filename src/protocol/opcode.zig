@@ -24,7 +24,8 @@ pub const Major = enum(x11.Card8) {
     present = 130,
     sync = 131,
     glx = 132,
+    xkeyboard = 133,
 };
 
 pub const core_opcode_max: x11.Card8 = 127;
-pub const extension_opcode_max: x11.Card8 = 132;
+pub const extension_opcode_max: x11.Card8 = 133;

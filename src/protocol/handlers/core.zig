@@ -213,6 +213,12 @@ fn destroy_window(request_context: xph.RequestContext) !void {
         std.log.err("Received invalid window {d} in DestroyWindow request", .{req.request.window});
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
+
+    if (window.id == request_context.server.root_window.id) {
+        std.log.err("Client tried to destroy root window in DestroyWindow request, ignoring...", .{});
+        return;
+    }
+
     window.destroy();
 }
 
@@ -424,6 +430,9 @@ fn query_extension(request_context: xph.RequestContext) !void {
         rep.present = true;
         rep.major_opcode = @intFromEnum(xph.opcode.Major.glx);
         rep.first_error = xph.err.glx_first_error;
+    } else if (std.mem.eql(u8, req.request.name.items, "XKEYBOARD")) {
+        rep.present = true;
+        rep.major_opcode = @intFromEnum(xph.opcode.Major.xkeyboard);
     } else {
         std.log.err("QueryExtension: unsupported extension: {s}", .{req.request.name.items});
     }

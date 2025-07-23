@@ -17,6 +17,7 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
         .present => return xph.Present.handle_request(request_context),
         .sync => return xph.Sync.handle_request(request_context),
         .glx => return xph.Glx.handle_request(request_context),
+        .xkeyboard => return xph.Xkeyboard.handle_request(request_context),
         else => unreachable,
     }
 }

@@ -13,10 +13,10 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
         },
     };
 
-    switch (minor_opcode) {
-        .initialize => return initialize(request_context),
-        .destroy_fence => return destroy_fence(request_context),
-    }
+    return switch (minor_opcode) {
+        .initialize => initialize(request_context),
+        .destroy_fence => destroy_fence(request_context),
+    };
 }
 
 fn initialize(request_context: xph.RequestContext) !void {

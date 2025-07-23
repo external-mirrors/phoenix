@@ -13,10 +13,10 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
         },
     };
 
-    switch (minor_opcode) {
-        .query_version => return query_version(request_context),
-        .create_region => return create_region(request_context),
-    }
+    return switch (minor_opcode) {
+        .query_version => query_version(request_context),
+        .create_region => create_region(request_context),
+    };
 }
 
 fn query_version(request_context: xph.RequestContext) !void {

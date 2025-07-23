@@ -15,11 +15,11 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
         },
     };
 
-    switch (minor_opcode) {
-        .query_version => return query_version(request_context),
-        .present_pixmap => return present_pixmap(request_context),
-        .select_input => return select_input(request_context),
-    }
+    return switch (minor_opcode) {
+        .query_version => query_version(request_context),
+        .present_pixmap => present_pixmap(request_context),
+        .select_input => select_input(request_context),
+    };
 }
 
 fn query_version(request_context: xph.RequestContext) !void {

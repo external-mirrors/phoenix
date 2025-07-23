@@ -20,18 +20,18 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
         },
     };
 
-    switch (minor_opcode) {
-        .create_context => return create_context(request_context),
-        .destroy_context => return destroy_context(request_context),
-        .is_direct => return is_direct(request_context),
-        .query_version => return query_version(request_context),
-        .get_visual_configs => return get_visual_configs(request_context),
-        .query_server_string => return query_server_string(request_context),
-        .get_fb_configs => return get_fb_configs(request_context),
-        .get_drawable_attributes => return get_drawable_attributes(request_context),
-        .set_client_info_arb => return set_client_info_arb(request_context),
-        .set_client_info2_arb => return set_client_info2_arb(request_context),
-    }
+    return switch (minor_opcode) {
+        .create_context => create_context(request_context),
+        .destroy_context => destroy_context(request_context),
+        .is_direct => is_direct(request_context),
+        .query_version => query_version(request_context),
+        .get_visual_configs => get_visual_configs(request_context),
+        .query_server_string => query_server_string(request_context),
+        .get_fb_configs => get_fb_configs(request_context),
+        .get_drawable_attributes => get_drawable_attributes(request_context),
+        .set_client_info_arb => set_client_info_arb(request_context),
+        .set_client_info2_arb => set_client_info2_arb(request_context),
+    };
 }
 
 fn create_context(request_context: xph.RequestContext) !void {

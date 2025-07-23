@@ -13,22 +13,22 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
         },
     };
 
-    switch (major_opcode) {
-        .create_window => return create_window(request_context),
-        .destroy_window => return destroy_window(request_context),
-        .map_window => return map_window(request_context),
-        .get_geometry => return get_geometry(request_context),
-        .intern_atom => return intern_atom(request_context),
-        .change_property => return change_property(request_context),
-        .get_property => return get_property(request_context),
-        .get_input_focus => return get_input_focus(request_context),
-        .free_pixmap => return free_pixmap(request_context),
-        .create_gc => return create_gc(request_context),
-        .free_gc => return free_gc(request_context),
-        .create_colormap => return create_colormap(request_context),
-        .query_extension => return query_extension(request_context),
+    return switch (major_opcode) {
+        .create_window => create_window(request_context),
+        .destroy_window => destroy_window(request_context),
+        .map_window => map_window(request_context),
+        .get_geometry => get_geometry(request_context),
+        .intern_atom => intern_atom(request_context),
+        .change_property => change_property(request_context),
+        .get_property => get_property(request_context),
+        .get_input_focus => get_input_focus(request_context),
+        .free_pixmap => free_pixmap(request_context),
+        .create_gc => create_gc(request_context),
+        .free_gc => free_gc(request_context),
+        .create_colormap => create_colormap(request_context),
+        .query_extension => query_extension(request_context),
         else => unreachable,
-    }
+    };
 }
 
 fn window_class_validate_attributes(class: x11.Class, req: *const CreateWindowRequest) bool {

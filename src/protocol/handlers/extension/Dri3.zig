@@ -14,14 +14,14 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
         },
     };
 
-    switch (minor_opcode) {
-        .query_version => return query_version(request_context),
-        .open => return open(request_context),
-        .pixmap_from_buffer => return pixmap_from_buffer(request_context),
-        .fence_from_fd => return fence_from_fd(request_context),
-        .get_supported_modifiers => return get_supported_modifiers(request_context),
-        .pixmap_from_buffers => return pixmap_from_buffers(request_context),
-    }
+    return switch (minor_opcode) {
+        .query_version => query_version(request_context),
+        .open => open(request_context),
+        .pixmap_from_buffer => pixmap_from_buffer(request_context),
+        .fence_from_fd => fence_from_fd(request_context),
+        .get_supported_modifiers => get_supported_modifiers(request_context),
+        .pixmap_from_buffers => pixmap_from_buffers(request_context),
+    };
 }
 
 fn query_version(request_context: xph.RequestContext) !void {

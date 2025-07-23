@@ -3,7 +3,7 @@ const std = @import("std");
 pub const max_fds: usize = 16;
 
 pub const RecvMsgResult = struct {
-    data: []const u8, // Reference
+    data: []const u8,
     fd_buf: [max_fds]std.posix.fd_t,
     num_fds: u32,
 

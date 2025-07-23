@@ -19,7 +19,7 @@ resource_id_base: u32,
 sequence_number: u16,
 resources: xph.ResourceHashMap,
 
-listening_to_windows: std.ArrayList(*xph.Window), // Reference
+listening_to_windows: std.ArrayList(*xph.Window),
 
 deleting_self: bool,
 

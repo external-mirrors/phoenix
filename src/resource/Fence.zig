@@ -7,7 +7,7 @@ const Self = @This();
 allocator: std.mem.Allocator,
 fence_fd: std.posix.fd_t,
 shm_fence: *xph.xshmfence.xshmfence,
-client_owner: *xph.Client, // Reference
+client_owner: *xph.Client,
 
 id: xph.Sync.FenceId,
 

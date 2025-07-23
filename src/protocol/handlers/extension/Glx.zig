@@ -22,6 +22,7 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
 
     switch (minor_opcode) {
         .create_context => return create_context(request_context),
+        .destroy_context => return destroy_context(request_context),
         .is_direct => return is_direct(request_context),
         .query_version => return query_version(request_context),
         .get_visual_configs => return get_visual_configs(request_context),
@@ -60,6 +61,7 @@ fn create_context(request_context: xph.RequestContext) !void {
         .id = req.request.context,
         .visual = visual,
         .is_direct = req.request.is_direct,
+        .client_owner = request_context.client,
     };
     request_context.client.add_glx_context(glx_context) catch |err| switch (err) {
         error.ResourceNotOwnedByClient => {
@@ -74,6 +76,18 @@ fn create_context(request_context: xph.RequestContext) !void {
             return request_context.client.write_error(request_context, .alloc, 0);
         },
     };
+}
+
+fn destroy_context(request_context: xph.RequestContext) !void {
+    var req = try request_context.client.read_request(GlxDestroyContextRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("GlxDestroyContext request: {s}", .{x11.stringify_fmt(req.request)});
+
+    var glx_context = request_context.server.get_glx_context(req.request.context) orelse {
+        std.log.err("Received invalid glx context {d} in GlxDestroyContext request", .{req.request.context});
+        return request_context.client.write_error(request_context, xph.err.glx_error_bad_context, @intFromEnum(req.request.context));
+    };
+    glx_context.client_owner.remove_resource(glx_context.id.to_id());
 }
 
 fn is_direct(request_context: xph.RequestContext) !void {
@@ -319,14 +333,14 @@ fn get_drawable_attributes(request_context: xph.RequestContext) !void {
     defer req.deinit();
     std.log.info("GlxGetDrawableAttributes request: {s}", .{x11.stringify_fmt(req.request)});
 
-    const drawable = request_context.server.get_glx_drawable(req.request.drawable) orelse {
+    const glx_drawable = request_context.server.get_glx_drawable(req.request.drawable) orelse {
         std.log.err("Received invalid glx drawable {d} in GlxGetDrawableAttributes request", .{req.request.drawable});
         return request_context.client.write_error(request_context, xph.err.glx_error_bad_drawable, @intFromEnum(req.request.drawable));
     };
-    const geometry = drawable.get_geometry();
+    const geometry = glx_drawable.get_geometry();
 
     // TODO: Implement for non-window types
-    std.debug.assert(std.meta.activeTag(drawable.item) == .window);
+    std.debug.assert(std.meta.activeTag(glx_drawable.item) == .window);
 
     // TODO: Check version?? why doesn't xorg server do that
     var properties = [_]FbAttributePair{
@@ -372,6 +386,7 @@ fn set_client_info2_arb(request_context: xph.RequestContext) !void {
 
 const MinorOpcode = enum(x11.Card8) {
     create_context = 3,
+    destroy_context = 4,
     is_direct = 6,
     query_version = 7,
     get_visual_configs = 14,
@@ -559,6 +574,13 @@ const GlxCreateContextRequest = struct {
     is_direct: bool,
     pad1: x11.Card8,
     pad2: x11.Card16,
+};
+
+const GlxDestroyContextRequest = struct {
+    major_opcode: x11.Card8, // opcode.Major
+    minor_opcode: x11.Card8, // MinorOpcode
+    length: x11.Card16,
+    context: ContextId,
 };
 
 const GlxIsDirectRequest = struct {

@@ -7,7 +7,7 @@ const Self = @This();
 allocator: std.mem.Allocator,
 dmabuf_data: xph.Graphics.DmabufImport,
 server: *xph.Server,
-client_owner: *xph.Client, // Reference
+client_owner: *xph.Client,
 
 id: x11.PixmapId,
 graphics_backend_id: u32,

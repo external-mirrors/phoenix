@@ -8,7 +8,7 @@ allocator: std.mem.Allocator,
 parent: ?*Self,
 children: std.ArrayList(*Self),
 server: ?*xph.Server,
-client_owner: *xph.Client, // Reference
+client_owner: *xph.Client,
 deleting_self: bool,
 
 id: x11.WindowId,
@@ -295,14 +295,14 @@ fn remove_child(self: *Self, child_to_remove: *Self) void {
 pub const Attributes = struct {
     geometry: xph.Geometry,
     class: x11.Class,
-    visual: *const xph.Visual, // Reference
+    visual: *const xph.Visual,
     bit_gravity: xph.core.BitGravity,
     win_gravity: xph.core.WinGravity,
     backing_store: BackingStore,
     backing_planes: u32,
     backing_pixel: u32,
     colormap: xph.Colormap,
-    cursor: ?*const xph.Cursor, // Reference
+    cursor: ?*const xph.Cursor,
     map_state: MapState,
     background_pixmap: ?*const xph.Pixmap,
     background_pixel: u32,
@@ -326,12 +326,12 @@ pub const BackingStore = enum(x11.Card8) {
 };
 
 const CoreEventListener = struct {
-    client: *xph.Client, // Reference
+    client: *xph.Client,
     event_mask: xph.core.EventMask,
 };
 
 const ExtensionEventListener = struct {
-    client: *xph.Client, // Reference
+    client: *xph.Client,
     event_id: x11.ResourceId,
     event_mask: u32,
     extension_major_opcode: xph.opcode.Major,

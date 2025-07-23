@@ -6,3 +6,4 @@ visual: *const xph.Visual,
 is_direct: bool,
 // screen
 // share_list
+client_owner: *xph.Client,

@@ -178,6 +178,17 @@ pub fn discard_and_close_read_fds(self: *Self, num_fds: usize) void {
 }
 
 pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator) !xph.message.Request(T) {
+    const request_header = self.peek_read_buffer(xph.request.RequestHeader) orelse return error.RequestBadLength;
+    const request_length = request_header.get_length_in_bytes();
+    if (self.read_buffer_data_size() < request_length)
+        return error.RequestDataNotAvailableYet;
+
+    var fsr = xph.request.FixedSizeReader(@TypeOf(self.read_buffer)).init(&self.read_buffer, request_length);
+    const req_data = try xph.request.read_request(T, fsr.reader(), allocator);
+    return xph.message.Request(T).init(&req_data);
+}
+
+pub fn read_request_assume_correct_size(self: *Self, comptime T: type, allocator: std.mem.Allocator) !xph.message.Request(T) {
     const req_data = try xph.request.read_request(T, self.read_buffer.reader(), allocator);
     return xph.message.Request(T).init(&req_data);
 }

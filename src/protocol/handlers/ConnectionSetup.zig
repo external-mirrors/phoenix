@@ -2,6 +2,18 @@ const std = @import("std");
 const xph = @import("../../xphoenix.zig");
 const x11 = xph.x11;
 
+fn reply_with_error(client: *xph.Client, comptime format: []const u8, args: anytype) !void {
+    var failed_reason_buf: [1024]u8 = undefined;
+    const failed_reason = try std.fmt.bufPrint(&failed_reason_buf, format, args);
+
+    var rep = ConnectionSetupFailedReply{
+        .reason = .{ .items = failed_reason },
+    };
+
+    try client.write_reply(&rep);
+    try client.flush_write_buffer();
+}
+
 /// Returns true if there was enough data from the client to handle the request
 pub fn handle_client_connect(server: *xph.Server, client: *xph.Client, root_window: *xph.Window, allocator: std.mem.Allocator) !bool {
     // TODO: byteswap
@@ -11,23 +23,18 @@ pub fn handle_client_connect(server: *xph.Server, client: *xph.Client, root_wind
 
     const server_byte_order: ConnectionSetupRequestByteOrder = if (x11.native_endian == .little) .little else .big;
     if (connection_setup_request_header.byte_order != server_byte_order) {
-        var failed_reason_buf: [256]u8 = undefined;
-        const failed_reason = std.fmt.bufPrint(
-            &failed_reason_buf,
+        try reply_with_error(
+            client,
             "The server doesn't support swapped endian. Client is {s} endian while the server is {s} endian",
             .{ @tagName(connection_setup_request_header.byte_order), @tagName(server_byte_order) },
-        ) catch unreachable;
-
-        var rep = ConnectionSetupFailedReply{
-            .reason = .{ .items = failed_reason },
-        };
-
-        try client.write_reply(&rep);
-        try client.flush_write_buffer();
-        return true;
+        );
+        return false;
     }
 
-    var req = try client.read_request(ConnectionSetupRequest, allocator);
+    var req = client.read_request_assume_correct_size(ConnectionSetupRequest, allocator) catch |err| {
+        try reply_with_error(client, "There was an error handling the connection request, error: {s}", .{@errorName(err)});
+        return false;
+    };
     defer req.deinit();
 
     std.log.info("auth_protocol_name_length: {s}", .{req.request.auth_protocol_name.items});

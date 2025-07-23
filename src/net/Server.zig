@@ -298,9 +298,9 @@ fn process_all_client_requests(self: *Self, client: *xph.Client) bool {
 fn handle_client_request(self: *Self, client: *xph.Client) !bool {
     // TODO: Byteswap
     const request_header = client.peek_read_buffer(xph.request.RequestHeader) orelse return false;
-    const request_header_length = request_header.get_length_in_bytes();
-    std.log.info("Got client data. Opcode: {d}:{d}, length: {d}", .{ request_header.major_opcode, request_header.minor_opcode, request_header_length });
-    if (client.read_buffer_data_size() < request_header_length)
+    const request_length = request_header.get_length_in_bytes();
+    std.log.info("Got client data. Opcode: {d}:{d}, length: {d}", .{ request_header.major_opcode, request_header.minor_opcode, request_length });
+    if (client.read_buffer_data_size() < request_length)
         return false;
 
     const request_context = xph.RequestContext{
@@ -315,24 +315,43 @@ fn handle_client_request(self: *Self, client: *xph.Client) !bool {
 
     // TODO: Respond to client with proper error
     if (request_header.major_opcode == 0) {
-        return error.InvalidMajorOpcode;
+        std.log.err("Received invalid request from client (opcode 0). Sequence number: {d}, header: {s}", .{ request_context.sequence_number, x11.stringify_fmt(request_header) });
+        try request_context.client.write_error(request_context, .request, 0);
     } else if (request_header.major_opcode >= 1 and request_header.major_opcode <= xph.opcode.core_opcode_max) {
-        try xph.core.handle_request(request_context);
+        xph.core.handle_request(request_context) catch |err| switch (err) {
+            error.OutOfMemory => return err,
+            error.EndOfStream,
+            error.RequestBadLength,
+            error.RequestDataNotAvailableYet,
+            => try request_context.client.write_error(request_context, .length, 0),
+            error.InvalidEnumTag => try request_context.client.write_error(request_context, .value, 0), // TODO: Return the correct value
+        };
     } else {
-        try xph.extension.handle_request(request_context);
+        xph.extension.handle_request(request_context) catch |err| switch (err) {
+            error.OutOfMemory => return err,
+            error.EndOfStream,
+            error.RequestBadLength,
+            error.RequestDataNotAvailableYet,
+            => try request_context.client.write_error(request_context, .length, 0),
+            error.InvalidEnumTag => try request_context.client.write_error(request_context, .value, 0), // TODO: Return the correct value
+            else => {
+                std.log.err("TODO: xph.extension.handle_request: Handle error better: {s}", .{@errorName(err)});
+                return err;
+            },
+        };
     }
 
     const bytes_available_to_read_after = client.read_buffer_data_size();
     std.debug.assert(bytes_available_to_read_after <= bytes_available_to_read_before);
     // TODO: If this isn't equal to request_header_length then return Length error. For now we skip those bytes
     const bytes_read = bytes_available_to_read_before - bytes_available_to_read_after;
-    if (bytes_read > request_header_length) {
+    if (bytes_read > request_length) {
         // TODO: Output error to client
-        std.log.err("Handler read more bytes than request header! expected to read {d} bytes, actually read {d} bytes", .{ request_header_length, bytes_read });
-    } else if (bytes_read < request_header_length) {
+        std.log.err("Handler read more bytes than request header! expected to read {d} bytes, actually read {d} bytes", .{ request_length, bytes_read });
+    } else if (bytes_read < request_length) {
         // TODO: Output error to client, once all requests have a handler
-        std.log.info("Handler read {d} bytes which is less than request header length {d}, skipping the extra bytes", .{ bytes_read, request_header_length });
-        client.skip_read_bytes(request_header_length - bytes_read);
+        std.log.info("Handler read {d} bytes which is less than request header length {d}, skipping the extra bytes", .{ bytes_read, request_length });
+        client.skip_read_bytes(request_length - bytes_read);
     }
 
     try client.flush_write_buffer();

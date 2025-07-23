@@ -5,9 +5,6 @@ const x11 = @import("x11.zig");
 // TODO: Use an arena allocator for all data and wrap the result type in a new struct which
 // includes the arena allocator and has a deinit method that does deinit on the arena,
 // just like how std.json.parse works.
-// TODO: Validate if the read data matches the request length.
-/// The returned data can have reference to the slice in |reader|, so that slice needs to be valid
-/// as long as the returned data is used.
 pub fn read_request(comptime T: type, reader: anytype, allocator: std.mem.Allocator) !T {
     var request_size: usize = 0;
     return read_request_with_size_calculation(T, reader, &request_size, allocator);
@@ -96,10 +93,43 @@ pub const RequestHeader = extern struct {
 
     pub fn get_length_in_bytes(self: RequestHeader) u32 {
         // X11 request length is in "unit size", where each unit is 4 bytes
-        return self.length * 4;
+        const length: u32 = @intCast(self.length);
+        return length * 4;
     }
 
     comptime {
         std.debug.assert(@sizeOf(@This()) == 4);
     }
 };
+
+pub fn FixedSizeReader(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        pub const Reader = std.io.Reader(*Self, error{EndOfStream}, read_fn);
+
+        obj: *T,
+        max_bytes_read: usize,
+        num_bytes_read: usize,
+
+        pub fn init(obj: *T, max_bytes_read: usize) Self {
+            return .{
+                .obj = obj,
+                .max_bytes_read = max_bytes_read,
+                .num_bytes_read = 0,
+            };
+        }
+
+        pub fn reader(self: *Self) Reader {
+            return .{ .context = self };
+        }
+
+        fn read_fn(self: *Self, dest: []u8) error{EndOfStream}!usize {
+            if (self.num_bytes_read + dest.len > self.max_bytes_read)
+                return error.EndOfStream;
+
+            const bytes_read = self.obj.read(dest);
+            self.num_bytes_read += bytes_read;
+            return bytes_read;
+        }
+    };
+}

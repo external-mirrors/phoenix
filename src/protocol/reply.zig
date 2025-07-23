@@ -5,7 +5,7 @@ const x11 = xph.x11;
 // TODO: Byteswap
 pub fn write_reply(comptime T: type, reply: *T, writer: anytype) !void {
     reply_set_length_fields_root(T, reply);
-    std.log.info("Reply: {}", .{x11.stringify_fmt(reply)});
+    std.log.info("Reply: " ++ @typeName(T) ++ " {}", .{x11.stringify_fmt(reply)});
     return write_reply_fields(T, reply, writer);
 }
 

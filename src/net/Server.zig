@@ -319,7 +319,7 @@ fn handle_client_request(self: *Self, client: *phx.Client) !bool {
         try request_context.client.write_error(request_context, .request, 0);
     } else if (request_header.major_opcode >= 1 and request_header.major_opcode <= phx.opcode.core_opcode_max) {
         phx.core.handle_request(request_context) catch |err| switch (err) {
-            error.OutOfMemory => return err,
+            error.OutOfMemory => try request_context.client.write_error(request_context, .alloc, 0),
             error.EndOfStream,
             error.RequestBadLength,
             error.RequestDataNotAvailableYet,
@@ -328,7 +328,7 @@ fn handle_client_request(self: *Self, client: *phx.Client) !bool {
         };
     } else {
         phx.extension.handle_request(request_context) catch |err| switch (err) {
-            error.OutOfMemory => return err,
+            error.OutOfMemory => try request_context.client.write_error(request_context, .alloc, 0),
             error.EndOfStream,
             error.RequestBadLength,
             error.RequestDataNotAvailableYet,

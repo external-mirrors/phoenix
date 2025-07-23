@@ -27,7 +27,7 @@ pub fn build(b: *std.Build) !void {
     exe_mod.addOptions("config", config);
 
     const exe = b.addExecutable(.{
-        .name = "xphoenix",
+        .name = "phoenix",
         .root_module = exe_mod,
     });
     b.installArtifact(exe);
@@ -51,7 +51,7 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.linkSystemLibrary("gl", .{});
     exe.root_module.linkSystemLibrary("egl", .{});
 
-    const check = b.step("check", "Check if Xphoenix compiles");
+    const check = b.step("check", "Check if Phoenix compiles");
     check.dependOn(&exe.step);
 
     const run_cmd = b.addRunArtifact(exe);

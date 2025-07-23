@@ -1,12 +1,12 @@
 const std = @import("std");
-const xph = @import("../../xphoenix.zig");
-const x11 = xph.x11;
+const phx = @import("../../phoenix.zig");
+const x11 = phx.x11;
 
-pub fn handle_request(request_context: xph.RequestContext) !void {
+pub fn handle_request(request_context: phx.RequestContext) !void {
     std.log.info("Handling core request: {d}", .{request_context.header.major_opcode});
 
     // TODO: Remove
-    const major_opcode = std.meta.intToEnum(xph.opcode.Major, request_context.header.major_opcode) catch |err| switch (err) {
+    const major_opcode = std.meta.intToEnum(phx.opcode.Major, request_context.header.major_opcode) catch |err| switch (err) {
         error.InvalidEnumTag => {
             std.log.err("Unimplemented core request: {d}", .{request_context.header.major_opcode});
             return request_context.client.write_error(request_context, .implementation, 0);
@@ -49,7 +49,7 @@ fn window_class_validate_attributes(class: x11.Class, req: *const CreateWindowRe
 
 // TODO: Handle all params properly
 // TODO: Only one client at a time should be allowed to use redirect event mask and buttonpress on a window (or its parent)
-fn create_window(request_context: xph.RequestContext) !void {
+fn create_window(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(CreateWindowRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("CreateWindow request: {s}", .{x11.stringify_fmt(req)});
@@ -68,7 +68,7 @@ fn create_window(request_context: xph.RequestContext) !void {
     if (!window_class_validate_attributes(class, &req.request))
         return request_context.client.write_error(request_context, .match, 0);
 
-    const visual: *const xph.Visual = switch (@intFromEnum(req.request.visual)) {
+    const visual: *const phx.Visual = switch (@intFromEnum(req.request.visual)) {
         copy_from_parent => parent_window.attributes.visual,
         else => request_context.server.get_visual_by_id(req.request.visual) orelse {
             std.log.err("Received invalid visual {d} in CreateWindow request", .{req.request.visual});
@@ -77,7 +77,7 @@ fn create_window(request_context: xph.RequestContext) !void {
     };
 
     const background_pixmap_arg = req.request.get_value(x11.Card32, "background_pixmap") orelse none;
-    const background_pixmap: ?*const xph.Pixmap = switch (background_pixmap_arg) {
+    const background_pixmap: ?*const phx.Pixmap = switch (background_pixmap_arg) {
         none => null,
         parent_relative => parent_window.attributes.background_pixmap,
         else => request_context.server.get_pixmap(@enumFromInt(background_pixmap_arg)) orelse {
@@ -87,7 +87,7 @@ fn create_window(request_context: xph.RequestContext) !void {
     };
 
     const border_pixmap_arg = req.request.get_value(x11.Card32, "border_pixmap") orelse none;
-    const border_pixmap: ?*const xph.Pixmap = switch (border_pixmap_arg) {
+    const border_pixmap: ?*const phx.Pixmap = switch (border_pixmap_arg) {
         copy_from_parent => parent_window.attributes.border_pixmap,
         else => request_context.server.get_pixmap(@enumFromInt(border_pixmap_arg)) orelse {
             std.log.err("Received invalid border pixmap {d} in CreateWindow request", .{border_pixmap_arg});
@@ -96,7 +96,7 @@ fn create_window(request_context: xph.RequestContext) !void {
     };
 
     const colormap_arg = req.request.get_value(x11.Card32, "colormap") orelse copy_from_parent;
-    const colormap: xph.Colormap = switch (colormap_arg) {
+    const colormap: phx.Colormap = switch (colormap_arg) {
         copy_from_parent => parent_window.attributes.colormap,
         else => request_context.server.get_colormap(@enumFromInt(colormap_arg)) orelse {
             std.log.err("Received invalid colormap {d} in CreateWindow request", .{colormap_arg});
@@ -121,7 +121,7 @@ fn create_window(request_context: xph.RequestContext) !void {
     };
 
     const backing_store_arg = req.request.get_value(x11.Card32, "backing_store") orelse 0;
-    const backing_store = std.meta.intToEnum(xph.Window.BackingStore, backing_store_arg) catch |err| switch (err) {
+    const backing_store = std.meta.intToEnum(phx.Window.BackingStore, backing_store_arg) catch |err| switch (err) {
         error.InvalidEnumTag => {
             std.log.err("Received invalid backing store {d} in CreateWindow request", .{backing_store_arg});
             return request_context.client.write_error(request_context, .value, backing_store_arg);
@@ -136,7 +136,7 @@ fn create_window(request_context: xph.RequestContext) !void {
     const override_redirect = if (req.request.get_value(x11.Card8, "override_redirect") orelse 0 == 0) false else true;
     const event_mask: EventMask = @bitCast(req.request.get_value(x11.Card32, "event_mask") orelse 0);
 
-    const window_attributes = xph.Window.Attributes{
+    const window_attributes = phx.Window.Attributes{
         .geometry = .{
             .x = req.request.x,
             .y = req.request.y,
@@ -161,7 +161,7 @@ fn create_window(request_context: xph.RequestContext) !void {
         .override_redirect = override_redirect,
     };
 
-    var window = if (xph.Window.create(
+    var window = if (phx.Window.create(
         parent_window,
         req.request.window,
         &window_attributes,
@@ -188,7 +188,7 @@ fn create_window(request_context: xph.RequestContext) !void {
     };
     errdefer window.destroy();
 
-    const create_notify_event = xph.event.Event{
+    const create_notify_event = phx.event.Event{
         .create_notify = .{
             .sequence_number = request_context.sequence_number,
             .parent = req.request.parent,
@@ -204,7 +204,7 @@ fn create_window(request_context: xph.RequestContext) !void {
     window.write_core_event_to_event_listeners(&create_notify_event);
 }
 
-fn destroy_window(request_context: xph.RequestContext) !void {
+fn destroy_window(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(DestroyWindowRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("DestroyWindow request: {s}", .{x11.stringify_fmt(req)});
@@ -222,7 +222,7 @@ fn destroy_window(request_context: xph.RequestContext) !void {
     window.destroy();
 }
 
-fn map_window(request_context: xph.RequestContext) !void {
+fn map_window(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(MapWindowRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("MapWindow request: {s}", .{x11.stringify_fmt(req)});
@@ -238,7 +238,7 @@ fn map_window(request_context: xph.RequestContext) !void {
     window.attributes.map_state = .viewable;
 
     // TODO: Dont always do this, check protocol spec
-    const create_notify_event = xph.event.Event{
+    const create_notify_event = phx.event.Event{
         .map_notify = .{
             .sequence_number = request_context.sequence_number,
             .event = @enumFromInt(0), // TODO: ?
@@ -249,7 +249,7 @@ fn map_window(request_context: xph.RequestContext) !void {
     window.write_core_event_to_event_listeners(&create_notify_event);
 }
 
-fn get_geometry(request_context: xph.RequestContext) !void {
+fn get_geometry(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(GetGeometryRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("GetGeometry request: {s}", .{x11.stringify_fmt(req.request)});
@@ -273,14 +273,14 @@ fn get_geometry(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn intern_atom(request_context: xph.RequestContext) !void {
+fn intern_atom(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(InternAtomRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("InternAtom request: {s}", .{x11.stringify_fmt(req.request)});
 
     var atom: x11.Atom = undefined;
     if (req.request.only_if_exists) {
-        atom = if (request_context.server.atom_manager.get_atom_by_name(req.request.name.items)) |atom_id| atom_id else xph.AtomManager.Predefined.none;
+        atom = if (request_context.server.atom_manager.get_atom_by_name(req.request.name.items)) |atom_id| atom_id else phx.AtomManager.Predefined.none;
     } else {
         atom = if (request_context.server.atom_manager.get_atom_by_name_create_if_not_exists(req.request.name.items)) |atom_id| atom_id else |err| switch (err) {
             error.OutOfMemory, error.TooManyAtoms => return request_context.client.write_error(request_context, .alloc, 0),
@@ -295,12 +295,12 @@ fn intern_atom(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn change_property(_: xph.RequestContext) !void {
+fn change_property(_: phx.RequestContext) !void {
     // TODO: Implement
 }
 
 // TODO: Actually read the request values, handling them properly
-fn get_property(request_context: xph.RequestContext) !void {
+fn get_property(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(GetPropertyRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("GetProperty request: {s}", .{x11.stringify_fmt(req.request)});
@@ -316,7 +316,7 @@ fn get_property(request_context: xph.RequestContext) !void {
     };
 
     // TODO: Handle this properly
-    if (std.meta.activeTag(property.*) == .string8 and req.request.type == xph.AtomManager.Predefined.string) {
+    if (std.meta.activeTag(property.*) == .string8 and req.request.type == phx.AtomManager.Predefined.string) {
         // TODO: Properly set bytes_after and all that crap
         var rep = GetPropertyCard8Reply{
             .sequence_number = request_context.sequence_number,
@@ -331,7 +331,7 @@ fn get_property(request_context: xph.RequestContext) !void {
     }
 }
 
-fn get_input_focus(request_context: xph.RequestContext) !void {
+fn get_input_focus(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(GetInputFocusRequest, request_context.allocator);
     defer req.deinit();
 
@@ -344,7 +344,7 @@ fn get_input_focus(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn free_pixmap(request_context: xph.RequestContext) !void {
+fn free_pixmap(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(FreePixmapRequest, request_context.allocator);
     defer req.deinit();
 
@@ -356,22 +356,22 @@ fn free_pixmap(request_context: xph.RequestContext) !void {
     pixmap.destroy();
 }
 
-fn create_gc(_: xph.RequestContext) !void {
+fn create_gc(_: phx.RequestContext) !void {
     std.log.err("Request stub: CreateGC", .{});
 }
 
-fn free_gc(_: xph.RequestContext) !void {
+fn free_gc(_: phx.RequestContext) !void {
     std.log.err("Request stub: FreeGC", .{});
 }
 
-fn create_colormap(request_context: xph.RequestContext) !void {
+fn create_colormap(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(CreateColormapRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("CreateColormap request: {s}", .{x11.stringify_fmt(req.request)});
 
     // TODO: Do something with req.request.alloc.
 
-    // The window in CreateColormap is for selecting the screen. In Xphoenix we only have one screen
+    // The window in CreateColormap is for selecting the screen. In Phoenix we only have one screen
     // so we only verify if the window is valid.
     _ = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in CreateColormap request", .{req.request.window});
@@ -383,7 +383,7 @@ fn create_colormap(request_context: xph.RequestContext) !void {
         return request_context.client.write_error(request_context, .match, @intFromEnum(req.request.visual_id));
     };
 
-    const colormap = xph.Colormap{ .id = req.request.colormap, .visual = visual };
+    const colormap = phx.Colormap{ .id = req.request.colormap, .visual = visual };
     request_context.client.add_colormap(colormap) catch |err| switch (err) {
         error.ResourceNotOwnedByClient => {
             std.log.err("Received colormap id {d} in CreateColormap request which doesn't belong to the client", .{req.request.colormap});
@@ -400,7 +400,7 @@ fn create_colormap(request_context: xph.RequestContext) !void {
     errdefer request_context.client.remove_resource(colormap.id);
 }
 
-fn query_extension(request_context: xph.RequestContext) !void {
+fn query_extension(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(QueryExtensionRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("QueryExtension request: {s}", .{x11.stringify_fmt(req.request)});
@@ -415,24 +415,24 @@ fn query_extension(request_context: xph.RequestContext) !void {
 
     if (std.mem.eql(u8, req.request.name.items, "DRI3")) {
         rep.present = true;
-        rep.major_opcode = @intFromEnum(xph.opcode.Major.dri3);
+        rep.major_opcode = @intFromEnum(phx.opcode.Major.dri3);
     } else if (std.mem.eql(u8, req.request.name.items, "XFIXES")) {
         rep.present = true;
-        rep.major_opcode = @intFromEnum(xph.opcode.Major.xfixes);
+        rep.major_opcode = @intFromEnum(phx.opcode.Major.xfixes);
     } else if (std.mem.eql(u8, req.request.name.items, "Present")) {
         rep.present = true;
-        rep.major_opcode = @intFromEnum(xph.opcode.Major.present);
+        rep.major_opcode = @intFromEnum(phx.opcode.Major.present);
     } else if (std.mem.eql(u8, req.request.name.items, "SYNC")) {
         rep.present = true;
-        rep.major_opcode = @intFromEnum(xph.opcode.Major.sync);
-        rep.first_error = xph.err.sync_first_error;
+        rep.major_opcode = @intFromEnum(phx.opcode.Major.sync);
+        rep.first_error = phx.err.sync_first_error;
     } else if (std.mem.eql(u8, req.request.name.items, "GLX")) {
         rep.present = true;
-        rep.major_opcode = @intFromEnum(xph.opcode.Major.glx);
-        rep.first_error = xph.err.glx_first_error;
+        rep.major_opcode = @intFromEnum(phx.opcode.Major.glx);
+        rep.first_error = phx.err.glx_first_error;
     } else if (std.mem.eql(u8, req.request.name.items, "XKEYBOARD")) {
         rep.present = true;
-        rep.major_opcode = @intFromEnum(xph.opcode.Major.xkeyboard);
+        rep.major_opcode = @intFromEnum(phx.opcode.Major.xkeyboard);
     } else {
         std.log.err("QueryExtension: unsupported extension: {s}", .{req.request.name.items});
     }
@@ -654,7 +654,7 @@ const GetInputFocusRequest = struct {
 };
 
 const GetInputFocusReply = struct {
-    reply_type: xph.reply.ReplyType = .reply,
+    reply_type: phx.reply.ReplyType = .reply,
     revert_to: RevertTo,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -691,7 +691,7 @@ const QueryExtensionRequest = struct {
 };
 
 const QueryExtensionReply = struct {
-    reply_type: xph.reply.ReplyType = .reply,
+    reply_type: phx.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -715,7 +715,7 @@ const GetPropertyRequest = struct {
 
 fn GetPropertyReply(comptime DataType: type) type {
     return struct {
-        reply_type: xph.reply.ReplyType = .reply,
+        reply_type: phx.reply.ReplyType = .reply,
         format: x11.Card8 = @sizeOf(DataType),
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -739,7 +739,7 @@ const GetGeometryRequest = struct {
 };
 
 const GetGeometryReply = struct {
-    reply_type: xph.reply.ReplyType = .reply,
+    reply_type: phx.reply.ReplyType = .reply,
     depth: x11.Card8,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -762,7 +762,7 @@ const InternAtomRequest = struct {
 };
 
 const InternAtomReply = struct {
-    reply_type: xph.reply.ReplyType = .reply,
+    reply_type: phx.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -771,7 +771,7 @@ const InternAtomReply = struct {
 };
 
 const ListExtensionsReply = struct {
-    reply_type: xph.reply.ReplyType = .reply,
+    reply_type: phx.reply.ReplyType = .reply,
     num_strs: x11.Card8,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply

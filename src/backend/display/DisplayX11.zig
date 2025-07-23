@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const xph = @import("../../xphoenix.zig");
-const c = xph.c;
+const phx = @import("../../phoenix.zig");
+const c = phx.c;
 const cstdlib = std.c;
 
 const Self = @This();
@@ -12,7 +12,7 @@ const gl_debug = builtin.mode == .Debug;
 allocator: std.mem.Allocator,
 connection: *c.xcb_connection_t,
 root_window: c.xcb_window_t,
-graphics: xph.Graphics,
+graphics: phx.Graphics,
 width: u32,
 height: u32,
 size_updated: bool,
@@ -55,7 +55,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         return error.FailedToCreateRootWindow;
     }
 
-    var graphics = try xph.Graphics.create_egl(c.EGL_PLATFORM_XCB_EXT, c.EGL_PLATFORM_XCB_SCREEN_EXT, connection, window_id, gl_debug, allocator);
+    var graphics = try phx.Graphics.create_egl(c.EGL_PLATFORM_XCB_EXT, c.EGL_PLATFORM_XCB_SCREEN_EXT, connection, window_id, gl_debug, allocator);
     errdefer graphics.destroy();
 
     const map_cookie = c.xcb_map_window_checked(connection, window_id);
@@ -104,28 +104,28 @@ pub fn get_drm_card_fd(self: *Self) std.posix.fd_t {
 }
 
 /// Returns a graphics window id. This will never return 0
-pub fn create_window(self: *Self, window: *const xph.Window) !u32 {
+pub fn create_window(self: *Self, window: *const phx.Window) !u32 {
     return self.graphics.create_window(window);
 }
 
-pub fn destroy_window(self: *Self, window: *const xph.Window) void {
+pub fn destroy_window(self: *Self, window: *const phx.Window) void {
     self.graphics.destroy_window(window);
 }
 
 /// Returns a texture id. This will never return 0
-pub fn create_texture_from_pixmap(self: *Self, pixmap: *const xph.Pixmap) !u32 {
+pub fn create_texture_from_pixmap(self: *Self, pixmap: *const phx.Pixmap) !u32 {
     return self.graphics.create_texture_from_pixmap(pixmap);
 }
 
-pub fn destroy_pixmap(self: *Self, pixmap: *const xph.Pixmap) void {
+pub fn destroy_pixmap(self: *Self, pixmap: *const phx.Pixmap) void {
     self.graphics.destroy_pixmap(pixmap);
 }
 
-pub fn present_pixmap(self: *Self, pixmap: *const xph.Pixmap, window: *const xph.Window, target_msc: u64) !void {
+pub fn present_pixmap(self: *Self, pixmap: *const phx.Pixmap, window: *const phx.Window, target_msc: u64) !void {
     return self.graphics.present_pixmap(pixmap, window, target_msc);
 }
 
-pub fn get_supported_modifiers(self: *Self, window: *xph.Window, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {
+pub fn get_supported_modifiers(self: *Self, window: *phx.Window, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {
     _ = window;
     // TODO: Do something with window
     return self.graphics.get_supported_modifiers(depth, bpp, modifiers);

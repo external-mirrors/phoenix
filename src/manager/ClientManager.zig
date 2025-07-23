@@ -1,6 +1,6 @@
 const std = @import("std");
-const xph = @import("../xphoenix.zig");
-const x11 = xph.x11;
+const phx = @import("../phoenix.zig");
+const x11 = phx.x11;
 
 const Self = @This();
 const ClientIndexHashMap = std.HashMap(std.posix.socket_t, usize, struct {
@@ -13,7 +13,7 @@ const ClientIndexHashMap = std.HashMap(std.posix.socket_t, usize, struct {
     }
 }, std.hash_map.default_max_load_percentage);
 
-clients: [xph.ResourceIdBaseManager.resource_id_base_size + 1]?*xph.Client,
+clients: [phx.ResourceIdBaseManager.resource_id_base_size + 1]?*phx.Client,
 clients_by_fd: ClientIndexHashMap,
 allocator: std.mem.Allocator,
 
@@ -41,11 +41,11 @@ pub fn deinit(self: *Self) void {
     self.clients_by_fd.deinit();
 }
 
-pub fn add_client(self: *Self, client: xph.Client) !*xph.Client {
-    const client_index = xph.ResourceIdBaseManager.resource_id_get_base_index(client.resource_id_base);
+pub fn add_client(self: *Self, client: phx.Client) !*phx.Client {
+    const client_index = phx.ResourceIdBaseManager.resource_id_get_base_index(client.resource_id_base);
     std.debug.assert(self.clients[client_index] == null);
 
-    const new_client = try self.allocator.create(xph.Client);
+    const new_client = try self.allocator.create(phx.Client);
     new_client.* = client;
     errdefer self.allocator.destroy(new_client);
 
@@ -68,12 +68,12 @@ pub fn remove_client(self: *Self, client_to_remove_fd: std.posix.socket_t) bool 
     return false;
 }
 
-pub fn get_client_by_fd(self: *Self, client_fd: std.posix.socket_t) ?*xph.Client {
+pub fn get_client_by_fd(self: *Self, client_fd: std.posix.socket_t) ?*phx.Client {
     return if (self.clients_by_fd.get(client_fd)) |client_index| self.clients[client_index] else null;
 }
 
-pub fn get_resource(self: *Self, resource_id: x11.ResourceId) ?xph.Resource {
-    const client_index = xph.ResourceIdBaseManager.resource_id_get_base_index(resource_id.to_int());
+pub fn get_resource(self: *Self, resource_id: x11.ResourceId) ?phx.Resource {
+    const client_index = phx.ResourceIdBaseManager.resource_id_get_base_index(resource_id.to_int());
     if (self.clients[client_index]) |client| {
         return client.get_resource(resource_id);
     } else {
@@ -84,8 +84,8 @@ pub fn get_resource(self: *Self, resource_id: x11.ResourceId) ?xph.Resource {
 pub fn get_resource_of_type(
     self: *Self,
     resource_id: x11.ResourceId,
-    comptime resource_tag: std.meta.Tag(xph.Resource),
-) ?std.meta.TagPayload(xph.Resource, resource_tag) {
+    comptime resource_tag: std.meta.Tag(phx.Resource),
+) ?std.meta.TagPayload(phx.Resource, resource_tag) {
     const resource = self.get_resource(resource_id) orelse return null;
     return if (std.meta.activeTag(resource) == resource_tag)
         @field(resource, @tagName(resource_tag))

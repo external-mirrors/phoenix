@@ -1,5 +1,5 @@
 const std = @import("std");
-const xph = @import("../../xphoenix.zig");
+const phx = @import("../../phoenix.zig");
 
 const Self = @This();
 
@@ -7,7 +7,7 @@ allocator: std.mem.Allocator,
 impl: DisplayImpl,
 
 pub fn create_x11(allocator: std.mem.Allocator) !Self {
-    const x11 = try allocator.create(xph.DisplayX11);
+    const x11 = try allocator.create(phx.DisplayX11);
     errdefer allocator.destroy(x11);
 
     x11.* = try .init(allocator);
@@ -38,45 +38,45 @@ pub fn get_drm_card_fd(self: *Self) std.posix.fd_t {
 }
 
 /// Returns a graphics window id. This will never return 0
-pub fn create_window(self: *Self, window: *const xph.Window) !u32 {
+pub fn create_window(self: *Self, window: *const phx.Window) !u32 {
     switch (self.impl) {
         inline else => |item| return item.create_window(window),
     }
 }
 
-pub fn destroy_window(self: *Self, window: *const xph.Window) void {
+pub fn destroy_window(self: *Self, window: *const phx.Window) void {
     switch (self.impl) {
         inline else => |item| return item.destroy_window(window),
     }
 }
 
 /// Returns a texture id. This will never return 0
-pub fn create_texture_from_pixmap(self: *Self, pixmap: *const xph.Pixmap) !u32 {
+pub fn create_texture_from_pixmap(self: *Self, pixmap: *const phx.Pixmap) !u32 {
     return switch (self.impl) {
         inline else => |item| item.create_texture_from_pixmap(pixmap),
     };
 }
 
-pub fn destroy_pixmap(self: *Self, pixmap: *const xph.Pixmap) void {
+pub fn destroy_pixmap(self: *Self, pixmap: *const phx.Pixmap) void {
     switch (self.impl) {
         inline else => |item| return item.destroy_pixmap(pixmap),
     }
 }
 
-pub fn present_pixmap(self: *Self, pixmap: *const xph.Pixmap, window: *const xph.Window, target_msc: u64) !void {
+pub fn present_pixmap(self: *Self, pixmap: *const phx.Pixmap, window: *const phx.Window, target_msc: u64) !void {
     return switch (self.impl) {
         inline else => |item| item.present_pixmap(pixmap, window, target_msc),
     };
 }
 
-pub fn get_supported_modifiers(self: *Self, window: *xph.Window, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {
+pub fn get_supported_modifiers(self: *Self, window: *phx.Window, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {
     return switch (self.impl) {
         inline else => |item| item.get_supported_modifiers(window, depth, bpp, modifiers),
     };
 }
 
 const DisplayImpl = union(enum) {
-    x11: *xph.DisplayX11,
+    x11: *phx.DisplayX11,
 };
 
 test "x11" {

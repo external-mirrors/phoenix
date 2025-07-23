@@ -1,6 +1,6 @@
 const std = @import("std");
-const xph = @import("../../xphoenix.zig");
-const c = xph.c;
+const phx = @import("../../phoenix.zig");
+const c = phx.c;
 
 const Self = @This();
 
@@ -15,7 +15,7 @@ pub fn create_egl(
     debug: bool,
     allocator: std.mem.Allocator,
 ) !Self {
-    const egl = try allocator.create(xph.GraphicsEgl);
+    const egl = try allocator.create(phx.GraphicsEgl);
     errdefer allocator.destroy(egl);
     egl.* = try .init(platform, screen_type, connection, window_id, debug, allocator);
     return .{
@@ -52,32 +52,32 @@ pub fn resize(self: *Self, width: u32, height: u32) void {
 }
 
 /// Returns a graphics window id. This will never return 0
-pub fn create_window(self: *Self, window: *const xph.Window) !u32 {
+pub fn create_window(self: *Self, window: *const phx.Window) !u32 {
     return switch (self.impl) {
         inline else => |item| item.create_window(window),
     };
 }
 
-pub fn destroy_window(self: *Self, window: *const xph.Window) void {
+pub fn destroy_window(self: *Self, window: *const phx.Window) void {
     return switch (self.impl) {
         inline else => |item| item.destroy_window(window),
     };
 }
 
 /// Returns a texture id. This will never return 0
-pub fn create_texture_from_pixmap(self: *Self, pixmap: *const xph.Pixmap) !u32 {
+pub fn create_texture_from_pixmap(self: *Self, pixmap: *const phx.Pixmap) !u32 {
     return switch (self.impl) {
         inline else => |item| item.create_texture_from_pixmap(pixmap),
     };
 }
 
-pub fn destroy_pixmap(self: *Self, pixmap: *const xph.Pixmap) void {
+pub fn destroy_pixmap(self: *Self, pixmap: *const phx.Pixmap) void {
     return switch (self.impl) {
         inline else => |item| item.destroy_pixmap(pixmap),
     };
 }
 
-pub fn present_pixmap(self: *Self, pixmap: *const xph.Pixmap, window: *const xph.Window, target_msc: u64) !void {
+pub fn present_pixmap(self: *Self, pixmap: *const phx.Pixmap, window: *const phx.Window, target_msc: u64) !void {
     return switch (self.impl) {
         inline else => |item| item.present_pixmap(pixmap, window, target_msc),
     };
@@ -90,7 +90,7 @@ pub fn get_supported_modifiers(self: *Self, depth: u8, bpp: u8, modifiers: *[64]
 }
 
 const GraphicsImpl = union(enum) {
-    egl: *xph.GraphicsEgl,
+    egl: *phx.GraphicsEgl,
 };
 
 pub const DmabufImport = struct {

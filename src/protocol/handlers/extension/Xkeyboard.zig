@@ -1,8 +1,8 @@
 const std = @import("std");
-const xph = @import("../../../xphoenix.zig");
-const x11 = xph.x11;
+const phx = @import("../../../phoenix.zig");
+const x11 = phx.x11;
 
-pub fn handle_request(request_context: xph.RequestContext) !void {
+pub fn handle_request(request_context: phx.RequestContext) !void {
     std.log.info("Handling xkeyboard request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove

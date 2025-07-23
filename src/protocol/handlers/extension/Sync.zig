@@ -1,8 +1,8 @@
 const std = @import("std");
-const xph = @import("../../../xphoenix.zig");
-const x11 = xph.x11;
+const phx = @import("../../../phoenix.zig");
+const x11 = phx.x11;
 
-pub fn handle_request(request_context: xph.RequestContext) !void {
+pub fn handle_request(request_context: phx.RequestContext) !void {
     std.log.info("Handling sync request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
@@ -19,14 +19,14 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
     };
 }
 
-fn initialize(request_context: xph.RequestContext) !void {
+fn initialize(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(SyncInitializeRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("SyncInitialize request: {s}", .{x11.stringify_fmt(req.request)});
 
-    const server_version = xph.Version{ .major = 3, .minor = 1 };
-    const client_version = xph.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
-    request_context.client.extension_versions.sync = xph.Version.min(server_version, client_version);
+    const server_version = phx.Version{ .major = 3, .minor = 1 };
+    const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
+    request_context.client.extension_versions.sync = phx.Version.min(server_version, client_version);
 
     var rep = SyncInitializeReply{
         .sequence_number = request_context.sequence_number,
@@ -36,14 +36,14 @@ fn initialize(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn destroy_fence(request_context: xph.RequestContext) !void {
+fn destroy_fence(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(SyncDestroyFenceRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("SyncDestroyFence request: {s}", .{x11.stringify_fmt(req.request)});
 
     var fence = request_context.server.get_fence(req.request.fence) orelse {
         std.log.err("Received invalid fence {d} in SyncDestroyFence request", .{req.request.fence});
-        return request_context.client.write_error(request_context, xph.err.sync_error_fence, req.request.fence.to_id().to_int());
+        return request_context.client.write_error(request_context, phx.err.sync_error_fence, req.request.fence.to_id().to_int());
     };
     fence.destroy();
 }
@@ -71,7 +71,7 @@ const SyncInitializeRequest = struct {
 };
 
 const SyncInitializeReply = struct {
-    type: xph.reply.ReplyType = .reply,
+    type: phx.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply

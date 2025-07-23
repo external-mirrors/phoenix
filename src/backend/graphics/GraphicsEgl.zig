@@ -1,6 +1,6 @@
 const std = @import("std");
-const xph = @import("../../xphoenix.zig");
-const c = xph.c;
+const phx = @import("../../phoenix.zig");
+const c = phx.c;
 
 const Self = @This();
 
@@ -417,7 +417,7 @@ pub fn resize(self: *Self, width: u32, height: u32) void {
 }
 
 /// Returns a graphics window id. This will never return 0
-pub fn create_window(self: *Self, window: *const xph.Window) !u32 {
+pub fn create_window(self: *Self, window: *const phx.Window) !u32 {
     self.mutex.lock();
     defer self.mutex.unlock();
 
@@ -437,7 +437,7 @@ pub fn create_window(self: *Self, window: *const xph.Window) !u32 {
     return id;
 }
 
-pub fn destroy_window(self: *Self, window: *const xph.Window) void {
+pub fn destroy_window(self: *Self, window: *const phx.Window) void {
     self.mutex.lock();
     defer self.mutex.unlock();
 
@@ -450,7 +450,7 @@ pub fn destroy_window(self: *Self, window: *const xph.Window) void {
 }
 
 /// Returns a texture id. This will never return 0
-pub fn create_texture_from_pixmap(self: *Self, pixmap: *const xph.Pixmap) !u32 {
+pub fn create_texture_from_pixmap(self: *Self, pixmap: *const phx.Pixmap) !u32 {
     std.debug.assert(pixmap.dmabuf_data.num_items <= drm_num_buf_attrs);
 
     self.mutex.lock();
@@ -468,7 +468,7 @@ pub fn create_texture_from_pixmap(self: *Self, pixmap: *const xph.Pixmap) !u32 {
     return texture_id;
 }
 
-pub fn destroy_pixmap(self: *Self, pixmap: *const xph.Pixmap) void {
+pub fn destroy_pixmap(self: *Self, pixmap: *const phx.Pixmap) void {
     self.mutex.lock();
     defer self.mutex.unlock();
 
@@ -480,7 +480,7 @@ pub fn destroy_pixmap(self: *Self, pixmap: *const xph.Pixmap) void {
     }
 }
 
-pub fn present_pixmap(self: *Self, pixmap: *const xph.Pixmap, window: *const xph.Window, target_msc: u64) !void {
+pub fn present_pixmap(self: *Self, pixmap: *const phx.Pixmap, window: *const phx.Window, target_msc: u64) !void {
     self.mutex.lock();
     defer self.mutex.unlock();
 
@@ -660,7 +660,7 @@ fn fourcc(a: u8, b: u8, cc: u8, d: u8) u32 {
 
 const DmabufToImport = struct {
     texture_id: u32,
-    dmabuf_import: xph.Graphics.DmabufImport,
+    dmabuf_import: phx.Graphics.DmabufImport,
 };
 
 const PixmapTexture = struct {

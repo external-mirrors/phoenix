@@ -1,18 +1,18 @@
 const std = @import("std");
-const xph = @import("../xphoenix.zig");
-const x11 = xph.x11;
+const phx = @import("../phoenix.zig");
+const x11 = phx.x11;
 
 const Self = @This();
 
 allocator: std.mem.Allocator,
 fence_fd: std.posix.fd_t,
-shm_fence: *xph.xshmfence.xshmfence,
-client_owner: *xph.Client,
+shm_fence: *phx.xshmfence.xshmfence,
+client_owner: *phx.Client,
 
-id: xph.Sync.FenceId,
+id: phx.Sync.FenceId,
 
 /// The fence_fd is cleaned up if this fails
-pub fn create_from_fd(id: xph.Sync.FenceId, fence_fd: std.posix.fd_t, client_owner: *xph.Client, allocator: std.mem.Allocator) !*Self {
+pub fn create_from_fd(id: phx.Sync.FenceId, fence_fd: std.posix.fd_t, client_owner: *phx.Client, allocator: std.mem.Allocator) !*Self {
     var fence = allocator.create(Self) catch |err| {
         if (fence_fd > 0)
             std.posix.close(fence_fd);
@@ -20,7 +20,7 @@ pub fn create_from_fd(id: xph.Sync.FenceId, fence_fd: std.posix.fd_t, client_own
     };
     errdefer fence.destroy();
 
-    var shm_fence = try xph.xshmfence.xshmfence.create_from_fd(fence_fd);
+    var shm_fence = try phx.xshmfence.xshmfence.create_from_fd(fence_fd);
     errdefer shm_fence.destroy();
 
     fence.* = .{

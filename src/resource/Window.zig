@@ -1,14 +1,14 @@
 const std = @import("std");
-const xph = @import("../xphoenix.zig");
-const x11 = xph.x11;
+const phx = @import("../phoenix.zig");
+const x11 = phx.x11;
 
 const Self = @This();
 
 allocator: std.mem.Allocator,
 parent: ?*Self,
 children: std.ArrayList(*Self),
-server: ?*xph.Server,
-client_owner: *xph.Client,
+server: ?*phx.Server,
+client_owner: *phx.Client,
 deleting_self: bool,
 
 id: x11.WindowId,
@@ -22,9 +22,9 @@ pub fn create(
     parent: ?*Self,
     id: x11.WindowId,
     attributes: *const Attributes,
-    initial_event_mask: xph.core.EventMask,
-    server: ?*xph.Server,
-    client_owner: *xph.Client,
+    initial_event_mask: phx.core.EventMask,
+    server: ?*phx.Server,
+    client_owner: *phx.Client,
     allocator: std.mem.Allocator,
 ) !*Self {
     var window = try allocator.create(Self);
@@ -88,7 +88,7 @@ pub fn destroy(self: *Self) void {
     self.allocator.destroy(self);
 }
 
-pub fn get_geometry(self: *Self) xph.Geometry {
+pub fn get_geometry(self: *Self) phx.Geometry {
     return self.attributes.geometry;
 }
 
@@ -109,7 +109,7 @@ pub fn set_property_string8(self: *Self, atom: x11.Atom, value: []const u8) !voi
 }
 
 /// It's invalid to add multiple event listeners with the same client
-pub fn add_core_event_listener(self: *Self, client: *xph.Client, event_mask: xph.core.EventMask) !void {
+pub fn add_core_event_listener(self: *Self, client: *phx.Client, event_mask: phx.core.EventMask) !void {
     if (event_mask.is_empty())
         return;
 
@@ -129,7 +129,7 @@ pub fn add_core_event_listener(self: *Self, client: *xph.Client, event_mask: xph
     try client.listening_to_windows.append(self);
 }
 
-pub fn modify_core_event_listener(self: *Self, client: *xph.Client, event_mask: xph.core.EventMask) void {
+pub fn modify_core_event_listener(self: *Self, client: *phx.Client, event_mask: phx.core.EventMask) void {
     for (self.core_event_listeners.items) |*event_listener| {
         if (client == event_listener.client) {
             event_listener.event_mask = event_mask;
@@ -138,7 +138,7 @@ pub fn modify_core_event_listener(self: *Self, client: *xph.Client, event_mask: 
     }
 }
 
-pub fn remove_core_event_listener(self: *Self, client: *const xph.Client) void {
+pub fn remove_core_event_listener(self: *Self, client: *const phx.Client) void {
     for (self.core_event_listeners.items, 0..) |*event_listener, i| {
         if (client == event_listener.client) {
             _ = self.core_event_listeners.orderedRemove(i);
@@ -151,7 +151,7 @@ pub fn remove_core_event_listener(self: *Self, client: *const xph.Client) void {
 // TODO: parents should be checked for clients with redirect event mask, to only send the event to that client.
 // TODO: Is redirect/button press mask recursive to parents? should only one client be allowed to use that, even if it's set on a parent?
 // TODO: If window has override-redirect set then map and configure requests on the window should override a SubstructureRedirect on parents.
-pub fn write_core_event_to_event_listeners(self: *const Self, event: *const xph.event.Event) void {
+pub fn write_core_event_to_event_listeners(self: *const Self, event: *const phx.event.Event) void {
     for (self.core_event_listeners.items) |event_listener| {
         if (!core_event_mask_matches_event_code(event_listener.event_mask, event.any.code))
             continue;
@@ -176,7 +176,7 @@ pub fn write_core_event_to_event_listeners(self: *const Self, event: *const xph.
     }
 }
 
-inline fn core_event_mask_matches_event_code(event_mask: xph.core.EventMask, event_code: xph.event.EventCode) bool {
+inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, event_code: phx.event.EventCode) bool {
     return switch (event_code) {
         .key_press => event_mask.key_press,
         .key_release => event_mask.key_release,
@@ -189,7 +189,7 @@ inline fn core_event_mask_matches_event_code(event_mask: xph.core.EventMask, eve
 }
 
 /// It's invalid to add multiple event listeners with the same event id
-pub fn add_extension_event_listener(self: *Self, client: *xph.Client, event_id: x11.ResourceId, extension_major_opcode: xph.opcode.Major, event_mask: u32) !void {
+pub fn add_extension_event_listener(self: *Self, client: *phx.Client, event_id: x11.ResourceId, extension_major_opcode: phx.opcode.Major, event_mask: u32) !void {
     if (event_mask == 0)
         return;
 
@@ -205,7 +205,7 @@ pub fn add_extension_event_listener(self: *Self, client: *xph.Client, event_id: 
     errdefer _ = client.listening_to_windows.pop();
 }
 
-pub fn modify_extension_event_listener(self: *Self, client: *xph.Client, extension_major_opcode: xph.opcode.Major, event_mask: u32) void {
+pub fn modify_extension_event_listener(self: *Self, client: *phx.Client, extension_major_opcode: phx.opcode.Major, event_mask: u32) void {
     for (self.extension_event_listeners.items) |*event_listener| {
         if (client == event_listener.client and extension_major_opcode == event_listener.extension_major_opcode) {
             event_listener.event_mask = event_mask;
@@ -214,7 +214,7 @@ pub fn modify_extension_event_listener(self: *Self, client: *xph.Client, extensi
     }
 }
 
-pub fn remove_extension_event_listener(self: *Self, client: *const xph.Client, extension_major_opcode: xph.opcode.Major) void {
+pub fn remove_extension_event_listener(self: *Self, client: *const phx.Client, extension_major_opcode: phx.opcode.Major) void {
     for (self.extension_event_listeners.items, 0..) |*event_listener, i| {
         if (client == event_listener.client and extension_major_opcode == event_listener.extension_major_opcode) {
             _ = self.extension_event_listeners.orderedRemove(i);
@@ -249,7 +249,7 @@ pub fn write_extension_event_to_event_listeners(self: *const Self, ev: anytype) 
             // TODO: What should be done if this happens? disconnect the client?
             std.log.err(
                 "Failed to write (buffer) extension event {d} to client {d}, error: {s}",
-                .{ @intFromEnum(xph.event.EventCode.xge), event_listener.client.connection.stream.handle, @errorName(err) },
+                .{ @intFromEnum(phx.event.EventCode.xge), event_listener.client.connection.stream.handle, @errorName(err) },
             );
             continue;
         };
@@ -258,14 +258,14 @@ pub fn write_extension_event_to_event_listeners(self: *const Self, ev: anytype) 
             // TODO: What should be done if this happens? disconnect the client?
             std.log.err(
                 "Failed to write (flush) extension event {d} to client {d}, error: {s}",
-                .{ @intFromEnum(xph.event.EventCode.xge), event_listener.client.connection.stream.handle, @errorName(err) },
+                .{ @intFromEnum(phx.event.EventCode.xge), event_listener.client.connection.stream.handle, @errorName(err) },
             );
             continue;
         };
     }
 }
 
-pub fn remove_all_event_listeners_for_client(self: *Self, client: *const xph.Client) void {
+pub fn remove_all_event_listeners_for_client(self: *Self, client: *const phx.Client) void {
     for (self.core_event_listeners.items, 0..) |event_listener, i| {
         if (client == event_listener.client) {
             _ = self.core_event_listeners.orderedRemove(i);
@@ -293,20 +293,20 @@ fn remove_child(self: *Self, child_to_remove: *Self) void {
 }
 
 pub const Attributes = struct {
-    geometry: xph.Geometry,
+    geometry: phx.Geometry,
     class: x11.Class,
-    visual: *const xph.Visual,
-    bit_gravity: xph.core.BitGravity,
-    win_gravity: xph.core.WinGravity,
+    visual: *const phx.Visual,
+    bit_gravity: phx.core.BitGravity,
+    win_gravity: phx.core.WinGravity,
     backing_store: BackingStore,
     backing_planes: u32,
     backing_pixel: u32,
-    colormap: xph.Colormap,
-    cursor: ?*const xph.Cursor,
+    colormap: phx.Colormap,
+    cursor: ?*const phx.Cursor,
     map_state: MapState,
-    background_pixmap: ?*const xph.Pixmap,
+    background_pixmap: ?*const phx.Pixmap,
     background_pixel: u32,
-    border_pixmap: ?*const xph.Pixmap,
+    border_pixmap: ?*const phx.Pixmap,
     border_pixel: u32,
     save_under: bool,
     override_redirect: bool,
@@ -326,13 +326,13 @@ pub const BackingStore = enum(x11.Card8) {
 };
 
 const CoreEventListener = struct {
-    client: *xph.Client,
-    event_mask: xph.core.EventMask,
+    client: *phx.Client,
+    event_mask: phx.core.EventMask,
 };
 
 const ExtensionEventListener = struct {
-    client: *xph.Client,
+    client: *phx.Client,
     event_id: x11.ResourceId,
     event_mask: u32,
-    extension_major_opcode: xph.opcode.Major,
+    extension_major_opcode: phx.opcode.Major,
 };

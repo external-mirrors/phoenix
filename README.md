@@ -1,9 +1,9 @@
-# Xphoenix
-Xphoenix is a new X server, written from scratch in Zig (not a fork of Xorg server). This X server is designed to be a modern alternative to the Xorg server.
+# Phoenix
+Phoenix is a new X server, written from scratch in Zig (not a fork of Xorg server). This X server is designed to be a modern alternative to the Xorg server.
 
 ## Current state
-Xphoenix is not ready to be used yet. At the moment it can render simple applications that do GLX or EGL graphics (fully hardware accelerated) nested in an existing X server.
-Running Xphoenix nested will be the only supported mode until Xphoenix has progressed more and can run real-world applications.
+Phoenix is not ready to be used yet. At the moment it can render simple applications that do GLX or EGL graphics (fully hardware accelerated) nested in an existing X server.
+Running Phoenix nested will be the only supported mode until Phoenix has progressed more and can run real-world applications.
 
 ## Goals
 ### Simplicity
@@ -33,13 +33,13 @@ Applications can use this property to scale their content to the specified DPI f
 If there is a need for new features (such as HDR) then the X11 protocol will be extended.
 
 ### Wayland compatibility
-Some applications might only run on Wayland in the future. Such applications should be supported by either Xphoenix support Wayland natively or by running
+Some applications might only run on Wayland in the future. Such applications should be supported by either Phoenix support Wayland natively or by running
 an external application that works as a proxy between Wayland and X11 (such as 12to11).
 
 ### Nested display server
-Being able to run Xphoenix nested under X11 or Wayland with hardware acceleration.
-This is not only useful for debugging Xphoenix but also for developers who want to test their window manager or compositor without restarting the display server they are running.\
-Being able to run Xphoenix under Wayland as an alternative Xwayland server would be a good option.
+Being able to run Phoenix nested under X11 or Wayland with hardware acceleration.
+This is not only useful for debugging Phoenix but also for developers who want to test their window manager or compositor without restarting the display server they are running.\
+Being able to run Phoenix under Wayland as an alternative Xwayland server would be a good option.
 
 ## Non-goals
 ### Replacing the Xorg server
@@ -54,9 +54,9 @@ This can be reconsidered if there is a reason.
 ### Indirect (remote) GLX.
 This is very complex as there are a lot of functions that would need to be implemented. These days remote streaming options are more efficient. Alternatively a proxy for glx could be implemented that does remote rendering.
 
-## Differences between the X11 protocol and Xphoenix
-* Several parts of the X11 protocol (core) are mandatory to be implemented by an X server, such as font related operations. However these are not going to be implemented in Xphoenix.
-* Strings are in ISO Latin-1 encoding in the X11 protocol unless specified otherwise, however in Xphoenix all strings
+## Differences between the X11 protocol and Phoenix
+* Several parts of the X11 protocol (core) are mandatory to be implemented by an X server, such as font related operations. However these are not going to be implemented in Phoenix.
+* Strings are in ISO Latin-1 encoding in the X11 protocol unless specified otherwise, however in Phoenix all strings
 are UTF-8 unless the protocol states that it's not an ISO Latin-1 string.
 
 ## Installing
@@ -69,15 +69,15 @@ sudo zig build install -p /usr/local -Doptimize=ReleaseSafe
 ## Uninstalling
 Zig does currently not support the uninstall command so you have to remove files manually:
 ```sh
-sudo rm /usr/local/bin/xphoenix
+sudo rm /usr/local/bin/phoenix
 ```
 
 ## Building (for development)
-Run `zig build`, which builds Xphoenix in debug mode. The compiled binary will be available at `./zig-out/bin/xphoenix`. You can alternatively build and run with one command: `zig build run`.
+Run `zig build`, which builds Phoenix in debug mode. The compiled binary will be available at `./zig-out/bin/phoenix`. You can alternatively build and run with one command: `zig build run`.
 
 ## Dependencies
 * [Zig 0.14.1](https://ziglang.org/download/)
-* x11 (`xcb`) - for nested mode under X11, when building Xphoenix with `-Dbackends=x11`
-* wayland (`wayland-client`, `wayland-egl`) - for nested mode under Wayland, when building Xphoenix with `-Dbackends=wayland` (not currently supported)
-* drm (`libdrm`, `gbm`) - for running Xphoenix as a standalone X11 server, when building Xphoenix with `-Dbackends=drm` (not currently supported)
+* x11 (`xcb`) - for nested mode under X11, when building Phoenix with `-Dbackends=x11`
+* wayland (`wayland-client`, `wayland-egl`) - for nested mode under Wayland, when building Phoenix with `-Dbackends=wayland` (not currently supported)
+* drm (`libdrm`, `gbm`) - for running Phoenix as a standalone X11 server, when building Phoenix with `-Dbackends=drm` (not currently supported)
 * OpenGL (`libglvnd` which provides both `gl` and `egl`)

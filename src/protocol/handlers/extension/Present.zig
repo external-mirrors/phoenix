@@ -1,10 +1,10 @@
 const std = @import("std");
-const xph = @import("../../../xphoenix.zig");
+const phx = @import("../../../phoenix.zig");
 const Xfixes = @import("Xfixes.zig");
 const Randr = @import("Randr.zig");
-const x11 = xph.x11;
+const x11 = phx.x11;
 
-pub fn handle_request(request_context: xph.RequestContext) !void {
+pub fn handle_request(request_context: phx.RequestContext) !void {
     std.log.info("Handling present request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
@@ -22,14 +22,14 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
     };
 }
 
-fn query_version(request_context: xph.RequestContext) !void {
+fn query_version(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(PresentQueryVersionRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("PresentQueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
-    const server_version = xph.Version{ .major = 1, .minor = 4 };
-    const client_version = xph.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
-    request_context.client.extension_versions.present = xph.Version.min(server_version, client_version);
+    const server_version = phx.Version{ .major = 1, .minor = 4 };
+    const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
+    request_context.client.extension_versions.present = phx.Version.min(server_version, client_version);
 
     var rep = PresentQueryVersionReply{
         .sequence_number = request_context.sequence_number,
@@ -39,7 +39,7 @@ fn query_version(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn present_pixmap(request_context: xph.RequestContext) !void {
+fn present_pixmap(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(PresentPixmapRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("PresentPixmap request: {s}", .{x11.stringify_fmt(req.request)});
@@ -110,7 +110,7 @@ fn present_pixmap(request_context: xph.RequestContext) !void {
     window.write_extension_event_to_event_listeners(&complete_event);
 }
 
-fn select_input(request_context: xph.RequestContext) !void {
+fn select_input(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(PresentSelectInputRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("PresentSelectInput request: {s}", .{x11.stringify_fmt(req.request)});
@@ -139,7 +139,7 @@ fn select_input(request_context: xph.RequestContext) !void {
         if (req.request.event_mask.is_empty())
             return;
 
-        const event_context = xph.EventContext{ .id = event_id, .window = window };
+        const event_context = phx.EventContext{ .id = event_id, .window = window };
 
         request_context.client.add_event_context(event_context) catch |err| switch (err) {
             error.ResourceNotOwnedByClient => {
@@ -249,7 +249,7 @@ const PresentQueryVersionRequest = struct {
 };
 
 const PresentQueryVersionReply = struct {
-    type: xph.reply.ReplyType = .reply,
+    type: phx.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -270,8 +270,8 @@ const PresentPixmapRequest = struct {
     x_off: i16,
     y_off: i16,
     target_crtc: Randr.Crtc,
-    wait_fence: xph.Sync.FenceId,
-    idle_fence: xph.Sync.FenceId,
+    wait_fence: phx.Sync.FenceId,
+    idle_fence: phx.Sync.FenceId,
     options: PresentOptions,
     pad1: x11.Card32,
     target_msc: x11.Card64,
@@ -290,8 +290,8 @@ const PresentSelectInputRequest = struct {
 };
 
 const PresentCompleteNotifyEvent = extern struct {
-    code: xph.event.EventCode = .xge,
-    present_extension_opcode: xph.opcode.Major = .present,
+    code: phx.event.EventCode = .xge,
+    present_extension_opcode: phx.opcode.Major = .present,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
     present_event_code: PresentEventCode = .complete_notify,
@@ -303,9 +303,9 @@ const PresentCompleteNotifyEvent = extern struct {
     ust: x11.Card64,
     msc: x11.Card64,
 
-    pub fn get_extension_major_opcode(self: *const PresentCompleteNotifyEvent) xph.opcode.Major {
+    pub fn get_extension_major_opcode(self: *const PresentCompleteNotifyEvent) phx.opcode.Major {
         _ = self;
-        return xph.opcode.Major.present;
+        return phx.opcode.Major.present;
     }
 
     pub fn to_event_mask(self: *const PresentCompleteNotifyEvent) u32 {
@@ -321,8 +321,8 @@ const PresentCompleteNotifyEvent = extern struct {
 };
 
 const PresentIdleNotifyEvent = extern struct {
-    code: xph.event.EventCode = .xge,
-    present_extension_opcode: xph.opcode.Major = xph.opcode.Major.present,
+    code: phx.event.EventCode = .xge,
+    present_extension_opcode: phx.opcode.Major = phx.opcode.Major.present,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
     present_event_code: PresentEventCode = .idle_notify,
@@ -331,9 +331,9 @@ const PresentIdleNotifyEvent = extern struct {
     window: x11.WindowId,
     serial: x11.Card32,
     pixmap: x11.PixmapId,
-    idle_fence: xph.Sync.FenceId,
+    idle_fence: phx.Sync.FenceId,
 
-    pub fn get_extension_major_opcode(self: *const PresentIdleNotifyEvent) xph.opcode.Major {
+    pub fn get_extension_major_opcode(self: *const PresentIdleNotifyEvent) phx.opcode.Major {
         _ = self;
         return .present;
     }

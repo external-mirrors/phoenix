@@ -1,6 +1,6 @@
 const std = @import("std");
-const xph = @import("../../../xphoenix.zig");
-const x11 = xph.x11;
+const phx = @import("../../../phoenix.zig");
+const x11 = phx.x11;
 
 // For some reason string8 is null terminated in glx but not in the core x11 protocol.
 // This is not documented anywhere.
@@ -9,7 +9,7 @@ const server_vendor_name = "SGI";
 const server_version_str = "1.4";
 const glvnd = "mesa"; // TODO: gbm_device_get_backend_name
 
-pub fn handle_request(request_context: xph.RequestContext) !void {
+pub fn handle_request(request_context: phx.RequestContext) !void {
     std.log.info("Handling glx request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
@@ -34,7 +34,7 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
     };
 }
 
-fn create_context(request_context: xph.RequestContext) !void {
+fn create_context(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(GlxCreateContextRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxCreateContext request: {s}", .{x11.stringify_fmt(req.request)});
@@ -57,7 +57,7 @@ fn create_context(request_context: xph.RequestContext) !void {
     };
 
     // TODO: Use req.request.share_list
-    const glx_context = xph.GlxContext{
+    const glx_context = phx.GlxContext{
         .id = req.request.context,
         .visual = visual,
         .is_direct = req.request.is_direct,
@@ -78,26 +78,26 @@ fn create_context(request_context: xph.RequestContext) !void {
     };
 }
 
-fn destroy_context(request_context: xph.RequestContext) !void {
+fn destroy_context(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(GlxDestroyContextRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxDestroyContext request: {s}", .{x11.stringify_fmt(req.request)});
 
     var glx_context = request_context.server.get_glx_context(req.request.context) orelse {
         std.log.err("Received invalid glx context {d} in GlxDestroyContext request", .{req.request.context});
-        return request_context.client.write_error(request_context, xph.err.glx_error_bad_context, @intFromEnum(req.request.context));
+        return request_context.client.write_error(request_context, phx.err.glx_error_bad_context, @intFromEnum(req.request.context));
     };
     glx_context.client_owner.remove_resource(glx_context.id.to_id());
 }
 
-fn is_direct(request_context: xph.RequestContext) !void {
+fn is_direct(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(GlxIsDirectRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxIsDirect request: {s}", .{x11.stringify_fmt(req.request)});
 
     const glx_context = request_context.server.get_glx_context(req.request.context) orelse {
         std.log.err("Received invalid glx context {d} in GlxIsDirect request", .{req.request.context});
-        return request_context.client.write_error(request_context, xph.err.glx_error_bad_context, @intFromEnum(req.request.context));
+        return request_context.client.write_error(request_context, phx.err.glx_error_bad_context, @intFromEnum(req.request.context));
     };
 
     var rep = GlxIsDirectReply{
@@ -107,14 +107,14 @@ fn is_direct(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn query_version(request_context: xph.RequestContext) !void {
+fn query_version(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(GlxQueryVersionRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxQueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
-    const server_version = xph.Version{ .major = 1, .minor = 4 };
-    const client_version = xph.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
-    request_context.client.extension_versions.server_glx = xph.Version.min(server_version, client_version);
+    const server_version = phx.Version{ .major = 1, .minor = 4 };
+    const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
+    request_context.client.extension_versions.server_glx = phx.Version.min(server_version, client_version);
 
     var rep = GlxQueryVersionReply{
         .sequence_number = request_context.sequence_number,
@@ -124,7 +124,7 @@ fn query_version(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn get_visual_configs(request_context: xph.RequestContext) !void {
+fn get_visual_configs(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(GlxGetVisualConfigsRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxGetVisualConfigs request: {s}", .{x11.stringify_fmt(req.request)});
@@ -134,7 +134,7 @@ fn get_visual_configs(request_context: xph.RequestContext) !void {
         return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.screen));
     }
 
-    const screen_visual = request_context.server.get_visual_by_id(xph.Server.screen_true_color_visual_id) orelse unreachable;
+    const screen_visual = request_context.server.get_visual_by_id(phx.Server.screen_true_color_visual_id) orelse unreachable;
 
     const alpha_size_values = [_]x11.Card32{
         screen_visual.bits_per_color_component,
@@ -198,7 +198,7 @@ fn get_visual_configs(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn query_server_string(request_context: xph.RequestContext) !void {
+fn query_server_string(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(GlxQueryServerStringRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxQueryServerString request: {s}", .{x11.stringify_fmt(req.request)});
@@ -234,7 +234,7 @@ fn query_server_string(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn get_fb_configs(request_context: xph.RequestContext) !void {
+fn get_fb_configs(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(GlxGetFbConfigsRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxGetFbConfigs request: {s}", .{x11.stringify_fmt(req.request)});
@@ -244,8 +244,8 @@ fn get_fb_configs(request_context: xph.RequestContext) !void {
         return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.screen));
     }
 
-    const screen_visual = request_context.server.get_visual_by_id(xph.Server.screen_true_color_visual_id) orelse unreachable;
-    const version_1_3 = (xph.Version{ .major = 1, .minor = 3 }).to_int();
+    const screen_visual = request_context.server.get_visual_by_id(phx.Server.screen_true_color_visual_id) orelse unreachable;
+    const version_1_3 = (phx.Version{ .major = 1, .minor = 3 }).to_int();
     const server_glx_version = request_context.client.extension_versions.server_glx.to_int();
 
     const alpha_size_values = [_]x11.Card32{
@@ -328,14 +328,14 @@ fn get_fb_configs(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn get_drawable_attributes(request_context: xph.RequestContext) !void {
+fn get_drawable_attributes(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(GlxGetDrawableAttributesRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxGetDrawableAttributes request: {s}", .{x11.stringify_fmt(req.request)});
 
     const glx_drawable = request_context.server.get_glx_drawable(req.request.drawable) orelse {
         std.log.err("Received invalid glx drawable {d} in GlxGetDrawableAttributes request", .{req.request.drawable});
-        return request_context.client.write_error(request_context, xph.err.glx_error_bad_drawable, @intFromEnum(req.request.drawable));
+        return request_context.client.write_error(request_context, phx.err.glx_error_bad_drawable, @intFromEnum(req.request.drawable));
     };
     const geometry = glx_drawable.get_geometry();
 
@@ -362,25 +362,25 @@ fn get_drawable_attributes(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn set_client_info_arb(request_context: xph.RequestContext) !void {
+fn set_client_info_arb(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(GlxSetClientInfoArbRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxSetClientInfoArb request: {s}", .{x11.stringify_fmt(req.request)});
 
-    const server_version = xph.Version{ .major = 1, .minor = 4 };
-    const client_version = xph.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
-    request_context.client.extension_versions.client_glx = xph.Version.min(server_version, client_version);
+    const server_version = phx.Version{ .major = 1, .minor = 4 };
+    const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
+    request_context.client.extension_versions.client_glx = phx.Version.min(server_version, client_version);
     // TODO: Do something with the data
 }
 
-fn set_client_info2_arb(request_context: xph.RequestContext) !void {
+fn set_client_info2_arb(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(GlxSetClientInfo2ArbRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxSetClientInfo2Arb request: {s}", .{x11.stringify_fmt(req.request)});
 
-    const server_version = xph.Version{ .major = 1, .minor = 4 };
-    const client_version = xph.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
-    request_context.client.extension_versions.client_glx = xph.Version.min(server_version, client_version);
+    const server_version = phx.Version{ .major = 1, .minor = 4 };
+    const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
+    request_context.client.extension_versions.client_glx = phx.Version.min(server_version, client_version);
     // TODO: Do something with the data
 }
 
@@ -591,7 +591,7 @@ const GlxIsDirectRequest = struct {
 };
 
 const GlxIsDirectReply = struct {
-    type: xph.reply.ReplyType = .reply,
+    type: phx.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -608,7 +608,7 @@ const GlxQueryVersionRequest = struct {
 };
 
 const GlxQueryVersionReply = struct {
-    type: xph.reply.ReplyType = .reply,
+    type: phx.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -625,7 +625,7 @@ const GlxGetVisualConfigsRequest = struct {
 };
 
 const GlxGetVisualConfigsReply = struct {
-    type: xph.reply.ReplyType = .reply,
+    type: phx.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -649,7 +649,7 @@ const GlxQueryServerStringRequest = struct {
 };
 
 const GlxQueryServerStringReply = struct {
-    type: xph.reply.ReplyType = .reply,
+    type: phx.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -667,7 +667,7 @@ const GlxGetFbConfigsRequest = struct {
 };
 
 const GlxGetFbConfigsReply = struct {
-    type: xph.reply.ReplyType = .reply,
+    type: phx.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -685,7 +685,7 @@ const GlxGetDrawableAttributesRequest = struct {
 };
 
 const GlxGetDrawableAttributesReply = struct {
-    type: xph.reply.ReplyType = .reply,
+    type: phx.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply

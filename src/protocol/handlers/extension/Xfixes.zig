@@ -1,8 +1,8 @@
 const std = @import("std");
-const xph = @import("../../../xphoenix.zig");
-const x11 = xph.x11;
+const phx = @import("../../../phoenix.zig");
+const x11 = phx.x11;
 
-pub fn handle_request(request_context: xph.RequestContext) !void {
+pub fn handle_request(request_context: phx.RequestContext) !void {
     std.log.info("Handling xfixes request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
@@ -19,14 +19,14 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
     };
 }
 
-fn query_version(request_context: xph.RequestContext) !void {
+fn query_version(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(XfixesQueryVersionRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("XfixesQueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
-    const server_version = xph.Version{ .major = 6, .minor = 1 };
-    const client_version = xph.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
-    request_context.client.extension_versions.xfixes = xph.Version.min(server_version, client_version);
+    const server_version = phx.Version{ .major = 6, .minor = 1 };
+    const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
+    request_context.client.extension_versions.xfixes = phx.Version.min(server_version, client_version);
 
     var rep = XfixesQueryVersionReply{
         .sequence_number = request_context.sequence_number,
@@ -36,7 +36,7 @@ fn query_version(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn create_region(_: xph.RequestContext) !void {
+fn create_region(_: phx.RequestContext) !void {
     // TODO: Implement
 }
 
@@ -58,7 +58,7 @@ const XfixesQueryVersionRequest = struct {
 };
 
 const XfixesQueryVersionReply = struct {
-    type: xph.reply.ReplyType = .reply,
+    type: phx.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply

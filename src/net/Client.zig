@@ -1,6 +1,6 @@
 const std = @import("std");
-const xph = @import("../xphoenix.zig");
-const x11 = xph.x11;
+const phx = @import("../phoenix.zig");
+const x11 = phx.x11;
 const netutils = @import("utils.zig");
 
 const Self = @This();
@@ -17,9 +17,9 @@ write_buffer_fds: ReplyFdsBuffer,
 
 resource_id_base: u32,
 sequence_number: u16,
-resources: xph.ResourceHashMap,
+resources: phx.ResourceHashMap,
 
-listening_to_windows: std.ArrayList(*xph.Window),
+listening_to_windows: std.ArrayList(*phx.Window),
 
 deleting_self: bool,
 
@@ -89,7 +89,7 @@ pub fn deinit(self: *Self) void {
 
 // Unused right now, but this will be used similarly to how xace works
 pub fn is_owner_of_resource(self: *Self, resource_id: x11.ResourceId) bool {
-    return (resource_id.to_int() & xph.ResourceIdBaseManager.resource_id_base_mask) == self.resource_id_base;
+    return (resource_id.to_int() & phx.ResourceIdBaseManager.resource_id_base_mask) == self.resource_id_base;
 }
 
 pub fn read_buffer_data_size(self: *Self) usize {
@@ -177,37 +177,37 @@ pub fn discard_and_close_read_fds(self: *Self, num_fds: usize) void {
     }
 }
 
-pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator) !xph.message.Request(T) {
-    const request_header = self.peek_read_buffer(xph.request.RequestHeader) orelse return error.RequestBadLength;
+pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator) !phx.message.Request(T) {
+    const request_header = self.peek_read_buffer(phx.request.RequestHeader) orelse return error.RequestBadLength;
     const request_length = request_header.get_length_in_bytes();
     if (self.read_buffer_data_size() < request_length)
         return error.RequestDataNotAvailableYet;
 
-    var fsr = xph.request.FixedSizeReader(@TypeOf(self.read_buffer)).init(&self.read_buffer, request_length);
-    const req_data = try xph.request.read_request(T, fsr.reader(), allocator);
-    return xph.message.Request(T).init(&req_data);
+    var fsr = phx.request.FixedSizeReader(@TypeOf(self.read_buffer)).init(&self.read_buffer, request_length);
+    const req_data = try phx.request.read_request(T, fsr.reader(), allocator);
+    return phx.message.Request(T).init(&req_data);
 }
 
-pub fn read_request_assume_correct_size(self: *Self, comptime T: type, allocator: std.mem.Allocator) !xph.message.Request(T) {
-    const req_data = try xph.request.read_request(T, self.read_buffer.reader(), allocator);
-    return xph.message.Request(T).init(&req_data);
+pub fn read_request_assume_correct_size(self: *Self, comptime T: type, allocator: std.mem.Allocator) !phx.message.Request(T) {
+    const req_data = try phx.request.read_request(T, self.read_buffer.reader(), allocator);
+    return phx.message.Request(T).init(&req_data);
 }
 
 pub fn write_reply(self: *Self, reply_data: anytype) !void {
     return write_reply_with_fds(self, reply_data, &.{});
 }
 
-pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const xph.message.ReplyFd) !void {
+pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const phx.message.ReplyFd) !void {
     if (@typeInfo(@TypeOf(reply_data)) != .pointer)
         @compileError("Expected reply data to be a pointer");
 
-    try xph.reply.write_reply(@TypeOf(reply_data.*), reply_data, self.write_buffer.writer());
+    try phx.reply.write_reply(@TypeOf(reply_data.*), reply_data, self.write_buffer.writer());
     // TODO: If this fails but not the above then we need to discard data from the write end, how?
     try self.write_buffer_fds.write(fds);
 }
 
-pub fn write_error(self: *Self, request_context: xph.RequestContext, error_type: xph.ErrorType, value: x11.Card32) !void {
-    const err_reply = xph.Error{
+pub fn write_error(self: *Self, request_context: phx.RequestContext, error_type: phx.ErrorType, value: x11.Card32) !void {
+    const err_reply = phx.Error{
         .code = error_type,
         .sequence_number = request_context.sequence_number,
         .value = value,
@@ -218,7 +218,7 @@ pub fn write_error(self: *Self, request_context: xph.RequestContext, error_type:
     return self.write_buffer.write(std.mem.asBytes(&err_reply));
 }
 
-pub fn write_event(self: *Self, ev: *const xph.event.Event) !void {
+pub fn write_event(self: *Self, ev: *const phx.event.Event) !void {
     std.log.info("Replying with event: {d}", .{@intFromEnum(ev.any.code)});
     return self.write_buffer.write(std.mem.asBytes(ev));
 }
@@ -239,7 +239,7 @@ pub fn next_sequence_number(self: *Self) u16 {
     return sequence;
 }
 
-fn add_resource(self: *Self, resource_id: x11.ResourceId, resource: xph.Resource) !void {
+fn add_resource(self: *Self, resource_id: x11.ResourceId, resource: phx.Resource) !void {
     if (!self.is_owner_of_resource(resource_id))
         return error.ResourceNotOwnedByClient;
 
@@ -251,27 +251,27 @@ fn add_resource(self: *Self, resource_id: x11.ResourceId, resource: xph.Resource
     errdefer _ = self.resources.remove(resource_id);
 }
 
-pub fn add_window(self: *Self, window: *xph.Window) !void {
+pub fn add_window(self: *Self, window: *phx.Window) !void {
     return self.add_resource(window.id.to_id(), .{ .window = window });
 }
 
-pub fn add_event_context(self: *Self, event_context: xph.EventContext) !void {
+pub fn add_event_context(self: *Self, event_context: phx.EventContext) !void {
     return self.add_resource(event_context.id, .{ .event_context = event_context });
 }
 
-pub fn add_colormap(self: *Self, colormap: xph.Colormap) !void {
+pub fn add_colormap(self: *Self, colormap: phx.Colormap) !void {
     return self.add_resource(colormap.id.to_id(), .{ .colormap = colormap });
 }
 
-pub fn add_pixmap(self: *Self, pixmap: *xph.Pixmap) !void {
+pub fn add_pixmap(self: *Self, pixmap: *phx.Pixmap) !void {
     return self.add_resource(pixmap.id.to_id(), .{ .pixmap = pixmap });
 }
 
-pub fn add_fence(self: *Self, fence: *xph.Fence) !void {
+pub fn add_fence(self: *Self, fence: *phx.Fence) !void {
     return self.add_resource(fence.id.to_id(), .{ .fence = fence });
 }
 
-pub fn add_glx_context(self: *Self, glx_context: xph.GlxContext) !void {
+pub fn add_glx_context(self: *Self, glx_context: phx.GlxContext) !void {
     return self.add_resource(glx_context.id.to_id(), .{ .glx_context = glx_context });
 }
 
@@ -282,7 +282,7 @@ pub fn remove_resource(self: *Self, id: x11.ResourceId) void {
     _ = self.resources.remove(id);
 }
 
-pub fn get_resource(self: *Self, id: x11.ResourceId) ?xph.Resource {
+pub fn get_resource(self: *Self, id: x11.ResourceId) ?phx.Resource {
     return self.resources.get(id);
 }
 
@@ -292,7 +292,7 @@ pub fn get_resource(self: *Self, id: x11.ResourceId) ?xph.Resource {
 //const max_write_buffer_size: usize = 50 * 1024 * 1024; // 50mb. Clients that dont consume data fast enough are forcefully disconnected
 const DataBuffer = std.fifo.LinearFifo(u8, .Dynamic);
 const RequestFdsBuffer = std.fifo.LinearFifo(std.posix.fd_t, .Dynamic);
-const ReplyFdsBuffer = std.fifo.LinearFifo(xph.message.ReplyFd, .Dynamic);
+const ReplyFdsBuffer = std.fifo.LinearFifo(phx.message.ReplyFd, .Dynamic);
 
 const State = enum {
     connecting,
@@ -300,10 +300,10 @@ const State = enum {
 };
 
 const ExtensionVersions = struct {
-    client_glx: xph.Version,
-    server_glx: xph.Version,
-    dri3: xph.Version,
-    present: xph.Version,
-    sync: xph.Version,
-    xfixes: xph.Version,
+    client_glx: phx.Version,
+    server_glx: phx.Version,
+    dri3: phx.Version,
+    present: phx.Version,
+    sync: phx.Version,
+    xfixes: phx.Version,
 };

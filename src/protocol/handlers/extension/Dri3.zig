@@ -1,9 +1,9 @@
 const std = @import("std");
-const xph = @import("../../../xphoenix.zig");
-const x11 = xph.x11;
-const c = xph.c;
+const phx = @import("../../../phoenix.zig");
+const x11 = phx.x11;
+const c = phx.c;
 
-pub fn handle_request(request_context: xph.RequestContext) !void {
+pub fn handle_request(request_context: phx.RequestContext) !void {
     std.log.info("Handling dri3 request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
@@ -24,14 +24,14 @@ pub fn handle_request(request_context: xph.RequestContext) !void {
     };
 }
 
-fn query_version(request_context: xph.RequestContext) !void {
+fn query_version(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Dri3QueryExtensionRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("DRI3QueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
-    const server_version = xph.Version{ .major = 1, .minor = 4 };
-    const client_version = xph.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
-    request_context.client.extension_versions.dri3 = xph.Version.min(server_version, client_version);
+    const server_version = phx.Version{ .major = 1, .minor = 4 };
+    const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
+    request_context.client.extension_versions.dri3 = phx.Version.min(server_version, client_version);
 
     var rep = Dri3QueryExtensionReply{
         .sequence_number = request_context.sequence_number,
@@ -73,7 +73,7 @@ fn validate_drm_auth(card_fd: std.posix.fd_t, render_fd: std.posix.fd_t) bool {
     return true;
 }
 
-fn open(request_context: xph.RequestContext) !void {
+fn open(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Dri3OpenRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("Dri3Open request: {s}", .{x11.stringify_fmt(req.request)});
@@ -106,7 +106,7 @@ fn open(request_context: xph.RequestContext) !void {
     });
 }
 
-fn pixmap_from_buffer(request_context: xph.RequestContext) !void {
+fn pixmap_from_buffer(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Dri3PixmapFromBufferRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("DRI3PixmapFromBuffer request: {s}, fd: {d}", .{ x11.stringify_fmt(req), request_context.client.get_read_fds() });
@@ -134,7 +134,7 @@ fn pixmap_from_buffer(request_context: xph.RequestContext) !void {
     const resolved_path = std.posix.readlink(path, &resolved_path_buf) catch "unknown";
     std.log.info("dmabuf: {d}: {s}", .{ dmabuf_fd, resolved_path });
 
-    const import_dmabuf = xph.Graphics.DmabufImport{
+    const import_dmabuf = phx.Graphics.DmabufImport{
         .fd = [_]std.posix.fd_t{ dmabuf_fd, 0, 0, 0 },
         .stride = [_]u32{ req.request.stride, 0, 0, 0 },
         .offset = [_]u32{ 0, 0, 0, 0 },
@@ -148,7 +148,7 @@ fn pixmap_from_buffer(request_context: xph.RequestContext) !void {
         .num_items = 1,
     };
 
-    var pixmap = try xph.Pixmap.create(
+    var pixmap = try phx.Pixmap.create(
         req.request.pixmap,
         &import_dmabuf,
         request_context.server,
@@ -158,7 +158,7 @@ fn pixmap_from_buffer(request_context: xph.RequestContext) !void {
     errdefer pixmap.destroy();
 }
 
-fn fence_from_fd(request_context: xph.RequestContext) !void {
+fn fence_from_fd(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Dri3FenceFromFdRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("Dri3FenceFromFd request: {s}, fd: {d}", .{ x11.stringify_fmt(req), request_context.client.get_read_fds() });
@@ -173,7 +173,7 @@ fn fence_from_fd(request_context: xph.RequestContext) !void {
     const fence_fd = read_fds[0];
     defer request_context.client.discard_read_fds(1);
 
-    var fence = try xph.Fence.create_from_fd(req.request.fence, fence_fd, request_context.client, request_context.allocator);
+    var fence = try phx.Fence.create_from_fd(req.request.fence, fence_fd, request_context.client, request_context.allocator);
     errdefer fence.destroy();
 
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
@@ -184,7 +184,7 @@ fn fence_from_fd(request_context: xph.RequestContext) !void {
     std.log.info("fence: {d}: {s}", .{ fence_fd, resolved_path });
 }
 
-fn get_supported_modifiers(request_context: xph.RequestContext) !void {
+fn get_supported_modifiers(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Dri3GetSupportedModifiersRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("Dri3GetSupportedModifiers request: {s}", .{x11.stringify_fmt(req)});
@@ -213,7 +213,7 @@ fn get_supported_modifiers(request_context: xph.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn pixmap_from_buffers(request_context: xph.RequestContext) !void {
+fn pixmap_from_buffers(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Dri3PixmapFromBuffersRequest, request_context.allocator);
     defer req.deinit();
     std.log.info("Dri3PixmapFromBuffers request: {s}, fd: {d}", .{ x11.stringify_fmt(req), request_context.client.get_read_fds() });
@@ -255,7 +255,7 @@ fn pixmap_from_buffers(request_context: xph.RequestContext) !void {
     const strides: [4]u32 = .{ req.request.stride0, req.request.stride1, req.request.stride2, req.request.stride3 };
     const offsets: [4]u32 = .{ req.request.offset0, req.request.offset1, req.request.offset2, req.request.offset3 };
 
-    var import_dmabuf: xph.Graphics.DmabufImport = undefined;
+    var import_dmabuf: phx.Graphics.DmabufImport = undefined;
     import_dmabuf.width = req.request.width;
     import_dmabuf.height = req.request.height;
     import_dmabuf.depth = req.request.depth;
@@ -269,7 +269,7 @@ fn pixmap_from_buffers(request_context: xph.RequestContext) !void {
         import_dmabuf.modifier[i] = req.request.modifier;
     }
 
-    var pixmap = try xph.Pixmap.create(
+    var pixmap = try phx.Pixmap.create(
         req.request.pixmap,
         &import_dmabuf,
         request_context.server,
@@ -315,7 +315,7 @@ const Dri3QueryExtensionRequest = struct {
 };
 
 const Dri3QueryExtensionReply = struct {
-    type: xph.reply.ReplyType = .reply,
+    type: phx.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -333,7 +333,7 @@ const Dri3OpenRequest = struct {
 };
 
 const Dri3OpenReply = struct {
-    type: xph.reply.ReplyType = .reply,
+    type: phx.reply.ReplyType = .reply,
     nfd: x11.Card8 = 1,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -361,7 +361,7 @@ const Dri3FenceFromFdRequest = struct {
     minor_opcode: x11.Card8, // MinorOpcode
     length: x11.Card16,
     drawable: x11.DrawableId,
-    fence: xph.Sync.FenceId,
+    fence: phx.Sync.FenceId,
     initially_triggered: bool,
     pad1: x11.Card8,
     pad2: x11.Card16,
@@ -379,7 +379,7 @@ const Dri3GetSupportedModifiersRequest = struct {
 };
 
 const Dri3GetSupportedModifiersReply = struct {
-    type: xph.reply.ReplyType = .reply,
+    type: phx.reply.ReplyType = .reply,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16,
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply

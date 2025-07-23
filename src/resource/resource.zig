@@ -1,14 +1,14 @@
 const std = @import("std");
-const xph = @import("../xphoenix.zig");
-const x11 = xph.x11;
+const phx = @import("../phoenix.zig");
+const x11 = phx.x11;
 
 pub const Resource = union(enum) {
-    window: *xph.Window,
-    pixmap: *xph.Pixmap,
-    fence: *xph.Fence,
-    event_context: xph.EventContext,
-    colormap: xph.Colormap,
-    glx_context: xph.GlxContext,
+    window: *phx.Window,
+    pixmap: *phx.Pixmap,
+    fence: *phx.Fence,
+    event_context: phx.EventContext,
+    colormap: phx.Colormap,
+    glx_context: phx.GlxContext,
 
     pub fn deinit(self: Resource) void {
         switch (self) {

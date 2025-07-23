@@ -1,10 +1,10 @@
 const std = @import("std");
-const xph = @import("../../xphoenix.zig");
+const phx = @import("../../phoenix.zig");
 
 const Self = @This();
 
 allocator: std.mem.Allocator,
-client: *xph.Client,
-server: *xph.Server,
-header: *const xph.request.RequestHeader,
+client: *phx.Client,
+server: *phx.Server,
+header: *const phx.request.RequestHeader,
 sequence_number: u16,

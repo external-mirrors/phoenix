@@ -1,13 +1,13 @@
 const std = @import("std");
-const xph = @import("../xphoenix.zig");
-const x11 = xph.x11;
+const phx = @import("../phoenix.zig");
+const x11 = phx.x11;
 
 const Self = @This();
 
 allocator: std.mem.Allocator,
-dmabuf_data: xph.Graphics.DmabufImport,
-server: *xph.Server,
-client_owner: *xph.Client,
+dmabuf_data: phx.Graphics.DmabufImport,
+server: *phx.Server,
+client_owner: *phx.Client,
 
 id: x11.PixmapId,
 graphics_backend_id: u32,
@@ -15,9 +15,9 @@ graphics_backend_id: u32,
 /// The dmabuf fds are cleaned up if this fails
 pub fn create(
     id: x11.PixmapId,
-    dmabuf_data: *const xph.Graphics.DmabufImport,
-    server: *xph.Server,
-    client_owner: *xph.Client,
+    dmabuf_data: *const phx.Graphics.DmabufImport,
+    server: *phx.Server,
+    client_owner: *phx.Client,
     allocator: std.mem.Allocator,
 ) !*Self {
     var pixmap = allocator.create(Self) catch |err| {
@@ -58,7 +58,7 @@ pub fn destroy(self: *Self) void {
     self.allocator.destroy(self);
 }
 
-pub fn get_geometry(self: *Self) xph.Geometry {
+pub fn get_geometry(self: *Self) phx.Geometry {
     return .{
         .x = 0,
         .y = 0,

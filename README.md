@@ -2,7 +2,7 @@
 Phoenix is a new X server, written from scratch in Zig (not a fork of Xorg server). This X server is designed to be a modern alternative to the Xorg server.
 
 ## Current state
-Phoenix is not ready to be used yet. At the moment it can render simple applications that do GLX or EGL graphics (fully hardware accelerated) nested in an existing X server.
+Phoenix is not ready to be used yet. At the moment it can render simple applications that do GLX, EGL or Vulkan graphics (fully hardware accelerated) nested in an existing X server.
 Running Phoenix nested will be the only supported mode until Phoenix has progressed more and can run real-world applications.
 
 ## Goals

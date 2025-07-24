@@ -55,6 +55,21 @@ pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, alloca
 }
 
 pub fn deinit(self: *Self) void {
+    for (self.listening_to_windows.items) |window| {
+        window.remove_all_event_listeners_for_client(self);
+    }
+    self.listening_to_windows.deinit();
+
+    // This is recursive safe, if a resource is removed from |self.resources| while we are iterating it
+    // (for example Window calling Client.remove_resource)
+    while (self.resources.count() > 0) {
+        var resources_it = self.resources.valueIterator();
+        if (resources_it.next()) |res_val| {
+            res_val.deinit();
+        }
+    }
+    self.resources.deinit();
+
     self.connection.stream.close();
 
     self.read_buffer.deinit();
@@ -72,21 +87,6 @@ pub fn deinit(self: *Self) void {
         reply_fd.deinit();
         self.write_buffer_fds.discard(1);
     }
-
-    // This is recursive safe, if a resource is removed from |self.resources| while we are iterating it
-    // (for example Window calling Client.remove_resource)
-    while (self.resources.count() > 0) {
-        var resources_it = self.resources.valueIterator();
-        if (resources_it.next()) |res_val| {
-            res_val.deinit();
-        }
-    }
-    self.resources.deinit();
-
-    for (self.listening_to_windows.items) |window| {
-        window.remove_all_event_listeners_for_client(self);
-    }
-    self.listening_to_windows.deinit();
 }
 
 // Unused right now, but this will be used similarly to how xace works

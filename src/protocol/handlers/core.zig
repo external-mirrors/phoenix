@@ -17,6 +17,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .create_window => create_window(request_context),
         .destroy_window => destroy_window(request_context),
         .map_window => map_window(request_context),
+        .configure_window => configure_window(request_context),
         .get_geometry => get_geometry(request_context),
         .intern_atom => intern_atom(request_context),
         .change_property => change_property(request_context),
@@ -222,6 +223,7 @@ fn destroy_window(request_context: phx.RequestContext) !void {
     window.destroy();
 }
 
+// TODO: Implement properly
 fn map_window(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(MapWindowRequest, request_context.allocator);
     defer req.deinit();
@@ -247,6 +249,32 @@ fn map_window(request_context: phx.RequestContext) !void {
         },
     };
     window.write_core_event_to_event_listeners(&create_notify_event);
+}
+
+// TODO: Implement properly
+fn configure_window(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(ConfigureWindowRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("ConfigureWindow request: {s}", .{x11.stringify_fmt(req)});
+
+    var window = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in ConfigureWindow request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+
+    if (req.request.get_value(i16, "x")) |x|
+        window.attributes.geometry.x = x;
+
+    if (req.request.get_value(i16, "y")) |y|
+        window.attributes.geometry.y = y;
+
+    if (req.request.get_value(x11.Card16, "width")) |width|
+        window.attributes.geometry.width = width;
+
+    if (req.request.get_value(x11.Card16, "height")) |height|
+        window.attributes.geometry.height = height;
+
+    // TODO: Use sibling and stack-mode
 }
 
 fn get_geometry(request_context: phx.RequestContext) !void {
@@ -440,7 +468,7 @@ fn query_extension(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-const ValueMask = packed struct(x11.Card32) {
+const CreateWindowValueMask = packed struct(x11.Card32) {
     background_pixmap: bool,
     background_pixel: bool,
     border_pixmap: bool,
@@ -460,7 +488,7 @@ const ValueMask = packed struct(x11.Card32) {
     _padding: u17 = 0,
 
     // TODO: Maybe instead of this just iterate each field and set all non-bool fields to 0, since they should be ignored
-    pub fn sanitize(self: ValueMask) ValueMask {
+    pub fn sanitize(self: CreateWindowValueMask) CreateWindowValueMask {
         var result = self;
         result._padding = 0;
         return result;
@@ -468,11 +496,45 @@ const ValueMask = packed struct(x11.Card32) {
 
     // In the protocol the size of the |value_list| array depends on how many bits are set in the ValueMask
     // and the index to the value that matches the bit depends on how many bits are set before that bit
-    pub fn get_value_index_by_field(self: ValueMask, comptime field_name: []const u8) ?usize {
+    pub fn get_value_index_by_field(self: CreateWindowValueMask, comptime field_name: []const u8) ?usize {
         if (!@field(self, field_name))
             return null;
 
-        const index_count_mask: u32 = (1 << @bitOffsetOf(ValueMask, field_name)) - 1;
+        const index_count_mask: u32 = (1 << @bitOffsetOf(CreateWindowValueMask, field_name)) - 1;
+        return @popCount(@as(u32, @bitCast(self)) & index_count_mask);
+    }
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == @sizeOf(x11.Card32));
+        std.debug.assert(@bitSizeOf(@This()) == @bitSizeOf(x11.Card32));
+    }
+};
+
+const ConfigureWindowValueMask = packed struct(x11.Card32) {
+    x: bool,
+    y: bool,
+    width: bool,
+    height: bool,
+    border_width: bool,
+    sibling: bool,
+    stack_mode: bool,
+
+    _padding: u25 = 0,
+
+    // TODO: Maybe instead of this just iterate each field and set all non-bool fields to 0, since they should be ignored
+    pub fn sanitize(self: ConfigureWindowValueMask) ConfigureWindowValueMask {
+        var result = self;
+        result._padding = 0;
+        return result;
+    }
+
+    // In the protocol the size of the |value_list| array depends on how many bits are set in the ValueMask
+    // and the index to the value that matches the bit depends on how many bits are set before that bit
+    pub fn get_value_index_by_field(self: ConfigureWindowValueMask, comptime field_name: []const u8) ?usize {
+        if (!@field(self, field_name))
+            return null;
+
+        const index_count_mask: u32 = (1 << @bitOffsetOf(ConfigureWindowValueMask, field_name)) - 1;
         return @popCount(@as(u32, @bitCast(self)) & index_count_mask);
     }
 
@@ -619,7 +681,7 @@ const CreateWindowRequest = struct {
     border_width: x11.Card16,
     class: x11.Card16, // x11.Class, or 0 (Copy from parent)
     visual: x11.VisualId,
-    value_mask: ValueMask,
+    value_mask: CreateWindowValueMask,
     value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
 
     pub fn get_value(self: *const CreateWindowRequest, comptime T: type, comptime value_mask_field: []const u8) ?T {
@@ -645,6 +707,26 @@ const MapWindowRequest = struct {
     pad1: x11.Card8,
     length: x11.Card16,
     window: x11.WindowId,
+};
+
+const ConfigureWindowRequest = struct {
+    opcode: x11.Card8, // opcode.Major
+    pad1: x11.Card8,
+    length: x11.Card16,
+    window: x11.WindowId,
+    value_mask: ConfigureWindowValueMask,
+    pad2: x11.Card16,
+    value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
+
+    pub fn get_value(self: *const ConfigureWindowRequest, comptime T: type, comptime value_mask_field: []const u8) ?T {
+        if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
+            // The protocol specifies that all uninteresting bits are undefined, so we need to set them to 0
+            comptime std.debug.assert(@bitSizeOf(T) % 8 == 0);
+            return @intCast(self.value_list.items[index] & ((1 << @bitSizeOf(T)) - 1));
+        } else {
+            return null;
+        }
+    }
 };
 
 const GetInputFocusRequest = struct {

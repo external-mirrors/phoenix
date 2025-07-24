@@ -44,15 +44,15 @@ fn read_request_with_size_calculation(comptime T: type, reader: anytype, request
                 var list_length: usize = 0;
                 switch (list_of_options.length_field_type) {
                     .integer => {
-                        std.debug.assert(!std.mem.eql(u8, list_of_options.length_field.?, "length")); // It can't be the request length field
+                        comptime std.debug.assert(!std.mem.eql(u8, list_of_options.length_field.?, "length")); // It can't be the request length field
                         list_length = @field(request, list_of_options.length_field.?);
                     },
                     .bitmask => {
-                        std.debug.assert(!std.mem.eql(u8, list_of_options.length_field.?, "length")); // It can't be the request length field
+                        comptime std.debug.assert(!std.mem.eql(u8, list_of_options.length_field.?, "length")); // It can't be the request length field
                         list_length = @popCount(@as(u32, @bitCast(@field(request, list_of_options.length_field.?))));
                     },
                     .request_remainder => {
-                        std.debug.assert(std.mem.eql(u8, list_of_options.length_field.?, "length")); // It needs to be the request length field
+                        comptime std.debug.assert(std.mem.eql(u8, list_of_options.length_field.?, "length")); // It needs to be the request length field
                         const unit_size: u32 = 4;
                         const length_field_size = @field(request, list_of_options.length_field.?) * unit_size;
                         if (request_size.* > length_field_size)

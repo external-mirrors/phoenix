@@ -22,3 +22,4 @@ Eglgears_x11 crashes after a few seconds because there is an x11 error in the re
 Replace all std.meta.intToEnum with a more efficient variant that does a direct cast if the value is in range, without iterating all enum values (if the enum has ordered values).
 glxGetVisualConfigs and glxGetFbConfigs doesn't seem to return the correct amount of data? glxinfo shows less data than we return.
 If writing data to client buffer fails partially (is that possible?) then discard the bytes written so we dont send partial data to client.
+Go through all requests and make sure they are all implemented correctly as according to the spec and make end-to-end tests for all of them and unit tests as well.

@@ -8,6 +8,7 @@ pub const EventCode = enum(x11.Card8) {
     button_release = 5,
     create_notify = 16,
     map_notify = 19,
+    configure_notify = 22,
     xge = 35,
 };
 
@@ -123,6 +124,26 @@ pub const MapNotifyEvent = extern struct {
     }
 };
 
+pub const ConfigureNotifyEvent = extern struct {
+    code: EventCode = .configure_notify,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16,
+    event: x11.WindowId,
+    window: x11.WindowId,
+    above_sibling: x11.WindowId, // Or none(0)
+    x: i16,
+    y: i16,
+    width: x11.Card16,
+    height: x11.Card16,
+    border_width: x11.Card16,
+    override_redirect: bool,
+    pad2: [5]x11.Card8 = [_]x11.Card8{0} ** 5,
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
+
 pub const Event = extern union {
     any: AnyEvent,
     key_press: KeyPressEvent,
@@ -131,6 +152,7 @@ pub const Event = extern union {
     button_release: ButtonReleaseEvent,
     create_notify: CreateNotifyEvent,
     map_notify: MapNotifyEvent,
+    configure_notify: ConfigureNotifyEvent,
 
     comptime {
         std.debug.assert(@sizeOf(@This()) == 32);

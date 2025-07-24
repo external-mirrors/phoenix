@@ -303,17 +303,53 @@ fn configure_window(request_context: phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
 
-    if (req.request.get_value(i16, "x")) |x|
-        window.attributes.geometry.x = x;
+    var modified: bool = false;
 
-    if (req.request.get_value(i16, "y")) |y|
-        window.attributes.geometry.y = y;
+    if (req.request.get_value(i16, "x")) |x| {
+        if (x != window.attributes.geometry.x) {
+            window.attributes.geometry.x = x;
+            modified = true;
+        }
+    }
 
-    if (req.request.get_value(x11.Card16, "width")) |width|
-        window.attributes.geometry.width = width;
+    if (req.request.get_value(i16, "y")) |y| {
+        if (y != window.attributes.geometry.y) {
+            window.attributes.geometry.y = y;
+            modified = true;
+        }
+    }
 
-    if (req.request.get_value(x11.Card16, "height")) |height|
-        window.attributes.geometry.height = height;
+    if (req.request.get_value(x11.Card16, "width")) |width| {
+        if (width != window.attributes.geometry.width) {
+            window.attributes.geometry.width = width;
+            modified = true;
+        }
+    }
+
+    if (req.request.get_value(x11.Card16, "height")) |height| {
+        if (height != window.attributes.geometry.height) {
+            window.attributes.geometry.height = height;
+            modified = true;
+        }
+    }
+
+    if (modified) {
+        const create_notify_event = phx.event.Event{
+            .configure_notify = .{
+                .sequence_number = request_context.sequence_number,
+                .event = @enumFromInt(0), // TODO: ?
+                .window = req.request.window,
+                .x = @intCast(window.attributes.geometry.x),
+                .y = @intCast(window.attributes.geometry.y),
+                .width = @intCast(window.attributes.geometry.width),
+                .height = @intCast(window.attributes.geometry.height),
+                .border_width = 1, // TODO:
+                .above_sibling = @enumFromInt(none), // TODO:
+                .override_redirect = window.attributes.override_redirect,
+            },
+        };
+        window.write_core_event_to_event_listeners(&create_notify_event);
+    }
 
     // TODO: Use sibling and stack-mode
 }
@@ -389,6 +425,7 @@ fn intern_atom(request_context: phx.RequestContext) !void {
 
 fn change_property(_: phx.RequestContext) !void {
     // TODO: Implement
+    std.log.err("TODO: Implement ChangeProperty", .{});
 }
 
 // TODO: Actually read the request values, handling them properly
@@ -449,11 +486,11 @@ fn free_pixmap(request_context: phx.RequestContext) !void {
 }
 
 fn create_gc(_: phx.RequestContext) !void {
-    std.log.err("Request stub: CreateGC", .{});
+    std.log.err("TODO: Implement CreateGC", .{});
 }
 
 fn free_gc(_: phx.RequestContext) !void {
-    std.log.err("Request stub: FreeGC", .{});
+    std.log.err("TODO: Implement FreeGC", .{});
 }
 
 fn create_colormap(request_context: phx.RequestContext) !void {

@@ -182,6 +182,7 @@ inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, eve
         .button_release => event_mask.button_release,
         .create_notify => false, // This only applies to parents
         .map_notify => event_mask.structure_notify,
+        .configure_notify => event_mask.structure_notify,
         .xge => false, // TODO:
     };
 }
@@ -301,7 +302,7 @@ pub fn get_all_event_mask_core(self: *Self) phx.core.EventMask {
 
 pub fn get_client_event_mask_core(self: *Self, client: *const phx.Client) phx.core.EventMask {
     for (self.core_event_listeners.items) |*event_listener| {
-        if(event_listener.client == client)
+        if (event_listener.client == client)
             return event_listener.event_mask;
     }
     // This can happen if the window was created with no event mask initially

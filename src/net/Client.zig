@@ -21,8 +21,6 @@ resources: phx.ResourceHashMap,
 
 listening_to_windows: std.ArrayList(*phx.Window),
 
-deleting_self: bool,
-
 extension_versions: ExtensionVersions = .{
     .client_glx = .{ .major = 1, .minor = 0 },
     .server_glx = .{ .major = 1, .minor = 0 },
@@ -53,14 +51,10 @@ pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, alloca
         .resources = .init(allocator),
 
         .listening_to_windows = .init(allocator),
-
-        .deleting_self = false,
     };
 }
 
 pub fn deinit(self: *Self) void {
-    self.deleting_self = true;
-
     self.connection.stream.close();
 
     self.read_buffer.deinit();
@@ -79,9 +73,13 @@ pub fn deinit(self: *Self) void {
         self.write_buffer_fds.discard(1);
     }
 
-    var resources_it = self.resources.valueIterator();
-    while (resources_it.next()) |res_val| {
-        res_val.deinit();
+    // This is recursive safe, if a resource is removed from |self.resources| while we are iterating it
+    // (for example Window calling Client.remove_resource)
+    while (self.resources.count() > 0) {
+        var resources_it = self.resources.valueIterator();
+        if (resources_it.next()) |res_val| {
+            res_val.deinit();
+        }
     }
     self.resources.deinit();
 
@@ -280,9 +278,6 @@ pub fn add_glx_context(self: *Self, glx_context: phx.GlxContext) !void {
 }
 
 pub fn remove_resource(self: *Self, id: x11.ResourceId) void {
-    if (self.deleting_self)
-        return;
-
     _ = self.resources.remove(id);
 }
 

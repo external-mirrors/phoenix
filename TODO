@@ -24,3 +24,5 @@ glxGetVisualConfigs and glxGetFbConfigs doesn't seem to return the correct amoun
 If writing data to client buffer fails partially (is that possible?) then discard the bytes written so we dont send partial data to client.
 Go through all requests and make sure they are all implemented correctly as according to the spec and make end-to-end tests for all of them and unit tests as well.
 Vulkan applications (vkcube) spam dri3 requests in render, but not with the xorg server. Why?
+Get current tty with /proc/self/stat, see `man proc_pid_stat`.
+When implementing reparent consider that the client might attempt to reparent a window to one of its children (or grandchildren) or itself. Handle that case according to spec.

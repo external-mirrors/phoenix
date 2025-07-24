@@ -22,7 +22,6 @@ pub fn create(
     parent: ?*Self,
     id: x11.WindowId,
     attributes: *const Attributes,
-    initial_event_mask: phx.core.EventMask,
     server: ?*phx.Server,
     client_owner: *phx.Client,
     allocator: std.mem.Allocator,
@@ -50,8 +49,6 @@ pub fn create(
         window.graphics_backend_id = try serv.display.create_window(window);
 
     try window.client_owner.add_window(window);
-    if (!initial_event_mask.is_empty())
-        try window.add_core_event_listener(window.client_owner, initial_event_mask);
 
     if (parent) |par|
         try par.children.append(window);
@@ -108,7 +105,8 @@ pub fn set_property_string8(self: *Self, atom: x11.Atom, value: []const u8) !voi
     result.value_ptr.* = .{ .string8 = array_list };
 }
 
-/// It's invalid to add multiple event listeners with the same client
+// TODO: Add assert that the client doesn't already exist as a listener.
+/// It's invalid to add multiple event listeners with the same client.
 pub fn add_core_event_listener(self: *Self, client: *phx.Client, event_mask: phx.core.EventMask) !void {
     if (event_mask.is_empty())
         return;
@@ -188,7 +186,8 @@ inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, eve
     };
 }
 
-/// It's invalid to add multiple event listeners with the same event id
+// TODO: Add assert that the client doesn't already exist as a listener with the same event id.
+/// It's invalid to add multiple event listeners with the same event id.
 pub fn add_extension_event_listener(self: *Self, client: *phx.Client, event_id: x11.ResourceId, extension_major_opcode: phx.opcode.Major, event_mask: u32) !void {
     if (event_mask == 0)
         return;
@@ -292,9 +291,27 @@ fn remove_child(self: *Self, child_to_remove: *Self) void {
     }
 }
 
+pub fn get_all_event_mask_core(self: *Self) phx.core.EventMask {
+    var all_event_mask: u32 = 0;
+    for (self.core_event_listeners.items) |*event_listener| {
+        all_event_mask |= @bitCast(event_listener.event_mask);
+    }
+    return @bitCast(all_event_mask);
+}
+
+pub fn get_client_event_mask_core(self: *Self, client: *const phx.Client) phx.core.EventMask {
+    for (self.core_event_listeners.items) |*event_listener| {
+        if(event_listener.client == client)
+            return event_listener.event_mask;
+    }
+    // This can happen if the window was created with no event mask initially
+    // or if the event mask was removed with ChangeWindowAttributes
+    return @bitCast(@as(u32, 0));
+}
+
 /// Returns .unmapped if the window isn't mapped,
 /// .unviewable if the window is mapped but a parent window isn't, otherwise returns .viewable
-pub fn get_map_state(self: *Self) MapState {
+pub fn get_map_state(self: *Self) phx.core.MapState {
     if (!self.attributes.mapped)
         return .unmapped;
 
@@ -308,37 +325,25 @@ pub fn get_map_state(self: *Self) MapState {
     return .viewable;
 }
 
-pub const MapState = enum(x11.Card32) {
-    unmapped = 0,
-    unviewable = 1,
-    viewable = 2,
-};
-
 pub const Attributes = struct {
     geometry: phx.Geometry,
     class: x11.Class,
     visual: *const phx.Visual,
     bit_gravity: phx.core.BitGravity,
     win_gravity: phx.core.WinGravity,
-    backing_store: BackingStore,
+    backing_store: phx.core.BackingStore,
     backing_planes: u32,
     backing_pixel: u32,
-    colormap: phx.Colormap,
+    colormap: phx.Colormap, // TODO: Make this optional, since it can get removed when a colormap is uninstalled
     cursor: ?*const phx.Cursor,
     mapped: bool,
     background_pixmap: ?*const phx.Pixmap,
     background_pixel: u32,
     border_pixmap: ?*const phx.Pixmap,
     border_pixel: u32,
+    do_not_propagate_mask: phx.core.DeviceEventMask,
     save_under: bool,
     override_redirect: bool,
-};
-
-pub const BackingStore = enum(x11.Card8) {
-    /// aka not_useful
-    never = 0,
-    when_mapped = 1,
-    always = 2,
 };
 
 const CoreEventListener = struct {

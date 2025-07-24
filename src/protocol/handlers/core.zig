@@ -15,6 +15,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 
     return switch (major_opcode) {
         .create_window => create_window(request_context),
+        .get_window_attributes => get_window_attributes(request_context),
         .destroy_window => destroy_window(request_context),
         .map_window => map_window(request_context),
         .configure_window => configure_window(request_context),
@@ -106,7 +107,7 @@ fn create_window(request_context: phx.RequestContext) !void {
         },
     };
 
-    const bit_gravity_arg = req.request.get_value(x11.Card32, "bit_gravity") orelse @intFromEnum(BitGravity.forget);
+    const bit_gravity_arg = req.request.get_value(x11.Card8, "bit_gravity") orelse @intFromEnum(BitGravity.forget);
     const bit_gravity = std.meta.intToEnum(BitGravity, bit_gravity_arg) catch |err| switch (err) {
         error.InvalidEnumTag => {
             std.log.err("Received invalid bit gravity {d} in CreateWindow request", .{bit_gravity_arg});
@@ -114,7 +115,7 @@ fn create_window(request_context: phx.RequestContext) !void {
         },
     };
 
-    const win_gravity_arg = req.request.get_value(x11.Card32, "win_gravity") orelse @intFromEnum(WinGravity.north_west);
+    const win_gravity_arg = req.request.get_value(x11.Card8, "win_gravity") orelse @intFromEnum(WinGravity.north_west);
     const win_gravity = std.meta.intToEnum(WinGravity, win_gravity_arg) catch |err| switch (err) {
         error.InvalidEnumTag => {
             std.log.err("Received invalid win gravity {d} in CreateWindow request", .{win_gravity_arg});
@@ -122,8 +123,8 @@ fn create_window(request_context: phx.RequestContext) !void {
         },
     };
 
-    const backing_store_arg = req.request.get_value(x11.Card32, "backing_store") orelse 0;
-    const backing_store = std.meta.intToEnum(phx.Window.BackingStore, backing_store_arg) catch |err| switch (err) {
+    const backing_store_arg = req.request.get_value(x11.Card8, "backing_store") orelse 0;
+    const backing_store = std.meta.intToEnum(BackingStore, backing_store_arg) catch |err| switch (err) {
         error.InvalidEnumTag => {
             std.log.err("Received invalid backing store {d} in CreateWindow request", .{backing_store_arg});
             return request_context.client.write_error(request_context, .value, backing_store_arg);
@@ -137,6 +138,7 @@ fn create_window(request_context: phx.RequestContext) !void {
     const save_under = if (req.request.get_value(x11.Card8, "save_under") orelse 0 == 0) false else true;
     const override_redirect = if (req.request.get_value(x11.Card8, "override_redirect") orelse 0 == 0) false else true;
     const event_mask: EventMask = @bitCast(req.request.get_value(x11.Card32, "event_mask") orelse 0);
+    const do_not_propagate_mask: DeviceEventMask = @bitCast(req.request.get_value(x11.Card16, "do_not_propagate_mask") orelse 0);
 
     const window_attributes = phx.Window.Attributes{
         .geometry = .{
@@ -159,6 +161,7 @@ fn create_window(request_context: phx.RequestContext) !void {
         .background_pixel = background_pixel,
         .border_pixmap = border_pixmap,
         .border_pixel = border_pixel,
+        .do_not_propagate_mask = do_not_propagate_mask,
         .save_under = save_under,
         .override_redirect = override_redirect,
     };
@@ -167,7 +170,6 @@ fn create_window(request_context: phx.RequestContext) !void {
         parent_window,
         req.request.window,
         &window_attributes,
-        event_mask,
         request_context.server,
         request_context.client,
         request_context.allocator,
@@ -183,12 +185,20 @@ fn create_window(request_context: phx.RequestContext) !void {
         error.OutOfMemory => {
             return request_context.client.write_error(request_context, .alloc, 0);
         },
-        error.ExclusiveEventListenerTaken => {
-            std.log.err("A client is already listening to exclusive events (ResizeRedirect, SubstructureRedirect, ButtonPress) on one of the parent windows", .{});
-            return request_context.client.write_error(request_context, .access, 0);
-        },
     };
     errdefer window.destroy();
+
+    if (!event_mask.is_empty()) {
+        window.add_core_event_listener(window.client_owner, event_mask) catch |err| switch (err) {
+            error.OutOfMemory => {
+                return request_context.client.write_error(request_context, .alloc, 0);
+            },
+            error.ExclusiveEventListenerTaken => {
+                std.log.err("A client is already listening to exclusive events (ResizeRedirect, SubstructureRedirect, ButtonPress) on one of the parent windows", .{});
+                return request_context.client.write_error(request_context, .access, 0);
+            },
+        };
+    }
 
     const create_notify_event = phx.event.Event{
         .create_notify = .{
@@ -204,6 +214,37 @@ fn create_window(request_context: phx.RequestContext) !void {
         },
     };
     window.write_core_event_to_event_listeners(&create_notify_event);
+}
+
+fn get_window_attributes(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(GetWindowAttributesRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("GetWindowAttributes request: {s}", .{x11.stringify_fmt(req)});
+
+    const window = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in GetWindowAttributes request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+
+    var rep = GetWindowAttributesReply{
+        .backing_store = window.attributes.backing_store,
+        .sequence_number = request_context.sequence_number,
+        .visual = window.attributes.visual.id,
+        .class = window.attributes.class,
+        .bit_gravity = window.attributes.bit_gravity,
+        .win_gravity = window.attributes.win_gravity,
+        .backing_planes = window.attributes.backing_planes,
+        .backing_pixel = window.attributes.backing_pixel,
+        .save_under = window.attributes.save_under,
+        .map_is_installed = true, // TODO: Return correct value
+        .map_state = window.get_map_state(),
+        .override_redirect = window.attributes.override_redirect,
+        .colormap = window.attributes.colormap.id, // TODO: Update when colormaps can get uninstalled
+        .all_event_mask = window.get_all_event_mask_core(),
+        .your_event_mask = window.get_client_event_mask_core(request_context.client),
+        .do_not_propagate_mask = window.attributes.do_not_propagate_mask,
+    };
+    try request_context.client.write_reply(&rep);
 }
 
 fn destroy_window(request_context: phx.RequestContext) !void {
@@ -448,7 +489,6 @@ fn create_colormap(request_context: phx.RequestContext) !void {
             return request_context.client.write_error(request_context, .alloc, 0);
         },
     };
-    errdefer request_context.client.remove_resource(colormap.id);
 }
 
 fn query_extension(request_context: phx.RequestContext) !void {
@@ -594,7 +634,7 @@ const pixmap_none: x11.PixmapId = 0;
 const window_pointer_root: x11.WindowId = 1;
 const copy_from_parent: x11.Card32 = 0;
 
-pub const BitGravity = enum(x11.Card32) {
+pub const BitGravity = enum(x11.Card8) {
     forget = 0,
     north_west = 1,
     north = 2,
@@ -608,7 +648,7 @@ pub const BitGravity = enum(x11.Card32) {
     static = 10,
 };
 
-pub const WinGravity = enum(x11.Card32) {
+pub const WinGravity = enum(x11.Card8) {
     unmap = 0,
     north_west = 1,
     north = 2,
@@ -620,6 +660,19 @@ pub const WinGravity = enum(x11.Card32) {
     south = 8,
     south_east = 9,
     static = 10,
+};
+
+pub const MapState = enum(x11.Card8) {
+    unmapped = 0,
+    unviewable = 1,
+    viewable = 2,
+};
+
+pub const BackingStore = enum(x11.Card8) {
+    /// aka not_useful
+    never = 0,
+    when_mapped = 1,
+    always = 2,
 };
 
 pub const EventMask = packed struct(x11.Card32) {
@@ -667,15 +720,15 @@ pub const EventMask = packed struct(x11.Card32) {
     }
 };
 
-const DeviceEventMask = packed struct(x11.Card32) {
+pub const DeviceEventMask = packed struct(x11.Card16) {
     key_press: bool,
     key_release: bool,
     button_press: bool,
     button_release: bool,
-    _padding1: bool = 0,
-    _padding2: bool = 0,
+    _padding1: bool = false,
+    _padding2: bool = false,
     pointer_motion: bool,
-    _padding3: bool = 0,
+    _padding3: bool = false,
     button1_motion: bool,
     button2_motion: bool,
     button3_motion: bool,
@@ -683,7 +736,7 @@ const DeviceEventMask = packed struct(x11.Card32) {
     button5_motion: bool,
     button_motion: bool,
 
-    _padding4: u18 = 0,
+    _padding4: u2 = 0,
 
     pub fn sanitize(self: EventMask) EventMask {
         var result = self;
@@ -695,8 +748,8 @@ const DeviceEventMask = packed struct(x11.Card32) {
     }
 
     comptime {
-        std.debug.assert(@sizeOf(@This()) == @sizeOf(x11.Card32));
-        std.debug.assert(@bitSizeOf(@This()) == @bitSizeOf(x11.Card32));
+        std.debug.assert(@sizeOf(@This()) == @sizeOf(x11.Card16));
+        std.debug.assert(@bitSizeOf(@This()) == @bitSizeOf(x11.Card16));
     }
 };
 
@@ -736,6 +789,35 @@ const CreateWindowRequest = struct {
             return null;
         }
     }
+};
+
+const GetWindowAttributesRequest = struct {
+    opcode: x11.Card8, // opcode.Major
+    pad1: x11.Card8,
+    length: x11.Card16,
+    window: x11.WindowId,
+};
+
+const GetWindowAttributesReply = struct {
+    reply_type: phx.reply.ReplyType = .reply,
+    backing_store: BackingStore,
+    sequence_number: x11.Card16,
+    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+    visual: x11.VisualId,
+    class: x11.Class,
+    bit_gravity: BitGravity,
+    win_gravity: WinGravity,
+    backing_planes: x11.Card32,
+    backing_pixel: x11.Card32,
+    save_under: bool,
+    map_is_installed: bool,
+    map_state: MapState,
+    override_redirect: bool,
+    colormap: x11.ColormapId, // Or none(0)
+    all_event_mask: EventMask,
+    your_event_mask: EventMask,
+    do_not_propagate_mask: DeviceEventMask,
+    pad1: x11.Card16 = 0,
 };
 
 const DestroyWindowRequest = struct {

@@ -23,9 +23,11 @@ fn write_reply_field(comptime FieldType: type, value: *const FieldType, writer: 
         .@"enum" => |e| try writer.writeInt(e.tag_type, @intFromEnum(value.*), x11.native_endian),
         .int => |i| try writer.writeInt(@Type(.{ .int = i }), value.*, x11.native_endian),
         .bool => try writer.writeInt(x11.Card8, if (value.*) 1 else 0, x11.native_endian),
-        .@"struct" => {
+        .@"struct" => |*s| {
             if (@hasDecl(FieldType, "get_options")) {
                 try write_reply_list_of(FieldType, value, writer);
+            } else if (s.backing_integer) |backing_integer| {
+                try writer.writeInt(backing_integer, @bitCast(value.*), x11.native_endian);
             } else {
                 try write_reply_fields(FieldType, value, writer);
             }

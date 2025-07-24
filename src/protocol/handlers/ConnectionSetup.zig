@@ -223,7 +223,7 @@ const Screen = struct {
     min_installed_colormaps: x11.Card16,
     max_installed_colormaps: x11.Card16,
     root_visual: x11.VisualId,
-    backing_stores: phx.Window.BackingStore,
+    backing_stores: phx.core.BackingStore,
     save_unders: bool,
     root_depth: x11.Card8,
     num_allowed_depths: x11.Card8 = 0,

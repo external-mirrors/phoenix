@@ -137,11 +137,12 @@ fn create_root_window(root_client: *phx.Client, allocator: std.mem.Allocator) !*
         .background_pixel = 0,
         .border_pixmap = null,
         .border_pixel = 0,
+        .do_not_propagate_mask = @bitCast(@as(u16, 0)), // TODO:
         .save_under = false,
         .override_redirect = false,
     };
 
-    var root_window = try phx.Window.create(null, root_window_id, &window_attributes, @bitCast(@as(u32, 0)), null, root_client, allocator);
+    var root_window = try phx.Window.create(null, root_window_id, &window_attributes, null, root_client, allocator);
     errdefer root_window.destroy();
 
     try root_window.set_property_string8(phx.AtomManager.Predefined.resource_manager, "*background:\t#222222");

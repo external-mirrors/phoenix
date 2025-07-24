@@ -9,6 +9,7 @@ pub const Major = enum(x11.Card8) {
     map_window = 8,
     configure_window = 12,
     get_geometry = 14,
+    query_tree = 15,
     intern_atom = 16,
     change_property = 18,
     get_property = 20,

@@ -49,7 +49,7 @@ fn read_request_with_size_calculation(comptime T: type, reader: anytype, request
                     },
                     .bitmask => {
                         comptime std.debug.assert(!std.mem.eql(u8, list_of_options.length_field.?, "length")); // It can't be the request length field
-                        list_length = @popCount(@as(u32, @bitCast(@field(request, list_of_options.length_field.?))));
+                        list_length = @popCount(@field(request, list_of_options.length_field.?).to_int());
                     },
                     .request_remainder => {
                         comptime std.debug.assert(std.mem.eql(u8, list_of_options.length_field.?, "length")); // It needs to be the request length field

@@ -19,6 +19,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .map_window => map_window(request_context),
         .configure_window => configure_window(request_context),
         .get_geometry => get_geometry(request_context),
+        .query_tree => query_tree(request_context),
         .intern_atom => intern_atom(request_context),
         .change_property => change_property(request_context),
         .get_property => get_property(request_context),
@@ -301,6 +302,29 @@ fn get_geometry(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn query_tree(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(QueryTreeRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("QueryTree request: {s}", .{x11.stringify_fmt(req.request)});
+
+    const window = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in QueryTree request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+
+    var children = std.ArrayList(x11.WindowId).init(request_context.allocator);
+    defer children.deinit();
+    try get_window_children_bottom_to_top(window, &children);
+
+    var rep = QueryTreeReply{
+        .sequence_number = request_context.sequence_number,
+        .root = request_context.server.root_window.id,
+        .parent = if (window.parent) |parent| parent.id else @enumFromInt(none),
+        .children = .{ .items = children.items },
+    };
+    try request_context.client.write_reply(&rep);
+}
+
 fn intern_atom(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(InternAtomRequest, request_context.allocator);
     defer req.deinit();
@@ -501,7 +525,11 @@ const CreateWindowValueMask = packed struct(x11.Card32) {
             return null;
 
         const index_count_mask: u32 = (1 << @bitOffsetOf(CreateWindowValueMask, field_name)) - 1;
-        return @popCount(@as(u32, @bitCast(self)) & index_count_mask);
+        return @popCount(self.to_int() & index_count_mask);
+    }
+
+    pub fn to_int(self: CreateWindowValueMask) x11.Card32 {
+        return @bitCast(self);
     }
 
     comptime {
@@ -510,7 +538,19 @@ const CreateWindowValueMask = packed struct(x11.Card32) {
     }
 };
 
-const ConfigureWindowValueMask = packed struct(x11.Card32) {
+fn get_window_children_bottom_to_top(window: *const phx.Window, children: *std.ArrayList(x11.WindowId)) !void {
+    if (window.children.items.len == 0)
+        return;
+
+    var i: isize = @intCast(window.children.items.len - 1);
+    while (i >= 0) : (i -= 1) {
+        const child_window = window.children.items[@intCast(i)];
+        try get_window_children_bottom_to_top(child_window, children);
+        try children.append(child_window.id);
+    }
+}
+
+const ConfigureWindowValueMask = packed struct(x11.Card16) {
     x: bool,
     y: bool,
     width: bool,
@@ -519,7 +559,7 @@ const ConfigureWindowValueMask = packed struct(x11.Card32) {
     sibling: bool,
     stack_mode: bool,
 
-    _padding: u25 = 0,
+    _padding: u9 = 0,
 
     // TODO: Maybe instead of this just iterate each field and set all non-bool fields to 0, since they should be ignored
     pub fn sanitize(self: ConfigureWindowValueMask) ConfigureWindowValueMask {
@@ -535,12 +575,16 @@ const ConfigureWindowValueMask = packed struct(x11.Card32) {
             return null;
 
         const index_count_mask: u32 = (1 << @bitOffsetOf(ConfigureWindowValueMask, field_name)) - 1;
-        return @popCount(@as(u32, @bitCast(self)) & index_count_mask);
+        return @popCount(self.to_int() & index_count_mask);
+    }
+
+    pub fn to_int(self: ConfigureWindowValueMask) x11.Card16 {
+        return @bitCast(self);
     }
 
     comptime {
-        std.debug.assert(@sizeOf(@This()) == @sizeOf(x11.Card32));
-        std.debug.assert(@bitSizeOf(@This()) == @bitSizeOf(x11.Card32));
+        std.debug.assert(@sizeOf(@This()) == @sizeOf(x11.Card16));
+        std.debug.assert(@bitSizeOf(@This()) == @bitSizeOf(x11.Card16));
     }
 };
 
@@ -832,6 +876,25 @@ const GetGeometryReply = struct {
     height: x11.Card16,
     border_width: x11.Card16,
     pad1: [10]x11.Card8 = [_]x11.Card8{0} ** 10,
+};
+
+const QueryTreeRequest = struct {
+    opcode: x11.Card8, // opcode.Major
+    pad1: x11.Card8,
+    length: x11.Card16,
+    window: x11.WindowId,
+};
+
+const QueryTreeReply = struct {
+    reply_type: phx.reply.ReplyType = .reply,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16,
+    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+    root: x11.WindowId,
+    parent: x11.WindowId, // Or none(0) if the window is the root window
+    num_children: x11.Card16 = 0,
+    pad2: [14]x11.Card8 = [_]x11.Card8{0} ** 14,
+    children: x11.ListOf(x11.WindowId, .{ .length_field = "num_children" }),
 };
 
 const InternAtomRequest = struct {

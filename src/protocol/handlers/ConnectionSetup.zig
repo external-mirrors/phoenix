@@ -80,7 +80,7 @@ pub fn handle_client_connect(server: *phx.Server, client: *phx.Client, root_wind
 
     var screens = [_]Screen{
         .{
-            .root_window = root_window.id,
+            .root = root_window.id,
             .colormap = screen_colormap.id,
             .white_pixel = 0x00ffffff,
             .black_pixel = 0x00000000,
@@ -211,7 +211,7 @@ const Depth = struct {
 };
 
 const Screen = struct {
-    root_window: x11.WindowId,
+    root: x11.WindowId,
     colormap: x11.ColormapId,
     white_pixel: x11.Card32,
     black_pixel: x11.Card32,

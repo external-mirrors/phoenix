@@ -20,7 +20,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 }
 
 fn query_version(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(XfixesQueryVersionRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.XfixesQueryVersion, request_context.allocator);
     defer req.deinit();
     std.log.info("XfixesQueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -28,7 +28,7 @@ fn query_version(request_context: phx.RequestContext) !void {
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
     request_context.client.extension_versions.xfixes = phx.Version.min(server_version, client_version);
 
-    var rep = XfixesQueryVersionReply{
+    var rep = Reply.XfixesQueryVersion{
         .sequence_number = request_context.sequence_number,
         .major_version = request_context.client.extension_versions.xfixes.major,
         .minor_version = request_context.client.extension_versions.xfixes.minor,
@@ -49,20 +49,24 @@ pub const Region = enum(x11.Card32) {
     _,
 };
 
-const XfixesQueryVersionRequest = struct {
-    major_opcode: x11.Card8, // opcode.Major
-    minor_opcode: x11.Card8, // MinorOpcode
-    length: x11.Card16,
-    major_version: x11.Card32,
-    minor_version: x11.Card32,
+const Request = struct {
+    pub const XfixesQueryVersion = struct {
+        major_opcode: x11.Card8, // opcode.Major
+        minor_opcode: x11.Card8, // MinorOpcode
+        length: x11.Card16,
+        major_version: x11.Card32,
+        minor_version: x11.Card32,
+    };
 };
 
-const XfixesQueryVersionReply = struct {
-    type: phx.reply.ReplyType = .reply,
-    pad1: x11.Card8 = 0,
-    sequence_number: x11.Card16,
-    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    major_version: x11.Card32,
-    minor_version: x11.Card32,
-    pad2: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
+const Reply = struct {
+    pub const XfixesQueryVersion = struct {
+        type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        major_version: x11.Card32,
+        minor_version: x11.Card32,
+        pad2: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
+    };
 };

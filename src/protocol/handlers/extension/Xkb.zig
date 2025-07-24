@@ -20,7 +20,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 
 // TODO: Better impl
 fn use_extension(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(UseExtensionRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.UseExtension, request_context.allocator);
     defer req.deinit();
     std.log.info("UseExtension request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -29,7 +29,7 @@ fn use_extension(request_context: phx.RequestContext) !void {
     request_context.client.extension_versions.xkb = phx.Version.min(server_version, client_version);
     request_context.client.xkb_initialized = true;
 
-    var rep = UseExtensionReply{
+    var rep = Reply.UseExtension{
         .sequence_number = request_context.sequence_number,
         .supported = true,
         .major_version = @intCast(request_context.client.extension_versions.xkb.major),
@@ -42,20 +42,24 @@ const MinorOpcode = enum(x11.Card8) {
     use_extension = 0,
 };
 
-const UseExtensionRequest = struct {
-    major_opcode: x11.Card8, // opcode.Major
-    minor_opcode: x11.Card8, // MinorOpcode
-    length: x11.Card16,
-    major_version: x11.Card16,
-    minor_version: x11.Card16,
+const Request = struct {
+    pub const UseExtension = struct {
+        major_opcode: x11.Card8, // opcode.Major
+        minor_opcode: x11.Card8, // MinorOpcode
+        length: x11.Card16,
+        major_version: x11.Card16,
+        minor_version: x11.Card16,
+    };
 };
 
-const UseExtensionReply = struct {
-    type: phx.reply.ReplyType = .reply,
-    supported: bool,
-    sequence_number: x11.Card16,
-    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    major_version: x11.Card16,
-    minor_version: x11.Card16,
-    pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
+const Reply = struct {
+    pub const UseExtension = struct {
+        type: phx.reply.ReplyType = .reply,
+        supported: bool,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        major_version: x11.Card16,
+        minor_version: x11.Card16,
+        pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
+    };
 };

@@ -34,7 +34,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
     };
 }
 
-fn window_class_validate_attributes(class: x11.Class, req: *const CreateWindowRequest) bool {
+fn window_class_validate_attributes(class: x11.Class, req: *const Request.CreateWindow) bool {
     return switch (class) {
         .input_output => true,
         .input_only => !req.value_mask.background_pixmap and
@@ -53,7 +53,7 @@ fn window_class_validate_attributes(class: x11.Class, req: *const CreateWindowRe
 // TODO: Handle all params properly
 // TODO: Only one client at a time should be allowed to use redirect event mask and buttonpress on a window (or its parent)
 fn create_window(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(CreateWindowRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.CreateWindow, request_context.allocator);
     defer req.deinit();
     std.log.info("CreateWindow request: {s}", .{x11.stringify_fmt(req)});
 
@@ -217,7 +217,7 @@ fn create_window(request_context: phx.RequestContext) !void {
 }
 
 fn get_window_attributes(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(GetWindowAttributesRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.GetWindowAttributes, request_context.allocator);
     defer req.deinit();
     std.log.info("GetWindowAttributes request: {s}", .{x11.stringify_fmt(req)});
 
@@ -226,7 +226,7 @@ fn get_window_attributes(request_context: phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
 
-    var rep = GetWindowAttributesReply{
+    var rep = Reply.GetWindowAttributes{
         .backing_store = window.attributes.backing_store,
         .sequence_number = request_context.sequence_number,
         .visual = window.attributes.visual.id,
@@ -248,7 +248,7 @@ fn get_window_attributes(request_context: phx.RequestContext) !void {
 }
 
 fn destroy_window(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(DestroyWindowRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.DestroyWindow, request_context.allocator);
     defer req.deinit();
     std.log.info("DestroyWindow request: {s}", .{x11.stringify_fmt(req)});
 
@@ -267,7 +267,7 @@ fn destroy_window(request_context: phx.RequestContext) !void {
 
 // TODO: Implement properly
 fn map_window(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(MapWindowRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.MapWindow, request_context.allocator);
     defer req.deinit();
     std.log.info("MapWindow request: {s}", .{x11.stringify_fmt(req)});
 
@@ -296,7 +296,7 @@ fn map_window(request_context: phx.RequestContext) !void {
 
 // TODO: Implement properly
 fn configure_window(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(ConfigureWindowRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.ConfigureWindow, request_context.allocator);
     defer req.deinit();
     std.log.info("ConfigureWindow request: {s}", .{x11.stringify_fmt(req)});
 
@@ -357,7 +357,7 @@ fn configure_window(request_context: phx.RequestContext) !void {
 }
 
 fn get_geometry(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(GetGeometryRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.GetGeometry, request_context.allocator);
     defer req.deinit();
     std.log.info("GetGeometry request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -367,7 +367,7 @@ fn get_geometry(request_context: phx.RequestContext) !void {
     };
     const geometry = drawable.get_geometry();
 
-    var rep = GetGeometryReply{
+    var rep = Reply.GetGeometry{
         .depth = 32, // TODO: Use real value
         .sequence_number = request_context.sequence_number,
         .root = request_context.server.root_window.id,
@@ -381,7 +381,7 @@ fn get_geometry(request_context: phx.RequestContext) !void {
 }
 
 fn query_tree(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(QueryTreeRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.QueryTree, request_context.allocator);
     defer req.deinit();
     std.log.info("QueryTree request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -394,7 +394,7 @@ fn query_tree(request_context: phx.RequestContext) !void {
     defer children.deinit();
     try get_window_children_bottom_to_top(window, &children);
 
-    var rep = QueryTreeReply{
+    var rep = Reply.QueryTree{
         .sequence_number = request_context.sequence_number,
         .root = request_context.server.root_window.id,
         .parent = if (window.parent) |parent| parent.id else @enumFromInt(none),
@@ -404,7 +404,7 @@ fn query_tree(request_context: phx.RequestContext) !void {
 }
 
 fn intern_atom(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(InternAtomRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.InternAtom, request_context.allocator);
     defer req.deinit();
     std.log.info("InternAtom request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -418,7 +418,7 @@ fn intern_atom(request_context: phx.RequestContext) !void {
         };
     }
 
-    var rep = InternAtomReply{
+    var rep = Reply.InternAtom{
         .sequence_number = request_context.sequence_number,
         .atom = atom,
     };
@@ -427,7 +427,7 @@ fn intern_atom(request_context: phx.RequestContext) !void {
 
 // TODO: Implement properly
 fn change_property(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(ChangePropertyRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.ChangeProperty, request_context.allocator);
     defer req.deinit();
     std.log.info("ChangeProperty request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -473,7 +473,7 @@ fn change_property(request_context: phx.RequestContext) !void {
 
 // TODO: Actually read the request values, handling them properly
 fn get_property(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(GetPropertyRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.GetProperty, request_context.allocator);
     defer req.deinit();
     std.log.info("GetProperty request: {s}", .{x11.stringify_fmt(req.request)});
     // TODO: Error if running in security mode and the window is not owned by the client
@@ -493,7 +493,7 @@ fn get_property(request_context: phx.RequestContext) !void {
     // TODO: Handle this properly
     if (std.meta.activeTag(property.*) == .string8 and req.request.type == phx.AtomManager.Predefined.string) {
         // TODO: Properly set bytes_after and all that crap
-        var rep = GetPropertyCard8Reply{
+        var rep = Reply.GetPropertyCard8{
             .sequence_number = request_context.sequence_number,
             .type = req.request.type,
             .bytes_after = 0,
@@ -507,11 +507,11 @@ fn get_property(request_context: phx.RequestContext) !void {
 }
 
 fn get_input_focus(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(GetInputFocusRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.GetInputFocus, request_context.allocator);
     defer req.deinit();
 
     // TODO: Implement properly
-    var rep = GetInputFocusReply{
+    var rep = Reply.GetInputFocus{
         .revert_to = .pointer_root,
         .sequence_number = request_context.sequence_number,
         .focused_window = request_context.server.root_window.id,
@@ -520,7 +520,7 @@ fn get_input_focus(request_context: phx.RequestContext) !void {
 }
 
 fn free_pixmap(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(FreePixmapRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.FreePixmap, request_context.allocator);
     defer req.deinit();
 
     // TODO: Dont free immediately if the pixmap still has references somewhere
@@ -540,7 +540,7 @@ fn free_gc(_: phx.RequestContext) !void {
 }
 
 fn create_colormap(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(CreateColormapRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.CreateColormap, request_context.allocator);
     defer req.deinit();
     std.log.info("CreateColormap request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -575,11 +575,11 @@ fn create_colormap(request_context: phx.RequestContext) !void {
 }
 
 fn query_extension(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(QueryExtensionRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.QueryExtension, request_context.allocator);
     defer req.deinit();
     std.log.info("QueryExtension request: {s}", .{x11.stringify_fmt(req.request)});
 
-    var rep = QueryExtensionReply{
+    var rep = Reply.QueryExtension{
         .sequence_number = request_context.sequence_number,
         .present = false,
         .major_opcode = 0,
@@ -847,265 +847,269 @@ const String8WithLength = struct {
     data: x11.ListOf(x11.Card8, .{ .length_field = "length" }),
 };
 
-const CreateWindowRequest = struct {
-    opcode: x11.Card8, // opcode.Major
-    depth: x11.Card8,
-    length: x11.Card16,
-    window: x11.WindowId,
-    parent: x11.WindowId,
-    x: i16,
-    y: i16,
-    width: x11.Card16,
-    height: x11.Card16,
-    border_width: x11.Card16,
-    class: x11.Card16, // x11.Class, or 0 (Copy from parent)
-    visual: x11.VisualId,
-    value_mask: CreateWindowValueMask,
-    value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
+const Request = struct {
+    pub const CreateWindow = struct {
+        opcode: x11.Card8, // opcode.Major
+        depth: x11.Card8,
+        length: x11.Card16,
+        window: x11.WindowId,
+        parent: x11.WindowId,
+        x: i16,
+        y: i16,
+        width: x11.Card16,
+        height: x11.Card16,
+        border_width: x11.Card16,
+        class: x11.Card16, // x11.Class, or 0 (Copy from parent)
+        visual: x11.VisualId,
+        value_mask: CreateWindowValueMask,
+        value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
 
-    pub fn get_value(self: *const CreateWindowRequest, comptime T: type, comptime value_mask_field: []const u8) ?T {
-        if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
-            // The protocol specifies that all uninteresting bits are undefined, so we need to set them to 0
-            comptime std.debug.assert(@bitSizeOf(T) % 8 == 0);
-            return @intCast(self.value_list.items[index] & ((1 << @bitSizeOf(T)) - 1));
-        } else {
-            return null;
+        pub fn get_value(self: *const CreateWindow, comptime T: type, comptime value_mask_field: []const u8) ?T {
+            if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
+                // The protocol specifies that all uninteresting bits are undefined, so we need to set them to 0
+                comptime std.debug.assert(@bitSizeOf(T) % 8 == 0);
+                return @intCast(self.value_list.items[index] & ((1 << @bitSizeOf(T)) - 1));
+            } else {
+                return null;
+            }
         }
-    }
-};
+    };
 
-const GetWindowAttributesRequest = struct {
-    opcode: x11.Card8, // opcode.Major
-    pad1: x11.Card8,
-    length: x11.Card16,
-    window: x11.WindowId,
-};
+    pub const GetWindowAttributes = struct {
+        opcode: x11.Card8, // opcode.Major
+        pad1: x11.Card8,
+        length: x11.Card16,
+        window: x11.WindowId,
+    };
 
-const GetWindowAttributesReply = struct {
-    reply_type: phx.reply.ReplyType = .reply,
-    backing_store: BackingStore,
-    sequence_number: x11.Card16,
-    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    visual: x11.VisualId,
-    class: x11.Class,
-    bit_gravity: BitGravity,
-    win_gravity: WinGravity,
-    backing_planes: x11.Card32,
-    backing_pixel: x11.Card32,
-    save_under: bool,
-    map_is_installed: bool,
-    map_state: MapState,
-    override_redirect: bool,
-    colormap: x11.ColormapId, // Or none(0)
-    all_event_mask: EventMask,
-    your_event_mask: EventMask,
-    do_not_propagate_mask: DeviceEventMask,
-    pad1: x11.Card16 = 0,
-};
+    pub const DestroyWindow = struct {
+        opcode: x11.Card8, // opcode.Major
+        pad1: x11.Card8,
+        length: x11.Card16,
+        window: x11.WindowId,
+    };
 
-const DestroyWindowRequest = struct {
-    opcode: x11.Card8, // opcode.Major
-    pad1: x11.Card8,
-    length: x11.Card16,
-    window: x11.WindowId,
-};
+    pub const MapWindow = struct {
+        opcode: x11.Card8, // opcode.Major
+        pad1: x11.Card8,
+        length: x11.Card16,
+        window: x11.WindowId,
+    };
 
-const MapWindowRequest = struct {
-    opcode: x11.Card8, // opcode.Major
-    pad1: x11.Card8,
-    length: x11.Card16,
-    window: x11.WindowId,
-};
+    pub const ConfigureWindow = struct {
+        opcode: x11.Card8, // opcode.Major
+        pad1: x11.Card8,
+        length: x11.Card16,
+        window: x11.WindowId,
+        value_mask: ConfigureWindowValueMask,
+        pad2: x11.Card16,
+        value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
 
-const ConfigureWindowRequest = struct {
-    opcode: x11.Card8, // opcode.Major
-    pad1: x11.Card8,
-    length: x11.Card16,
-    window: x11.WindowId,
-    value_mask: ConfigureWindowValueMask,
-    pad2: x11.Card16,
-    value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
-
-    pub fn get_value(self: *const ConfigureWindowRequest, comptime T: type, comptime value_mask_field: []const u8) ?T {
-        if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
-            // The protocol specifies that all uninteresting bits are undefined, so we need to set them to 0
-            comptime std.debug.assert(@bitSizeOf(T) % 8 == 0);
-            return @intCast(self.value_list.items[index] & ((1 << @bitSizeOf(T)) - 1));
-        } else {
-            return null;
+        pub fn get_value(self: *const ConfigureWindow, comptime T: type, comptime value_mask_field: []const u8) ?T {
+            if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
+                // The protocol specifies that all uninteresting bits are undefined, so we need to set them to 0
+                comptime std.debug.assert(@bitSizeOf(T) % 8 == 0);
+                return @intCast(self.value_list.items[index] & ((1 << @bitSizeOf(T)) - 1));
+            } else {
+                return null;
+            }
         }
-    }
+    };
+
+    pub const GetInputFocus = struct {
+        opcode: x11.Card8, // opcode.Major
+        pad1: x11.Card8,
+        length: x11.Card16,
+    };
+
+    pub const FreePixmap = struct {
+        opcode: x11.Card8, // opcode.Major
+        pad1: x11.Card8,
+        length: x11.Card16,
+        pixmap: x11.PixmapId,
+    };
+
+    pub const CreateColormap = struct {
+        opcode: x11.Card8, // opcode.Major
+        alloc: enum(x11.Card8) {
+            none = 0,
+            all = 1,
+        },
+        length: x11.Card16,
+        colormap: x11.ColormapId,
+        window: x11.WindowId,
+        visual_id: x11.VisualId,
+    };
+
+    pub const QueryExtension = struct {
+        opcode: x11.Card8, // opcode.Major
+        pad1: x11.Card8,
+        length: x11.Card16,
+        length_of_name: x11.Card16,
+        pad2: x11.Card16,
+        name: x11.String8(.{ .length_field = "length_of_name" }),
+    };
+
+    // TODO: Implement this in a better way.
+    // The |data_length| field should be multiplied by |format|/8 for the size of |data|
+    // and the element type of the |data| list should depend on the |format|, either Card8, Card16 or Card32.
+    pub const ChangeProperty = struct {
+        opcode: x11.Card8, // opcode.Major
+        mode: enum(x11.Card8) {
+            replace = 0,
+            prepend = 1,
+            append = 2,
+        },
+        length: x11.Card16,
+        window: x11.WindowId,
+        property: x11.Atom,
+        type: x11.Atom,
+        format: x11.Card8, // 8, 16 or 32
+        pad1: x11.Card8,
+        pad2: x11.Card16,
+        // In |format| units
+        data_length: x11.Card32,
+        data: x11.ListOf(x11.Card8, .{ .length_field = "length", .length_field_type = .request_remainder }),
+    };
+
+    pub const GetProperty = struct {
+        opcode: x11.Card8, // opcode.Major
+        delete: bool,
+        length: x11.Card16,
+        window: x11.WindowId,
+        property: x11.Atom,
+        type: x11.Atom,
+        long_offset: x11.Card32,
+        long_length: x11.Card32,
+    };
+
+    pub const GetGeometry = struct {
+        opcode: x11.Card8, // opcode.Major
+        pad1: x11.Card8,
+        length: x11.Card16,
+        drawable: x11.DrawableId,
+    };
+
+    pub const QueryTree = struct {
+        opcode: x11.Card8, // opcode.Major
+        pad1: x11.Card8,
+        length: x11.Card16,
+        window: x11.WindowId,
+    };
+
+    pub const InternAtom = struct {
+        opcode: x11.Card8, // opcode.Major
+        only_if_exists: bool,
+        length: x11.Card16,
+        length_of_name: x11.Card16,
+        pad1: x11.Card16,
+        name: x11.String8(.{ .length_field = "length_of_name" }),
+    };
 };
 
-const GetInputFocusRequest = struct {
-    opcode: x11.Card8, // opcode.Major
-    pad1: x11.Card8,
-    length: x11.Card16,
-};
-
-const GetInputFocusReply = struct {
-    reply_type: phx.reply.ReplyType = .reply,
-    revert_to: RevertTo,
-    sequence_number: x11.Card16,
-    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    focused_window: x11.WindowId,
-    pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
-};
-
-const FreePixmapRequest = struct {
-    opcode: x11.Card8, // opcode.Major
-    pad1: x11.Card8,
-    length: x11.Card16,
-    pixmap: x11.PixmapId,
-};
-
-const CreateColormapRequest = struct {
-    opcode: x11.Card8, // opcode.Major
-    alloc: enum(x11.Card8) {
-        none = 0,
-        all = 1,
-    },
-    length: x11.Card16,
-    colormap: x11.ColormapId,
-    window: x11.WindowId,
-    visual_id: x11.VisualId,
-};
-
-const QueryExtensionRequest = struct {
-    opcode: x11.Card8, // opcode.Major
-    pad1: x11.Card8,
-    length: x11.Card16,
-    length_of_name: x11.Card16,
-    pad2: x11.Card16,
-    name: x11.String8(.{ .length_field = "length_of_name" }),
-};
-
-const QueryExtensionReply = struct {
-    reply_type: phx.reply.ReplyType = .reply,
-    pad1: x11.Card8 = 0,
-    sequence_number: x11.Card16,
-    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    present: bool,
-    major_opcode: x11.Card8,
-    first_event: x11.Card8,
-    first_error: x11.Card8,
-    pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
-};
-
-// TODO: Implement this in a better way.
-// The |data_length| field should be multiplied by |format|/8 for the size of |data|
-// and the element type of the |data| list should depend on the |format|, either Card8, Card16 or Card32.
-const ChangePropertyRequest = struct {
-    opcode: x11.Card8, // opcode.Major
-    mode: enum(x11.Card8) {
-        replace = 0,
-        prepend = 1,
-        append = 2,
-    },
-    length: x11.Card16,
-    window: x11.WindowId,
-    property: x11.Atom,
-    type: x11.Atom,
-    format: x11.Card8, // 8, 16 or 32
-    pad1: x11.Card8,
-    pad2: x11.Card16,
-    // In |format| units
-    data_length: x11.Card32,
-    data: x11.ListOf(x11.Card8, .{ .length_field = "length", .length_field_type = .request_remainder }),
-};
-
-const GetPropertyRequest = struct {
-    opcode: x11.Card8, // opcode.Major
-    delete: bool,
-    length: x11.Card16,
-    window: x11.WindowId,
-    property: x11.Atom,
-    type: x11.Atom,
-    long_offset: x11.Card32,
-    long_length: x11.Card32,
-};
-
-fn GetPropertyReply(comptime DataType: type) type {
-    return struct {
+const Reply = struct {
+    pub const GetWindowAttributes = struct {
         reply_type: phx.reply.ReplyType = .reply,
-        format: x11.Card8 = @sizeOf(DataType),
+        backing_store: BackingStore,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        type: x11.Atom,
-        bytes_after: x11.Card32,
-        data_length: x11.Card32 = 0,
-        pad1: [12]x11.Card8 = [_]x11.Card8{0} ** 12,
-        data: x11.ListOf(DataType, .{ .length_field = "data_length", .padding = 4 }),
+        visual: x11.VisualId,
+        class: x11.Class,
+        bit_gravity: BitGravity,
+        win_gravity: WinGravity,
+        backing_planes: x11.Card32,
+        backing_pixel: x11.Card32,
+        save_under: bool,
+        map_is_installed: bool,
+        map_state: MapState,
+        override_redirect: bool,
+        colormap: x11.ColormapId, // Or none(0)
+        all_event_mask: EventMask,
+        your_event_mask: EventMask,
+        do_not_propagate_mask: DeviceEventMask,
+        pad1: x11.Card16 = 0,
     };
-}
 
-const GetPropertyCard8Reply = GetPropertyReply(x11.Card8);
-const GetPropertyCard16Reply = GetPropertyReply(x11.Card16);
-const GetPropertyCard32Reply = GetPropertyReply(x11.Card32);
+    pub const GetInputFocus = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        revert_to: RevertTo,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        focused_window: x11.WindowId,
+        pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
+    };
 
-const GetGeometryRequest = struct {
-    opcode: x11.Card8, // opcode.Major
-    pad1: x11.Card8,
-    length: x11.Card16,
-    drawable: x11.DrawableId,
-};
+    pub const QueryExtension = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        present: bool,
+        major_opcode: x11.Card8,
+        first_event: x11.Card8,
+        first_error: x11.Card8,
+        pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
+    };
 
-const GetGeometryReply = struct {
-    reply_type: phx.reply.ReplyType = .reply,
-    depth: x11.Card8,
-    sequence_number: x11.Card16,
-    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    root: x11.WindowId,
-    x: i16,
-    y: i16,
-    width: x11.Card16,
-    height: x11.Card16,
-    border_width: x11.Card16,
-    pad1: [10]x11.Card8 = [_]x11.Card8{0} ** 10,
-};
+    fn GetProperty(comptime DataType: type) type {
+        return struct {
+            reply_type: phx.reply.ReplyType = .reply,
+            format: x11.Card8 = @sizeOf(DataType),
+            sequence_number: x11.Card16,
+            length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+            type: x11.Atom,
+            bytes_after: x11.Card32,
+            data_length: x11.Card32 = 0,
+            pad1: [12]x11.Card8 = [_]x11.Card8{0} ** 12,
+            data: x11.ListOf(DataType, .{ .length_field = "data_length", .padding = 4 }),
+        };
+    }
 
-const QueryTreeRequest = struct {
-    opcode: x11.Card8, // opcode.Major
-    pad1: x11.Card8,
-    length: x11.Card16,
-    window: x11.WindowId,
-};
+    pub const GetPropertyCard8 = GetProperty(x11.Card8);
+    pub const GetPropertyCard16 = GetProperty(x11.Card16);
+    pub const GetPropertyCard32 = GetProperty(x11.Card32);
 
-const QueryTreeReply = struct {
-    reply_type: phx.reply.ReplyType = .reply,
-    pad1: x11.Card8 = 0,
-    sequence_number: x11.Card16,
-    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    root: x11.WindowId,
-    parent: x11.WindowId, // Or none(0) if the window is the root window
-    num_children: x11.Card16 = 0,
-    pad2: [14]x11.Card8 = [_]x11.Card8{0} ** 14,
-    children: x11.ListOf(x11.WindowId, .{ .length_field = "num_children" }),
-};
+    pub const GetGeometry = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        depth: x11.Card8,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        root: x11.WindowId,
+        x: i16,
+        y: i16,
+        width: x11.Card16,
+        height: x11.Card16,
+        border_width: x11.Card16,
+        pad1: [10]x11.Card8 = [_]x11.Card8{0} ** 10,
+    };
 
-const InternAtomRequest = struct {
-    opcode: x11.Card8, // opcode.Major
-    only_if_exists: bool,
-    length: x11.Card16,
-    length_of_name: x11.Card16,
-    pad1: x11.Card16,
-    name: x11.String8(.{ .length_field = "length_of_name" }),
-};
+    pub const QueryTree = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        root: x11.WindowId,
+        parent: x11.WindowId, // Or none(0) if the window is the root window
+        num_children: x11.Card16 = 0,
+        pad2: [14]x11.Card8 = [_]x11.Card8{0} ** 14,
+        children: x11.ListOf(x11.WindowId, .{ .length_field = "num_children" }),
+    };
 
-const InternAtomReply = struct {
-    reply_type: phx.reply.ReplyType = .reply,
-    pad1: x11.Card8 = 0,
-    sequence_number: x11.Card16,
-    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    atom: x11.Atom,
-    pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
-};
+    pub const InternAtom = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        atom: x11.Atom,
+        pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
+    };
 
-const ListExtensionsReply = struct {
-    reply_type: phx.reply.ReplyType = .reply,
-    num_strs: x11.Card8,
-    sequence_number: x11.Card16,
-    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    pad1: [24]x11.Card8 = [_]x11.Card8{0} ** 24,
-    names: x11.ListOf(String8WithLength, .{ .length_field = "num_strs", .padding = 4 }),
+    pub const ListExtensions = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        num_strs: x11.Card8,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        pad1: [24]x11.Card8 = [_]x11.Card8{0} ** 24,
+        names: x11.ListOf(String8WithLength, .{ .length_field = "num_strs", .padding = 4 }),
+    };
 };

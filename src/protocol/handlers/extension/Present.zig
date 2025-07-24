@@ -23,7 +23,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 }
 
 fn query_version(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(PresentQueryVersionRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.PresentQueryVersion, request_context.allocator);
     defer req.deinit();
     std.log.info("PresentQueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -31,7 +31,7 @@ fn query_version(request_context: phx.RequestContext) !void {
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
     request_context.client.extension_versions.present = phx.Version.min(server_version, client_version);
 
-    var rep = PresentQueryVersionReply{
+    var rep = Reply.PresentQueryVersion{
         .sequence_number = request_context.sequence_number,
         .major_version = request_context.client.extension_versions.present.major,
         .minor_version = request_context.client.extension_versions.present.minor,
@@ -40,7 +40,7 @@ fn query_version(request_context: phx.RequestContext) !void {
 }
 
 fn present_pixmap(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(PresentPixmapRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.PresentPixmap, request_context.allocator);
     defer req.deinit();
     std.log.info("PresentPixmap request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -75,7 +75,7 @@ fn present_pixmap(request_context: phx.RequestContext) !void {
 
     //std.log.err("present pixmap: {s}", .{x11.stringify_fmt(req.request)});
 
-    var idle_notify_event = PresentIdleNotifyEvent{
+    var idle_notify_event = Event.PresentIdleNotify{
         .sequence_number = request_context.sequence_number,
         .window = req.request.window,
         .serial = req.request.serial,
@@ -86,7 +86,7 @@ fn present_pixmap(request_context: phx.RequestContext) !void {
 
     for (req.request.notifies.items) |notify| {
         const notify_window = request_context.server.get_window(notify.window) orelse unreachable;
-        var complete_event_notify = PresentCompleteNotifyEvent{
+        var complete_event_notify = Event.PresentCompleteNotify{
             .sequence_number = request_context.sequence_number,
             .kind = .pixmap,
             .mode = .suboptimal_copy,
@@ -98,7 +98,7 @@ fn present_pixmap(request_context: phx.RequestContext) !void {
         notify_window.write_extension_event_to_event_listeners(&complete_event_notify);
     }
 
-    var complete_event = PresentCompleteNotifyEvent{
+    var complete_event = Event.PresentCompleteNotify{
         .sequence_number = request_context.sequence_number,
         .kind = .pixmap,
         .mode = .suboptimal_copy,
@@ -111,7 +111,7 @@ fn present_pixmap(request_context: phx.RequestContext) !void {
 }
 
 fn select_input(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(PresentSelectInputRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.PresentSelectInput, request_context.allocator);
     defer req.deinit();
     std.log.info("PresentSelectInput request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -240,112 +240,118 @@ const PresentCompleteMode = enum(x11.Card8) {
     suboptimal_copy = 3,
 };
 
-const PresentQueryVersionRequest = struct {
-    major_opcode: x11.Card8, // opcode.Major
-    minor_opcode: x11.Card8, // MinorOpcode
-    length: x11.Card16,
-    major_version: x11.Card32,
-    minor_version: x11.Card32,
+const Request = struct {
+    pub const PresentQueryVersion = struct {
+        major_opcode: x11.Card8, // opcode.Major
+        minor_opcode: x11.Card8, // MinorOpcode
+        length: x11.Card16,
+        major_version: x11.Card32,
+        minor_version: x11.Card32,
+    };
+
+    pub const PresentPixmap = struct {
+        major_opcode: x11.Card8, // opcode.Major
+        minor_opcode: x11.Card8, // MinorOpcode
+        length: x11.Card16,
+        window: x11.WindowId,
+        pixmap: x11.PixmapId,
+        serial: x11.Card32,
+        valid_area: Xfixes.Region,
+        update_area: Xfixes.Region,
+        x_off: i16,
+        y_off: i16,
+        target_crtc: Randr.Crtc,
+        wait_fence: phx.Sync.FenceId,
+        idle_fence: phx.Sync.FenceId,
+        options: PresentOptions,
+        pad1: x11.Card32,
+        target_msc: x11.Card64,
+        divisor: x11.Card64,
+        remainder: x11.Card64,
+        notifies: x11.ListOf(PresentNotify, .{ .length_field = "length", .length_field_type = .request_remainder }),
+    };
+
+    pub const PresentSelectInput = struct {
+        major_opcode: x11.Card8, // opcode.Major
+        minor_opcode: x11.Card8, // MinorOpcode
+        length: x11.Card16,
+        event_id: PresentEventId,
+        window: x11.WindowId,
+        event_mask: PresentEventMask,
+    };
 };
 
-const PresentQueryVersionReply = struct {
-    type: phx.reply.ReplyType = .reply,
-    pad1: x11.Card8 = 0,
-    sequence_number: x11.Card16,
-    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    major_version: x11.Card32,
-    minor_version: x11.Card32,
-    pad2: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
+const Reply = struct {
+    pub const PresentQueryVersion = struct {
+        type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        major_version: x11.Card32,
+        minor_version: x11.Card32,
+        pad2: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
+    };
 };
 
-const PresentPixmapRequest = struct {
-    major_opcode: x11.Card8, // opcode.Major
-    minor_opcode: x11.Card8, // MinorOpcode
-    length: x11.Card16,
-    window: x11.WindowId,
-    pixmap: x11.PixmapId,
-    serial: x11.Card32,
-    valid_area: Xfixes.Region,
-    update_area: Xfixes.Region,
-    x_off: i16,
-    y_off: i16,
-    target_crtc: Randr.Crtc,
-    wait_fence: phx.Sync.FenceId,
-    idle_fence: phx.Sync.FenceId,
-    options: PresentOptions,
-    pad1: x11.Card32,
-    target_msc: x11.Card64,
-    divisor: x11.Card64,
-    remainder: x11.Card64,
-    notifies: x11.ListOf(PresentNotify, .{ .length_field = "length", .length_field_type = .request_remainder }),
-};
+const Event = struct {
+    pub const PresentCompleteNotify = extern struct {
+        code: phx.event.EventCode = .xge,
+        present_extension_opcode: phx.opcode.Major = .present,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        present_event_code: PresentEventCode = .complete_notify,
+        kind: PresentCompleteKind,
+        mode: PresentCompleteMode,
+        event_id: PresentEventId = @enumFromInt(0), // This is automatically updated with the event id from the event listener
+        window: x11.WindowId,
+        serial: x11.Card32,
+        ust: x11.Card64,
+        msc: x11.Card64,
 
-const PresentSelectInputRequest = struct {
-    major_opcode: x11.Card8, // opcode.Major
-    minor_opcode: x11.Card8, // MinorOpcode
-    length: x11.Card16,
-    event_id: PresentEventId,
-    window: x11.WindowId,
-    event_mask: PresentEventMask,
-};
+        pub fn get_extension_major_opcode(self: *const PresentCompleteNotify) phx.opcode.Major {
+            _ = self;
+            return phx.opcode.Major.present;
+        }
 
-const PresentCompleteNotifyEvent = extern struct {
-    code: phx.event.EventCode = .xge,
-    present_extension_opcode: phx.opcode.Major = .present,
-    sequence_number: x11.Card16,
-    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    present_event_code: PresentEventCode = .complete_notify,
-    kind: PresentCompleteKind,
-    mode: PresentCompleteMode,
-    event_id: PresentEventId = @enumFromInt(0), // This is automatically updated with the event id from the event listener
-    window: x11.WindowId,
-    serial: x11.Card32,
-    ust: x11.Card64,
-    msc: x11.Card64,
+        pub fn to_event_mask(self: *const PresentCompleteNotify) u32 {
+            _ = self;
+            var event_mask: PresentEventMask = @bitCast(@as(u32, 0));
+            event_mask.complete_notify_mask = true;
+            return @bitCast(event_mask);
+        }
 
-    pub fn get_extension_major_opcode(self: *const PresentCompleteNotifyEvent) phx.opcode.Major {
-        _ = self;
-        return phx.opcode.Major.present;
-    }
+        comptime {
+            std.debug.assert(@sizeOf(@This()) == 40);
+        }
+    };
 
-    pub fn to_event_mask(self: *const PresentCompleteNotifyEvent) u32 {
-        _ = self;
-        var event_mask: PresentEventMask = @bitCast(@as(u32, 0));
-        event_mask.complete_notify_mask = true;
-        return @bitCast(event_mask);
-    }
+    pub const PresentIdleNotify = extern struct {
+        code: phx.event.EventCode = .xge,
+        present_extension_opcode: phx.opcode.Major = phx.opcode.Major.present,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        present_event_code: PresentEventCode = .idle_notify,
+        pad1: x11.Card16 = 0,
+        event_id: PresentEventId = @enumFromInt(0), // This is automatically updated with the event id from the event listener
+        window: x11.WindowId,
+        serial: x11.Card32,
+        pixmap: x11.PixmapId,
+        idle_fence: phx.Sync.FenceId,
 
-    comptime {
-        std.debug.assert(@sizeOf(@This()) == 40);
-    }
-};
+        pub fn get_extension_major_opcode(self: *const PresentIdleNotify) phx.opcode.Major {
+            _ = self;
+            return .present;
+        }
 
-const PresentIdleNotifyEvent = extern struct {
-    code: phx.event.EventCode = .xge,
-    present_extension_opcode: phx.opcode.Major = phx.opcode.Major.present,
-    sequence_number: x11.Card16,
-    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    present_event_code: PresentEventCode = .idle_notify,
-    pad1: x11.Card16 = 0,
-    event_id: PresentEventId = @enumFromInt(0), // This is automatically updated with the event id from the event listener
-    window: x11.WindowId,
-    serial: x11.Card32,
-    pixmap: x11.PixmapId,
-    idle_fence: phx.Sync.FenceId,
+        pub fn to_event_mask(self: *const PresentIdleNotify) u32 {
+            _ = self;
+            var event_mask: PresentEventMask = @bitCast(@as(u32, 0));
+            event_mask.idle_notify_mask = true;
+            return @bitCast(event_mask);
+        }
 
-    pub fn get_extension_major_opcode(self: *const PresentIdleNotifyEvent) phx.opcode.Major {
-        _ = self;
-        return .present;
-    }
-
-    pub fn to_event_mask(self: *const PresentIdleNotifyEvent) u32 {
-        _ = self;
-        var event_mask: PresentEventMask = @bitCast(@as(u32, 0));
-        event_mask.idle_notify_mask = true;
-        return @bitCast(event_mask);
-    }
-
-    comptime {
-        std.debug.assert(@sizeOf(@This()) == 32);
-    }
+        comptime {
+            std.debug.assert(@sizeOf(@This()) == 32);
+        }
+    };
 };

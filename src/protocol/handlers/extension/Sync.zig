@@ -20,7 +20,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 }
 
 fn initialize(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(SyncInitializeRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.SyncInitialize, request_context.allocator);
     defer req.deinit();
     std.log.info("SyncInitialize request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -29,7 +29,7 @@ fn initialize(request_context: phx.RequestContext) !void {
     request_context.client.extension_versions.sync = phx.Version.min(server_version, client_version);
     request_context.client.sync_initialized = true;
 
-    var rep = SyncInitializeReply{
+    var rep = Reply.SyncInitialize{
         .sequence_number = request_context.sequence_number,
         .major_version = @intCast(request_context.client.extension_versions.sync.major),
         .minor_version = @intCast(request_context.client.extension_versions.sync.minor),
@@ -38,7 +38,7 @@ fn initialize(request_context: phx.RequestContext) !void {
 }
 
 fn destroy_fence(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(SyncDestroyFenceRequest, request_context.allocator);
+    var req = try request_context.client.read_request(Request.SyncDestroyFence, request_context.allocator);
     defer req.deinit();
     std.log.info("SyncDestroyFence request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -62,28 +62,32 @@ pub const FenceId = enum(x11.Card32) {
     }
 };
 
-const SyncInitializeRequest = struct {
-    major_opcode: x11.Card8, // opcode.Major
-    minor_opcode: x11.Card8, // MinorOpcode
-    length: x11.Card16,
-    major_version: x11.Card8,
-    minor_version: x11.Card8,
-    pad1: x11.Card16,
+const Request = struct {
+    pub const SyncInitialize = struct {
+        major_opcode: x11.Card8, // opcode.Major
+        minor_opcode: x11.Card8, // MinorOpcode
+        length: x11.Card16,
+        major_version: x11.Card8,
+        minor_version: x11.Card8,
+        pad1: x11.Card16,
+    };
+
+    pub const SyncDestroyFence = struct {
+        major_opcode: x11.Card8, // opcode.Major
+        minor_opcode: x11.Card8, // MinorOpcode
+        length: x11.Card16,
+        fence: FenceId,
+    };
 };
 
-const SyncInitializeReply = struct {
-    type: phx.reply.ReplyType = .reply,
-    pad1: x11.Card8 = 0,
-    sequence_number: x11.Card16,
-    length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-    major_version: x11.Card8,
-    minor_version: x11.Card8,
-    pad2: [22]x11.Card8 = [_]x11.Card8{0} ** 22,
-};
-
-const SyncDestroyFenceRequest = struct {
-    major_opcode: x11.Card8, // opcode.Major
-    minor_opcode: x11.Card8, // MinorOpcode
-    length: x11.Card16,
-    fence: FenceId,
+const Reply = struct {
+    pub const SyncInitialize = struct {
+        type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        major_version: x11.Card8,
+        minor_version: x11.Card8,
+        pad2: [22]x11.Card8 = [_]x11.Card8{0} ** 22,
+    };
 };

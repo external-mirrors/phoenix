@@ -65,9 +65,9 @@ const unit_size: u32 = 4;
 fn reply_set_length_fields_root(comptime T: type, reply: *T) void {
     if (@hasField(T, "length")) {
         const header_size: i32 = switch (T) {
-            phx.ConnectionSetup.ConnectionSetupSuccessReply,
-            phx.ConnectionSetup.ConnectionSetupFailedReply,
-            phx.ConnectionSetup.ConnectionSetupAuthenticateReply,
+            phx.ConnectionSetup.Reply.ConnectionSetupSuccess,
+            phx.ConnectionSetup.Reply.ConnectionSetupFailed,
+            phx.ConnectionSetup.Reply.ConnectionSetupAuthenticate,
             => @sizeOf(ReplyHeader),
             else => @sizeOf(GenericReply),
         };

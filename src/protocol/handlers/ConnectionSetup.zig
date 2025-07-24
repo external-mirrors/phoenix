@@ -6,7 +6,7 @@ fn reply_with_error(client: *phx.Client, comptime format: []const u8, args: anyt
     var failed_reason_buf: [1024]u8 = undefined;
     const failed_reason = try std.fmt.bufPrint(&failed_reason_buf, format, args);
 
-    var rep = ConnectionSetupFailedReply{
+    var rep = Reply.ConnectionSetupFailed{
         .reason = .{ .items = failed_reason },
     };
 
@@ -31,7 +31,7 @@ pub fn handle_client_connect(server: *phx.Server, client: *phx.Client, root_wind
         return false;
     }
 
-    var req = client.read_request_assume_correct_size(ConnectionSetupRequest, allocator) catch |err| {
+    var req = client.read_request_assume_correct_size(Request.ConnectionSetup, allocator) catch |err| {
         try reply_with_error(client, "There was an error handling the connection request, error: {s}", .{@errorName(err)});
         return false;
     };
@@ -99,7 +99,7 @@ pub fn handle_client_connect(server: *phx.Server, client: *phx.Client, root_wind
         },
     };
 
-    var rep = ConnectionSetupSuccessReply{
+    var rep = Reply.ConnectionSetupSuccess{
         .release_number = 10000000,
         .resource_id_base = client.resource_id_base,
         .resource_id_mask = phx.ResourceIdBaseManager.resource_id_mask,
@@ -144,24 +144,6 @@ const ConnectionSetupRequestHeader = extern struct {
     comptime {
         std.debug.assert(@sizeOf(@This()) == 12);
     }
-};
-
-const ConnectionSetupRequest = struct {
-    byte_order: ConnectionSetupRequestByteOrder,
-    pad1: x11.Card8,
-    protocol_major_version: x11.Card16,
-    protocol_minor_version: x11.Card16,
-    auth_protocol_name_length: x11.Card16,
-    auth_protocol_data_length: x11.Card16,
-    pad2: x11.Card16,
-    auth_protocol_name: x11.String8(.{ .length_field = "auth_protocol_name_length" }),
-    auth_protocol_data: x11.String8(.{ .length_field = "auth_protocol_data_length" }),
-
-    // TODO:
-    // pub fn deinit(self: *ConnectionSetupRequest, allocator: std.mem.Allocator) void {
-    //     allocator.free(self.auth_protocol_name.items);
-    //     allocator.free(self.auth_protocol_data.items);
-    // }
 };
 
 const ConnectionReplyStatus = enum(x11.Card8) {
@@ -230,45 +212,67 @@ const Screen = struct {
     allowed_depths: x11.ListOf(Depth, .{ .length_field = "num_allowed_depths" }),
 };
 
-pub const ConnectionSetupSuccessReply = struct {
-    status: ConnectionReplyStatus = .success,
-    pad1: x11.Card8 = 0,
-    protocol_major_version: x11.Card16 = 28000, // TODO:
-    protocol_minor_version: x11.Card16 = 0, // TODO:
-    length: x11.Card16 = 0, // This is automatically updated with the size of the reply
-    release_number: x11.Card32,
-    resource_id_base: x11.Card32,
-    resource_id_mask: x11.Card32,
-    motion_buffer_size: x11.Card32,
-    vendor_length: x11.Card16 = 0,
-    maximum_request_length: x11.Card16, // TODO: x11.Card32 for big-request?
-    num_screens: x11.Card8 = 0,
-    num_pixmap_formats: x11.Card8 = 0,
-    image_byte_order: ImageByteOrder,
-    bitmap_format_bit_order: BitmapFormatBitOrder,
-    bitmap_format_scanline_unit: x11.Card8,
-    bitmap_format_scanline_pad: x11.Card8,
-    min_keycode: x11.KeyCode,
-    max_keycode: x11.KeyCode,
-    pad2: x11.Card32 = 0,
-    vendor: x11.String8(.{ .length_field = "vendor_length" }),
-    pixmap_formats: x11.ListOf(PixmapFormat, .{ .length_field = "num_pixmap_formats" }),
-    screens: x11.ListOf(Screen, .{ .length_field = "num_screens" }),
+pub const Request = struct {
+    pub const ConnectionSetup = struct {
+        byte_order: ConnectionSetupRequestByteOrder,
+        pad1: x11.Card8,
+        protocol_major_version: x11.Card16,
+        protocol_minor_version: x11.Card16,
+        auth_protocol_name_length: x11.Card16,
+        auth_protocol_data_length: x11.Card16,
+        pad2: x11.Card16,
+        auth_protocol_name: x11.String8(.{ .length_field = "auth_protocol_name_length" }),
+        auth_protocol_data: x11.String8(.{ .length_field = "auth_protocol_data_length" }),
+
+        // TODO:
+        // pub fn deinit(self: *ConnectionSetupRequest, allocator: std.mem.Allocator) void {
+        //     allocator.free(self.auth_protocol_name.items);
+        //     allocator.free(self.auth_protocol_data.items);
+        // }
+    };
 };
 
-pub const ConnectionSetupFailedReply = struct {
-    status: ConnectionReplyStatus = .failed,
-    reason_length: x11.Card8 = 0,
-    protocol_major_version: x11.Card16 = 28000, // TODO:
-    protocol_minor_version: x11.Card16 = 0, // TODO:
-    length: x11.Card16 = 0, // This is automatically updated with the size of the reply
-    reason: x11.String8(.{ .length_field = "reason_length" }),
-};
+pub const Reply = struct {
+    pub const ConnectionSetupSuccess = struct {
+        status: ConnectionReplyStatus = .success,
+        pad1: x11.Card8 = 0,
+        protocol_major_version: x11.Card16 = 28000, // TODO:
+        protocol_minor_version: x11.Card16 = 0, // TODO:
+        length: x11.Card16 = 0, // This is automatically updated with the size of the reply
+        release_number: x11.Card32,
+        resource_id_base: x11.Card32,
+        resource_id_mask: x11.Card32,
+        motion_buffer_size: x11.Card32,
+        vendor_length: x11.Card16 = 0,
+        maximum_request_length: x11.Card16, // TODO: x11.Card32 for big-request?
+        num_screens: x11.Card8 = 0,
+        num_pixmap_formats: x11.Card8 = 0,
+        image_byte_order: ImageByteOrder,
+        bitmap_format_bit_order: BitmapFormatBitOrder,
+        bitmap_format_scanline_unit: x11.Card8,
+        bitmap_format_scanline_pad: x11.Card8,
+        min_keycode: x11.KeyCode,
+        max_keycode: x11.KeyCode,
+        pad2: x11.Card32 = 0,
+        vendor: x11.String8(.{ .length_field = "vendor_length" }),
+        pixmap_formats: x11.ListOf(PixmapFormat, .{ .length_field = "num_pixmap_formats" }),
+        screens: x11.ListOf(Screen, .{ .length_field = "num_screens" }),
+    };
 
-pub const ConnectionSetupAuthenticateReply = struct {
-    status: ConnectionReplyStatus = .authenticate,
-    pad1: x11.Card8 = 0,
-    pad2: x11.Card32 = 0,
-    length: x11.Card16 = 0, // This is automatically updated with the size of the reply
-    reason: x11.String8(.{ .length_field = null }),
+    pub const ConnectionSetupFailed = struct {
+        status: ConnectionReplyStatus = .failed,
+        reason_length: x11.Card8 = 0,
+        protocol_major_version: x11.Card16 = 28000, // TODO:
+        protocol_minor_version: x11.Card16 = 0, // TODO:
+        length: x11.Card16 = 0, // This is automatically updated with the size of the reply
+        reason: x11.String8(.{ .length_field = "reason_length" }),
+    };
+
+    pub const ConnectionSetupAuthenticate = struct {
+        status: ConnectionReplyStatus = .authenticate,
+        pad1: x11.Card8 = 0,
+        pad2: x11.Card32 = 0,
+        length: x11.Card16 = 0, // This is automatically updated with the size of the reply
+        reason: x11.String8(.{ .length_field = null }),
+    };
 };

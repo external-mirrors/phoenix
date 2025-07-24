@@ -275,13 +275,15 @@ fn map_window(request_context: phx.RequestContext) !void {
         std.log.err("Received invalid window {d} in MapWindow request", .{req.request.window});
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
-    if (window.attributes.mapped)
+    if (window.attributes.mapped) {
+        std.log.err("MapWindow: window already mapped: {d}", .{req.request.window});
         return;
+    }
 
     window.attributes.mapped = true;
 
     // TODO: Dont always do this, check protocol spec
-    const create_notify_event = phx.event.Event{
+    const map_notify_event = phx.event.Event{
         .map_notify = .{
             .sequence_number = request_context.sequence_number,
             .event = @enumFromInt(0), // TODO: ?
@@ -289,7 +291,7 @@ fn map_window(request_context: phx.RequestContext) !void {
             .override_redirect = window.attributes.override_redirect,
         },
     };
-    window.write_core_event_to_event_listeners(&create_notify_event);
+    window.write_core_event_to_event_listeners(&map_notify_event);
 }
 
 // TODO: Implement properly
@@ -334,7 +336,7 @@ fn configure_window(request_context: phx.RequestContext) !void {
     }
 
     if (modified) {
-        const create_notify_event = phx.event.Event{
+        const configure_notify_event = phx.event.Event{
             .configure_notify = .{
                 .sequence_number = request_context.sequence_number,
                 .event = @enumFromInt(0), // TODO: ?
@@ -348,7 +350,7 @@ fn configure_window(request_context: phx.RequestContext) !void {
                 .override_redirect = window.attributes.override_redirect,
             },
         };
-        window.write_core_event_to_event_listeners(&create_notify_event);
+        window.write_core_event_to_event_listeners(&configure_notify_event);
     }
 
     // TODO: Use sibling and stack-mode
@@ -423,9 +425,50 @@ fn intern_atom(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn change_property(_: phx.RequestContext) !void {
-    // TODO: Implement
-    std.log.err("TODO: Implement ChangeProperty", .{});
+// TODO: Implement properly
+fn change_property(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(ChangePropertyRequest, request_context.allocator);
+    defer req.deinit();
+    std.log.info("ChangeProperty request: {s}", .{x11.stringify_fmt(req.request)});
+
+    if (req.request.format != 8 and req.request.format != 16 and req.request.format != 32) {
+        std.log.err("Received invalid format {d} in ChangeProperty request", .{req.request.format});
+        return request_context.client.write_error(request_context, .value, req.request.format);
+    }
+
+    const format_bytesize = req.request.format / 8;
+    if (req.request.data_length * format_bytesize != req.request.data.items.len) {
+        std.log.err("Received invalid data length {d} in ChangeProperty request", .{req.request.data_length});
+        return request_context.client.write_error(request_context, .value, req.request.data_length);
+    }
+
+    const window = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in ChangeProperty request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+
+    _ = request_context.server.atom_manager.get_atom_name_by_id(req.request.property) orelse {
+        std.log.err("Received invalid property atom {d} in ChangeProperty request", .{req.request.property});
+        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.property));
+    };
+
+    _ = request_context.server.atom_manager.get_atom_name_by_id(req.request.type) orelse {
+        std.log.err("Received invalid type atom {d} in ChangeProperty request", .{req.request.type});
+        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.type));
+    };
+
+    // TODO: Actually set the property value
+
+    const property_notify_event = phx.event.Event{
+        .property_notify = .{
+            .sequence_number = request_context.sequence_number,
+            .window = req.request.window,
+            .atom = req.request.property,
+            .time = request_context.server.get_timestamp_milliseconds(),
+            .state = .new_value, // TODO:
+        },
+    };
+    window.write_core_event_to_event_listeners(&property_notify_event);
 }
 
 // TODO: Actually read the request values, handling them properly
@@ -443,6 +486,9 @@ fn get_property(request_context: phx.RequestContext) !void {
         std.log.err("Received invalid property atom {d} in GetProperty request", .{req.request.property});
         return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.property));
     };
+
+    // TODO: Implement delete
+    std.debug.assert(!req.request.delete);
 
     // TODO: Handle this properly
     if (std.meta.activeTag(property.*) == .string8 and req.request.type == phx.AtomManager.Predefined.string) {
@@ -946,10 +992,32 @@ const QueryExtensionReply = struct {
     pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
 };
 
+// TODO: Implement this in a better way.
+// The |data_length| field should be multiplied by |format|/8 for the size of |data|
+// and the element type of the |data| list should depend on the |format|, either Card8, Card16 or Card32.
+const ChangePropertyRequest = struct {
+    opcode: x11.Card8, // opcode.Major
+    mode: enum(x11.Card8) {
+        replace = 0,
+        prepend = 1,
+        append = 2,
+    },
+    length: x11.Card16,
+    window: x11.WindowId,
+    property: x11.Atom,
+    type: x11.Atom,
+    format: x11.Card8, // 8, 16 or 32
+    pad1: x11.Card8,
+    pad2: x11.Card16,
+    // In |format| units
+    data_length: x11.Card32,
+    data: x11.ListOf(x11.Card8, .{ .length_field = "length", .length_field_type = .request_remainder }),
+};
+
 const GetPropertyRequest = struct {
     opcode: x11.Card8, // opcode.Major
     delete: bool,
-    length: x11.Card16, // 6
+    length: x11.Card16,
     window: x11.WindowId,
     property: x11.Atom,
     type: x11.Atom,
@@ -965,9 +1033,9 @@ fn GetPropertyReply(comptime DataType: type) type {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         type: x11.Atom,
         bytes_after: x11.Card32,
-        value_length: x11.Card32 = 0,
+        data_length: x11.Card32 = 0,
         pad1: [12]x11.Card8 = [_]x11.Card8{0} ** 12,
-        data: x11.ListOf(DataType, .{ .length_field = "value_length", .padding = 4 }),
+        data: x11.ListOf(DataType, .{ .length_field = "data_length", .padding = 4 }),
     };
 }
 

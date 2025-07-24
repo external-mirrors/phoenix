@@ -108,7 +108,9 @@ pub const Class = enum(Card16) {
     input_only = 2,
 };
 
-pub const Timestamp = Card32;
+pub const Timestamp = enum(Card32) {
+    _,
+};
 
 pub const PropertyValue = union(enum) {
     string8: std.ArrayList(Card8),

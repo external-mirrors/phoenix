@@ -9,6 +9,7 @@ pub const EventCode = enum(x11.Card8) {
     create_notify = 16,
     map_notify = 19,
     configure_notify = 22,
+    property_notify = 28,
     xge = 35,
 };
 
@@ -144,6 +145,24 @@ pub const ConfigureNotifyEvent = extern struct {
     }
 };
 
+pub const PropertyNotifyEvent = extern struct {
+    code: EventCode = .property_notify,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16,
+    window: x11.WindowId,
+    atom: x11.Atom,
+    time: x11.Timestamp,
+    state: enum(x11.Card8) {
+        new_value = 0,
+        deleted = 1,
+    },
+    pad2: [15]x11.Card8 = [_]x11.Card8{0} ** 15,
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
+
 pub const Event = extern union {
     any: AnyEvent,
     key_press: KeyPressEvent,
@@ -153,6 +172,7 @@ pub const Event = extern union {
     create_notify: CreateNotifyEvent,
     map_notify: MapNotifyEvent,
     configure_notify: ConfigureNotifyEvent,
+    property_notify: PropertyNotifyEvent,
 
     comptime {
         std.debug.assert(@sizeOf(@This()) == 32);

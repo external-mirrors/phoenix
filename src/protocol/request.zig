@@ -52,6 +52,7 @@ fn read_request_with_size_calculation(comptime T: type, reader: anytype, request
                         list_length = @popCount(@field(request, list_of_options.length_field.?).to_int());
                     },
                     .request_remainder => {
+                        comptime std.debug.assert(list_of_options.padding == 0);
                         comptime std.debug.assert(std.mem.eql(u8, list_of_options.length_field.?, "length")); // It needs to be the request length field
                         const unit_size: u32 = 4;
                         const length_field_size = @field(request, list_of_options.length_field.?) * unit_size;

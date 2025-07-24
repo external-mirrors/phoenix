@@ -30,9 +30,12 @@ client_manager: phx.ClientManager,
 display: phx.Display,
 
 installed_colormaps: std.ArrayList(phx.Colormap),
+started_time_seconds: f64,
 
 /// The server will catch sigint and close down (if |run| has been executed)
 pub fn init(allocator: std.mem.Allocator) !Self {
+    const started_time_seconds = clock_get_monotonic_seconds();
+
     const unix_domain_socket_path = "/tmp/.X11-unix/X1";
     const address = try std.net.Address.initUnix(unix_domain_socket_path);
     std.posix.unlink(unix_domain_socket_path) catch {}; // TODO: Dont just remove the file? what if it's used by something else. I guess they will have a reference to it so it wont get deleted?
@@ -103,6 +106,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         .client_manager = client_manager,
         .display = display,
         .installed_colormaps = installed_colormaps,
+        .started_time_seconds = started_time_seconds,
     };
 }
 
@@ -112,6 +116,25 @@ pub fn deinit(self: *Self) void {
     self.installed_colormaps.deinit();
     std.posix.close(self.epoll_fd);
     self.display.destroy();
+}
+
+fn clock_get_monotonic_seconds() f64 {
+    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch @panic("clock_gettime(MONOTIC) failed");
+    const seconds: f64 = @floatFromInt(ts.sec);
+    const nanoseconds: f64 = @floatFromInt(ts.nsec);
+    return seconds + nanoseconds * 0.000000001;
+}
+
+/// Following the x11 protocol standard
+pub fn get_timestamp_milliseconds(self: *Self) x11.Timestamp {
+    const now = clock_get_monotonic_seconds();
+    const elapsed_time_milliseconds: u64 = @intFromFloat((now - self.started_time_seconds) * 1000.0);
+    var timestamp_milliseconds: u32 = @intCast(elapsed_time_milliseconds % 0xFFFFFFFF);
+    // TODO: Find a better solution. 0 defines the special value CurrentTime and the protocol says that the server
+    // timestamp should never be that value
+    if (timestamp_milliseconds == 0)
+        timestamp_milliseconds = 1;
+    return @enumFromInt(timestamp_milliseconds);
 }
 
 fn create_root_window(root_client: *phx.Client, allocator: std.mem.Allocator) !*phx.Window {
@@ -324,6 +347,7 @@ fn handle_client_request(self: *Self, client: *phx.Client) !bool {
             error.EndOfStream,
             error.RequestBadLength,
             error.RequestDataNotAvailableYet,
+            error.InvalidRequestLength,
             => try request_context.client.write_error(request_context, .length, 0),
             error.InvalidEnumTag => try request_context.client.write_error(request_context, .value, 0), // TODO: Return the correct value
         };

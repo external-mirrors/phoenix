@@ -183,6 +183,7 @@ inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, eve
         .create_notify => false, // This only applies to parents
         .map_notify => event_mask.structure_notify,
         .configure_notify => event_mask.structure_notify,
+        .property_notify => event_mask.property_change,
         .xge => false, // TODO:
     };
 }

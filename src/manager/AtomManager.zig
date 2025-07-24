@@ -108,7 +108,7 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn get_atom_name_by_id(self: *Self, atom_id: x11.Atom) ?[]const u8 {
-    return if (atom_id < self.atoms.items.len) self.atoms.items[atom_id] else null;
+    return if (@intFromEnum(atom_id) < self.atoms.items.len) self.atoms.items[@intFromEnum(atom_id)] else null;
 }
 
 pub fn get_atom_by_name(self: *Self, name: []const u8) ?x11.Atom {

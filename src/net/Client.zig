@@ -218,7 +218,7 @@ pub fn write_error(self: *Self, request_context: phx.RequestContext, error_type:
         .minor_opcode = request_context.header.minor_opcode,
         .major_opcode = request_context.header.major_opcode,
     };
-    std.log.info("Replying with error: {s}", .{x11.stringify_fmt(err_reply)});
+    std.log.err("Replying with error: {s}", .{x11.stringify_fmt(err_reply)});
     return self.write_buffer.write(std.mem.asBytes(&err_reply));
 }
 

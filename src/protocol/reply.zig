@@ -118,9 +118,11 @@ fn calculate_reply_length_bytes(comptime T: type, reply: *T) i32 {
             .@"enum" => |e| size += @sizeOf(e.tag_type),
             .int => |i| size += (i.bits / 8),
             .bool => size += 1,
-            .@"struct" => {
+            .@"struct" => |*s| {
                 if (@hasDecl(field.type, "get_options")) {
                     size += calculate_reply_length_bytes_list_of(field.type, &@field(reply, field.name));
+                } else if (s.backing_integer) |backing_integer| {
+                    size += @sizeOf(backing_integer);
                 } else {
                     const field_value = &@field(reply, field.name);
                     size += calculate_reply_length_bytes(@TypeOf(field_value.*), field_value);

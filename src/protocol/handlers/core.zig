@@ -432,7 +432,7 @@ fn query_extension(request_context: phx.RequestContext) !void {
         rep.first_error = phx.err.glx_first_error;
     } else if (std.mem.eql(u8, req.request.name.items, "XKEYBOARD")) {
         rep.present = true;
-        rep.major_opcode = @intFromEnum(phx.opcode.Major.xkeyboard);
+        rep.major_opcode = @intFromEnum(phx.opcode.Major.xkb);
     } else {
         std.log.err("QueryExtension: unsupported extension: {s}", .{req.request.name.items});
     }

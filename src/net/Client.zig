@@ -30,7 +30,11 @@ extension_versions: ExtensionVersions = .{
     .present = .{ .major = 1, .minor = 0 },
     .sync = .{ .major = 1, .minor = 0 },
     .xfixes = .{ .major = 1, .minor = 0 },
+    .xkb = .{ .major = 1, .minor = 0 },
 },
+
+sync_initialized: bool = false,
+xkb_initialized: bool = false,
 
 pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, allocator: std.mem.Allocator) Self {
     return .{
@@ -306,4 +310,5 @@ const ExtensionVersions = struct {
     present: phx.Version,
     sync: phx.Version,
     xfixes: phx.Version,
+    xkb: phx.Version,
 };

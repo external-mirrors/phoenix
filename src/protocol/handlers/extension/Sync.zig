@@ -27,6 +27,7 @@ fn initialize(request_context: phx.RequestContext) !void {
     const server_version = phx.Version{ .major = 3, .minor = 1 };
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
     request_context.client.extension_versions.sync = phx.Version.min(server_version, client_version);
+    request_context.client.sync_initialized = true;
 
     var rep = SyncInitializeReply{
         .sequence_number = request_context.sequence_number,
@@ -77,7 +78,7 @@ const SyncInitializeReply = struct {
     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
     major_version: x11.Card8,
     minor_version: x11.Card8,
-    pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
+    pad2: [22]x11.Card8 = [_]x11.Card8{0} ** 22,
 };
 
 const SyncDestroyFenceRequest = struct {

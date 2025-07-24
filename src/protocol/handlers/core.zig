@@ -154,7 +154,7 @@ fn create_window(request_context: phx.RequestContext) !void {
         .backing_pixel = backing_pixel,
         .colormap = colormap,
         .cursor = null, // TODO:
-        .map_state = .unmapped,
+        .mapped = false,
         .background_pixmap = background_pixmap,
         .background_pixel = background_pixel,
         .border_pixmap = border_pixmap,
@@ -234,11 +234,10 @@ fn map_window(request_context: phx.RequestContext) !void {
         std.log.err("Received invalid window {d} in MapWindow request", .{req.request.window});
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
-    if (window.attributes.map_state != .unmapped)
+    if (window.attributes.mapped)
         return;
 
-    // TODO: Set to unviewable instead?
-    window.attributes.map_state = .viewable;
+    window.attributes.mapped = true;
 
     // TODO: Dont always do this, check protocol spec
     const create_notify_event = phx.event.Event{

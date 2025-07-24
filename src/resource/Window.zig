@@ -292,6 +292,28 @@ fn remove_child(self: *Self, child_to_remove: *Self) void {
     }
 }
 
+/// Returns .unmapped if the window isn't mapped,
+/// .unviewable if the window is mapped but a parent window isn't, otherwise returns .viewable
+pub fn get_map_state(self: *Self) MapState {
+    if (!self.attributes.mapped)
+        return .unmapped;
+
+    var parent = self.parent;
+    while (parent) |par| {
+        if (!par.attributes.mapped)
+            return .unviewable;
+        parent = par.parent;
+    }
+
+    return .viewable;
+}
+
+pub const MapState = enum(x11.Card32) {
+    unmapped = 0,
+    unviewable = 1,
+    viewable = 2,
+};
+
 pub const Attributes = struct {
     geometry: phx.Geometry,
     class: x11.Class,
@@ -303,19 +325,13 @@ pub const Attributes = struct {
     backing_pixel: u32,
     colormap: phx.Colormap,
     cursor: ?*const phx.Cursor,
-    map_state: MapState,
+    mapped: bool,
     background_pixmap: ?*const phx.Pixmap,
     background_pixel: u32,
     border_pixmap: ?*const phx.Pixmap,
     border_pixel: u32,
     save_under: bool,
     override_redirect: bool,
-};
-
-pub const MapState = enum(x11.Card32) {
-    unmapped = 0,
-    unviewable = 1,
-    viewable = 2,
 };
 
 pub const BackingStore = enum(x11.Card8) {

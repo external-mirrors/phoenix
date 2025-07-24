@@ -132,7 +132,7 @@ fn create_root_window(root_client: *phx.Client, allocator: std.mem.Allocator) !*
         .backing_pixel = 0,
         .colormap = screen_true_color_colormap,
         .cursor = null, // TODO: Add a cursor
-        .map_state = .viewable,
+        .mapped = true,
         .background_pixmap = null,
         .background_pixel = 0,
         .border_pixmap = null,

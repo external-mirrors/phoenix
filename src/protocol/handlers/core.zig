@@ -847,7 +847,7 @@ const String8WithLength = struct {
     data: x11.ListOf(x11.Card8, .{ .length_field = "length" }),
 };
 
-const Request = struct {
+pub const Request = struct {
     pub const CreateWindow = struct {
         opcode: phx.opcode.Major = .create_window,
         depth: x11.Card8,

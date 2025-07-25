@@ -13,6 +13,12 @@ pub fn build(b: *std.Build) !void {
         return error.MissingBackendOption;
     }
 
+    const generate_docs_option = b.option(bool, "generate-docs", "Generate x11 protocol documentation") orelse false;
+    if (generate_docs_option) {
+        try generate_docs(b.install_path);
+        return;
+    }
+
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
@@ -97,6 +103,77 @@ fn backends_from_string_list(backends: []const u8) !Backends {
         }
     }
     return result;
+}
+
+fn generate_docs(install_path: []const u8) !void {
+    const phx = @import("src/phoenix.zig");
+
+    var install_path_dir = try std.fs.openDirAbsolute(install_path, .{});
+    defer install_path_dir.close();
+
+    install_path_dir.makeDir("protocol") catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+    const file = try install_path_dir.createFile("protocol/core.txt", .{});
+    defer file.close();
+
+    var buffered_file = std.io.bufferedWriter(file.writer());
+    const writer = buffered_file.writer();
+
+    try writer.print("Requests\n", .{});
+    inline for (@typeInfo(phx.core.Request).@"struct".decls) |decl| {
+        const request_type = @field(phx.core.Request, decl.name);
+        try writer.print("{s}\n", .{type_get_name_only(@typeName(request_type))});
+        inline for (@typeInfo(request_type).@"struct".fields) |field| {
+            switch (@typeInfo(field.type)) {
+                .@"struct" => {
+                    const is_list_of = @hasDecl(field.type, "get_options");
+                    if (is_list_of) {
+                        const field_value = comptime "ListOf" ++ type_get_name_only(@typeName(field.type.get_element_type()));
+                        const list_options = field.type.get_options();
+                        try writer.print("    {s: <14}    {s: <10}    {s}\n", .{ list_options.length_field orelse "", field_value, field.name });
+                        if (list_options.padding > 0)
+                            try writer.print("    {s: <14}    {s: <10}    p=pad({s}.len)\n", .{ "p", "", field.name });
+                    } else {
+                        const field_value = type_get_name_only(@typeName(field.type));
+                        try writer.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), field_value, field.name });
+                    }
+                },
+                .@"enum" => |*e| {
+                    const field_value = if (field.defaultValue()) |default_value| default_value else type_get_name_only(@typeName(field.type));
+                    if (field.type == phx.opcode.Major) {
+                        try writer.print("    {d: <14}    {d: <10}    {s}\n", .{ @sizeOf(field.type), @intFromEnum(field_value), field.name });
+                    } else if (!e.is_exhaustive) {
+                        try writer.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), type_get_name_only(@typeName(field.type)), field.name });
+                    } else {
+                        try writer.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), "", field.name });
+                        inline for (e.fields) |enum_field| {
+                            try writer.print("        {d}    {s}\n", .{ enum_field.value, enum_field.name });
+                        }
+                    }
+                },
+                else => {
+                    const type_name = switch (field.type) {
+                        u8 => "CARD8",
+                        u16 => "CARD16",
+                        u32 => "CARD32",
+                        bool => "BOOL",
+                        else => type_get_name_only(@typeName(field.type)),
+                    };
+                    try writer.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), type_name, field.name });
+                },
+            }
+        }
+        try writer.print("\n", .{});
+    }
+
+    try buffered_file.flush();
+}
+
+fn type_get_name_only(type_name: []const u8) []const u8 {
+    const index = std.mem.lastIndexOfScalar(u8, type_name, '.') orelse return type_name;
+    return type_name[index + 1 ..];
 }
 
 const Backends = struct {

@@ -109,7 +109,7 @@ fn open(request_context: phx.RequestContext) !void {
 fn pixmap_from_buffer(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.Dri3PixmapFromBuffer, request_context.allocator);
     defer req.deinit();
-    std.log.info("DRI3PixmapFromBuffer request: {s}, fd: {d}", .{ x11.stringify_fmt(req), request_context.client.get_read_fds() });
+    std.log.info("DRI3PixmapFromBuffer request: {s}, fd: {d}", .{ x11.stringify_fmt(req.request), request_context.client.get_read_fds() });
 
     const read_fds = request_context.client.get_read_fds();
     if (read_fds.len < 1) {
@@ -161,7 +161,7 @@ fn pixmap_from_buffer(request_context: phx.RequestContext) !void {
 fn fence_from_fd(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.Dri3FenceFromFd, request_context.allocator);
     defer req.deinit();
-    std.log.info("Dri3FenceFromFd request: {s}, fd: {d}", .{ x11.stringify_fmt(req), request_context.client.get_read_fds() });
+    std.log.info("Dri3FenceFromFd request: {s}, fd: {d}", .{ x11.stringify_fmt(req.request), request_context.client.get_read_fds() });
 
     const read_fds = request_context.client.get_read_fds();
     if (read_fds.len < 1) {
@@ -187,7 +187,7 @@ fn fence_from_fd(request_context: phx.RequestContext) !void {
 fn get_supported_modifiers(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.Dri3GetSupportedModifiers, request_context.allocator);
     defer req.deinit();
-    std.log.info("Dri3GetSupportedModifiers request: {s}", .{x11.stringify_fmt(req)});
+    std.log.info("Dri3GetSupportedModifiers request: {s}", .{x11.stringify_fmt(req.request)});
 
     const window = request_context.server.get_window(req.request.window) orelse {
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
@@ -216,7 +216,7 @@ fn get_supported_modifiers(request_context: phx.RequestContext) !void {
 fn pixmap_from_buffers(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.Dri3PixmapFromBuffers, request_context.allocator);
     defer req.deinit();
-    std.log.info("Dri3PixmapFromBuffers request: {s}, fd: {d}", .{ x11.stringify_fmt(req), request_context.client.get_read_fds() });
+    std.log.info("Dri3PixmapFromBuffers request: {s}, fd: {d}", .{ x11.stringify_fmt(req.request), request_context.client.get_read_fds() });
 
     const read_fds = request_context.client.get_read_fds();
     // TODO: What about the read fds?

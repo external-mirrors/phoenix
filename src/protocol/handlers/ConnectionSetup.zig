@@ -39,7 +39,7 @@ pub fn handle_client_connect(server: *phx.Server, client: *phx.Client, root_wind
 
     std.log.info("auth_protocol_name_length: {s}", .{req.request.auth_protocol_name.items});
     std.log.info("auth_protocol_data_length: {s} (len: {d})", .{ std.fmt.fmtSliceHexLower(req.request.auth_protocol_data.items), req.request.auth_protocol_data.items.len });
-    std.log.info("Connection setup request: {}", .{x11.stringify_fmt(req)});
+    std.log.info("Connection setup request: {}", .{x11.stringify_fmt(req.request)});
 
     const screen_visual = server.get_visual_by_id(phx.Server.screen_true_color_visual_id) orelse unreachable;
     const screen_colormap = server.get_colormap(phx.Server.screen_true_color_colormap_id) orelse unreachable;

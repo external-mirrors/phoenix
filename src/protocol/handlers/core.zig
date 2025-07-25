@@ -55,7 +55,7 @@ fn window_class_validate_attributes(class: x11.Class, req: *const Request.Create
 fn create_window(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateWindow, request_context.allocator);
     defer req.deinit();
-    std.log.info("CreateWindow request: {s}", .{x11.stringify_fmt(req)});
+    std.log.info("CreateWindow request: {s}", .{x11.stringify_fmt(req.request)});
 
     const parent_window = request_context.server.get_window(req.request.parent) orelse {
         std.log.err("Received invalid parent window {d} in CreateWindow request", .{req.request.parent});
@@ -219,7 +219,7 @@ fn create_window(request_context: phx.RequestContext) !void {
 fn get_window_attributes(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetWindowAttributes, request_context.allocator);
     defer req.deinit();
-    std.log.info("GetWindowAttributes request: {s}", .{x11.stringify_fmt(req)});
+    std.log.info("GetWindowAttributes request: {s}", .{x11.stringify_fmt(req.request)});
 
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in GetWindowAttributes request", .{req.request.window});
@@ -250,7 +250,7 @@ fn get_window_attributes(request_context: phx.RequestContext) !void {
 fn destroy_window(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.DestroyWindow, request_context.allocator);
     defer req.deinit();
-    std.log.info("DestroyWindow request: {s}", .{x11.stringify_fmt(req)});
+    std.log.info("DestroyWindow request: {s}", .{x11.stringify_fmt(req.request)});
 
     var window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in DestroyWindow request", .{req.request.window});
@@ -269,7 +269,7 @@ fn destroy_window(request_context: phx.RequestContext) !void {
 fn map_window(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.MapWindow, request_context.allocator);
     defer req.deinit();
-    std.log.info("MapWindow request: {s}", .{x11.stringify_fmt(req)});
+    std.log.info("MapWindow request: {s}", .{x11.stringify_fmt(req.request)});
 
     var window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in MapWindow request", .{req.request.window});
@@ -298,7 +298,7 @@ fn map_window(request_context: phx.RequestContext) !void {
 fn configure_window(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.ConfigureWindow, request_context.allocator);
     defer req.deinit();
-    std.log.info("ConfigureWindow request: {s}", .{x11.stringify_fmt(req)});
+    std.log.info("ConfigureWindow request: {s}", .{x11.stringify_fmt(req.request)});
 
     var window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in ConfigureWindow request", .{req.request.window});

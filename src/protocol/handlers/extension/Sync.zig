@@ -64,8 +64,8 @@ pub const FenceId = enum(x11.Card32) {
 
 const Request = struct {
     pub const SyncInitialize = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .sync,
+        minor_opcode: MinorOpcode = .initialize,
         length: x11.Card16,
         major_version: x11.Card8,
         minor_version: x11.Card8,
@@ -73,8 +73,8 @@ const Request = struct {
     };
 
     pub const SyncDestroyFence = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .sync,
+        minor_opcode: MinorOpcode = .destroy_fence,
         length: x11.Card16,
         fence: FenceId,
     };

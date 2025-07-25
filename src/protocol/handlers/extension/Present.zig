@@ -242,16 +242,16 @@ const PresentCompleteMode = enum(x11.Card8) {
 
 const Request = struct {
     pub const PresentQueryVersion = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .present,
+        minor_opcode: MinorOpcode = .query_version,
         length: x11.Card16,
         major_version: x11.Card32,
         minor_version: x11.Card32,
     };
 
     pub const PresentPixmap = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .present,
+        minor_opcode: MinorOpcode = .present_pixmap,
         length: x11.Card16,
         window: x11.WindowId,
         pixmap: x11.PixmapId,
@@ -272,8 +272,8 @@ const Request = struct {
     };
 
     pub const PresentSelectInput = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .present,
+        minor_opcode: MinorOpcode = .select_input,
         length: x11.Card16,
         event_id: PresentEventId,
         window: x11.WindowId,

@@ -51,8 +51,8 @@ pub const Region = enum(x11.Card32) {
 
 const Request = struct {
     pub const XfixesQueryVersion = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .xfixes,
+        minor_opcode: MinorOpcode = .query_version,
         length: x11.Card16,
         major_version: x11.Card32,
         minor_version: x11.Card32,

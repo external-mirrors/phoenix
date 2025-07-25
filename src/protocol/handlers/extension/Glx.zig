@@ -565,8 +565,8 @@ fn null_term_to_slice(str: []const u8) []const u8 {
 
 const Request = struct {
     pub const GlxCreateContext = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .glx,
+        minor_opcode: MinorOpcode = .create_context,
         length: x11.Card16,
         context: ContextId,
         visual: x11.VisualId,
@@ -578,37 +578,37 @@ const Request = struct {
     };
 
     pub const GlxDestroyContext = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .glx,
+        minor_opcode: MinorOpcode = .destroy_context,
         length: x11.Card16,
         context: ContextId,
     };
 
     pub const GlxIsDirect = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .glx,
+        minor_opcode: MinorOpcode = .is_direct,
         length: x11.Card16,
         context: ContextId,
     };
 
     pub const GlxQueryVersion = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .glx,
+        minor_opcode: MinorOpcode = .query_version,
         length: x11.Card16,
         major_version: x11.Card32,
         minor_version: x11.Card32,
     };
 
     pub const GlxGetVisualConfigs = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .glx,
+        minor_opcode: MinorOpcode = .get_visual_configs,
         length: x11.Card16,
         screen: x11.ScreenId,
     };
 
     pub const GlxQueryServerString = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .glx,
+        minor_opcode: MinorOpcode = .query_server_string,
         length: x11.Card16,
         screen: x11.ScreenId,
         name: enum(x11.Card32) {
@@ -620,22 +620,22 @@ const Request = struct {
     };
 
     pub const GlxGetFbConfigs = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .glx,
+        minor_opcode: MinorOpcode = .get_fb_configs,
         length: x11.Card16,
         screen: x11.ScreenId,
     };
 
     pub const GlxGetDrawableAttributes = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .glx,
+        minor_opcode: MinorOpcode = .get_drawable_attributes,
         length: x11.Card16,
         drawable: DrawableId,
     };
 
     pub const GlxSetClientInfoArb = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .glx,
+        minor_opcode: MinorOpcode = .set_client_info_arb,
         length: x11.Card16,
         major_version: x11.Card32,
         minor_version: x11.Card32,
@@ -648,8 +648,8 @@ const Request = struct {
     };
 
     pub const GlxSetClientInfo2Arb = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .glx,
+        minor_opcode: MinorOpcode = .set_client_info2_arb,
         length: x11.Card16,
         major_version: x11.Card32,
         minor_version: x11.Card32,

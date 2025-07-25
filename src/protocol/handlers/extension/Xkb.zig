@@ -44,8 +44,8 @@ const MinorOpcode = enum(x11.Card8) {
 
 const Request = struct {
     pub const UseExtension = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .xkb,
+        minor_opcode: MinorOpcode = .use_extension,
         length: x11.Card16,
         major_version: x11.Card16,
         minor_version: x11.Card16,

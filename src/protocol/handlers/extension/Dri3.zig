@@ -308,24 +308,24 @@ pub const Provider = enum(x11.Card32) {
 
 const Request = struct {
     pub const Dri3QueryExtension = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .dri3,
+        minor_opcode: MinorOpcode = .query_version,
         length: x11.Card16,
         major_version: x11.Card32,
         minor_version: x11.Card32,
     };
 
     pub const Dri3Open = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .dri3,
+        minor_opcode: MinorOpcode = .open,
         length: x11.Card16,
         drawable: x11.DrawableId,
         provider: Provider,
     };
 
     pub const Dri3PixmapFromBuffer = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .dri3,
+        minor_opcode: MinorOpcode = .pixmap_from_buffer,
         length: x11.Card16,
         pixmap: x11.PixmapId,
         drawable: x11.DrawableId,
@@ -339,8 +339,8 @@ const Request = struct {
     };
 
     pub const Dri3FenceFromFd = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .dri3,
+        minor_opcode: MinorOpcode = .fence_from_fd,
         length: x11.Card16,
         drawable: x11.DrawableId,
         fence: phx.Sync.FenceId,
@@ -351,8 +351,8 @@ const Request = struct {
     };
 
     pub const Dri3GetSupportedModifiers = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .dri3,
+        minor_opcode: MinorOpcode = .get_supported_modifiers,
         length: x11.Card16,
         window: x11.WindowId,
         depth: x11.Card8,
@@ -361,8 +361,8 @@ const Request = struct {
     };
 
     pub const Dri3PixmapFromBuffers = struct {
-        major_opcode: x11.Card8, // opcode.Major
-        minor_opcode: x11.Card8, // MinorOpcode
+        major_opcode: phx.opcode.Major = .dri3,
+        minor_opcode: MinorOpcode = .pixmap_from_buffers,
         length: x11.Card16,
         pixmap: x11.PixmapId,
         window: x11.WindowId,

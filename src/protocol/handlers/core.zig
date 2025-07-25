@@ -849,7 +849,7 @@ const String8WithLength = struct {
 
 const Request = struct {
     pub const CreateWindow = struct {
-        opcode: x11.Card8, // opcode.Major
+        opcode: phx.opcode.Major = .create_window,
         depth: x11.Card8,
         length: x11.Card16,
         window: x11.WindowId,
@@ -876,28 +876,28 @@ const Request = struct {
     };
 
     pub const GetWindowAttributes = struct {
-        opcode: x11.Card8, // opcode.Major
+        opcode: phx.opcode.Major = .get_window_attributes,
         pad1: x11.Card8,
         length: x11.Card16,
         window: x11.WindowId,
     };
 
     pub const DestroyWindow = struct {
-        opcode: x11.Card8, // opcode.Major
+        opcode: phx.opcode.Major = .destroy_window,
         pad1: x11.Card8,
         length: x11.Card16,
         window: x11.WindowId,
     };
 
     pub const MapWindow = struct {
-        opcode: x11.Card8, // opcode.Major
+        opcode: phx.opcode.Major = .map_window,
         pad1: x11.Card8,
         length: x11.Card16,
         window: x11.WindowId,
     };
 
     pub const ConfigureWindow = struct {
-        opcode: x11.Card8, // opcode.Major
+        opcode: phx.opcode.Major = .configure_window,
         pad1: x11.Card8,
         length: x11.Card16,
         window: x11.WindowId,
@@ -917,20 +917,20 @@ const Request = struct {
     };
 
     pub const GetInputFocus = struct {
-        opcode: x11.Card8, // opcode.Major
+        opcode: phx.opcode.Major = .get_input_focus,
         pad1: x11.Card8,
         length: x11.Card16,
     };
 
     pub const FreePixmap = struct {
-        opcode: x11.Card8, // opcode.Major
+        opcode: phx.opcode.Major = .free_pixmap,
         pad1: x11.Card8,
         length: x11.Card16,
         pixmap: x11.PixmapId,
     };
 
     pub const CreateColormap = struct {
-        opcode: x11.Card8, // opcode.Major
+        opcode: phx.opcode.Major = .create_colormap,
         alloc: enum(x11.Card8) {
             none = 0,
             all = 1,
@@ -942,7 +942,7 @@ const Request = struct {
     };
 
     pub const QueryExtension = struct {
-        opcode: x11.Card8, // opcode.Major
+        opcode: phx.opcode.Major = .query_extension,
         pad1: x11.Card8,
         length: x11.Card16,
         length_of_name: x11.Card16,
@@ -954,7 +954,7 @@ const Request = struct {
     // The |data_length| field should be multiplied by |format|/8 for the size of |data|
     // and the element type of the |data| list should depend on the |format|, either Card8, Card16 or Card32.
     pub const ChangeProperty = struct {
-        opcode: x11.Card8, // opcode.Major
+        opcode: phx.opcode.Major = .change_property,
         mode: enum(x11.Card8) {
             replace = 0,
             prepend = 1,
@@ -973,7 +973,7 @@ const Request = struct {
     };
 
     pub const GetProperty = struct {
-        opcode: x11.Card8, // opcode.Major
+        opcode: phx.opcode.Major = .get_property,
         delete: bool,
         length: x11.Card16,
         window: x11.WindowId,
@@ -984,21 +984,21 @@ const Request = struct {
     };
 
     pub const GetGeometry = struct {
-        opcode: x11.Card8, // opcode.Major
+        opcode: phx.opcode.Major = .get_geometry,
         pad1: x11.Card8,
         length: x11.Card16,
         drawable: x11.DrawableId,
     };
 
     pub const QueryTree = struct {
-        opcode: x11.Card8, // opcode.Major
+        opcode: phx.opcode.Major = .query_tree,
         pad1: x11.Card8,
         length: x11.Card16,
         window: x11.WindowId,
     };
 
     pub const InternAtom = struct {
-        opcode: x11.Card8, // opcode.Major
+        opcode: phx.opcode.Major = .intern_atom,
         only_if_exists: bool,
         length: x11.Card16,
         length_of_name: x11.Card16,

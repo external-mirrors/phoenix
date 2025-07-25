@@ -27,3 +27,6 @@ Vulkan applications (vkcube) spam dri3 requests in render, but not with the xorg
 Get current tty with /proc/self/stat, see `man proc_pid_stat`.
 When implementing reparent consider that the client might attempt to reparent a window to one of its children (or grandchildren) or itself. Handle that case according to spec.
 When SelectInput is added in more extensions then handle case when attempting to use an event id that belongs to another extension.
+Optimize allocation strategy in request handler. Right now it uses an arena and all lists are allocated on heap as arrays.
+    Since requests have a known size we could allocate one block of memory once and add the data to that.
+    The size could be extended based on required alignment and padding of structs (calculate size with sizeof).

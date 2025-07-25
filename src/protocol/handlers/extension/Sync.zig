@@ -62,7 +62,7 @@ pub const FenceId = enum(x11.Card32) {
     }
 };
 
-const Request = struct {
+pub const Request = struct {
     pub const SyncInitialize = struct {
         major_opcode: phx.opcode.Major = .sync,
         minor_opcode: MinorOpcode = .initialize,

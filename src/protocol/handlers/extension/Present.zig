@@ -240,7 +240,7 @@ const PresentCompleteMode = enum(x11.Card8) {
     suboptimal_copy = 3,
 };
 
-const Request = struct {
+pub const Request = struct {
     pub const PresentQueryVersion = struct {
         major_opcode: phx.opcode.Major = .present,
         minor_opcode: MinorOpcode = .query_version,

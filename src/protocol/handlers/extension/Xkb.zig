@@ -42,7 +42,7 @@ const MinorOpcode = enum(x11.Card8) {
     use_extension = 0,
 };
 
-const Request = struct {
+pub const Request = struct {
     pub const UseExtension = struct {
         major_opcode: phx.opcode.Major = .xkb,
         minor_opcode: MinorOpcode = .use_extension,

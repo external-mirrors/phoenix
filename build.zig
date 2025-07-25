@@ -1,4 +1,5 @@
 const std = @import("std");
+const phx = @import("src/phoenix.zig");
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -106,8 +107,6 @@ fn backends_from_string_list(backends: []const u8) !Backends {
 }
 
 fn generate_docs(install_path: []const u8) !void {
-    const phx = @import("src/phoenix.zig");
-
     var install_path_dir = try std.fs.openDirAbsolute(install_path, .{});
     defer install_path_dir.close();
 
@@ -115,15 +114,32 @@ fn generate_docs(install_path: []const u8) !void {
         error.PathAlreadyExists => {},
         else => return err,
     };
-    const file = try install_path_dir.createFile("protocol/core.txt", .{});
+
+    try generate_protocol_docs(phx.core, &install_path_dir);
+    try generate_protocol_docs(phx.Dri3, &install_path_dir);
+    try generate_protocol_docs(phx.Glx, &install_path_dir);
+    try generate_protocol_docs(phx.Present, &install_path_dir);
+    //try generate_protocol_docs(phx.Randr, &install_path_dir);
+    //try generate_protocol_docs(phx.Render, &install_path_dir);
+    try generate_protocol_docs(phx.Sync, &install_path_dir);
+    try generate_protocol_docs(phx.Xfixes, &install_path_dir);
+    try generate_protocol_docs(phx.Xkb, &install_path_dir);
+}
+
+fn generate_protocol_docs(comptime file_struct: type, install_path_dir: *std.fs.Dir) !void {
+    const filename = type_get_name_only(@typeName(file_struct));
+    var filepath_buf: [256]u8 = undefined;
+    const filepath = std.fmt.bufPrint(&filepath_buf, "protocol/{s}.txt", .{filename}) catch unreachable;
+
+    const file = try install_path_dir.createFile(filepath, .{});
     defer file.close();
 
     var buffered_file = std.io.bufferedWriter(file.writer());
     const writer = buffered_file.writer();
 
     try writer.print("Requests\n", .{});
-    inline for (@typeInfo(phx.core.Request).@"struct".decls) |decl| {
-        const request_type = @field(phx.core.Request, decl.name);
+    inline for (@typeInfo(file_struct.Request).@"struct".decls) |decl| {
+        const request_type = @field(file_struct.Request, decl.name);
         try writer.print("{s}\n", .{type_get_name_only(@typeName(request_type))});
         inline for (@typeInfo(request_type).@"struct".fields) |field| {
             switch (@typeInfo(field.type)) {
@@ -141,15 +157,16 @@ fn generate_docs(install_path: []const u8) !void {
                     }
                 },
                 .@"enum" => |*e| {
-                    const field_value = if (field.defaultValue()) |default_value| default_value else type_get_name_only(@typeName(field.type));
-                    if (field.type == phx.opcode.Major) {
+                    const field_type_name = comptime type_get_name_only(@typeName(field.type));
+                    const field_value = if (field.defaultValue()) |default_value| default_value else field_type_name;
+                    if (field.type == phx.opcode.Major or comptime std.mem.eql(u8, field_type_name, "MinorOpcode")) {
                         try writer.print("    {d: <14}    {d: <10}    {s}\n", .{ @sizeOf(field.type), @intFromEnum(field_value), field.name });
                     } else if (!e.is_exhaustive) {
                         try writer.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), type_get_name_only(@typeName(field.type)), field.name });
                     } else {
                         try writer.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), "", field.name });
                         inline for (e.fields) |enum_field| {
-                            try writer.print("        {d}    {s}\n", .{ enum_field.value, enum_field.name });
+                            try writer.print("        {d: <3}  {s}\n", .{ enum_field.value, enum_field.name });
                         }
                     }
                 },
@@ -158,7 +175,9 @@ fn generate_docs(install_path: []const u8) !void {
                         u8 => "CARD8",
                         u16 => "CARD16",
                         u32 => "CARD32",
+                        u64 => "CARD64",
                         bool => "BOOL",
+                        i16 => "INT16",
                         else => type_get_name_only(@typeName(field.type)),
                     };
                     try writer.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), type_name, field.name });

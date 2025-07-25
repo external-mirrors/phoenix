@@ -306,7 +306,7 @@ pub const Provider = enum(x11.Card32) {
     _,
 };
 
-const Request = struct {
+pub const Request = struct {
     pub const Dri3QueryExtension = struct {
         major_opcode: phx.opcode.Major = .dri3,
         minor_opcode: MinorOpcode = .query_version,

@@ -49,7 +49,7 @@ pub const Region = enum(x11.Card32) {
     _,
 };
 
-const Request = struct {
+pub const Request = struct {
     pub const XfixesQueryVersion = struct {
         major_opcode: phx.opcode.Major = .xfixes,
         minor_opcode: MinorOpcode = .query_version,

@@ -563,7 +563,7 @@ fn null_term_to_slice(str: []const u8) []const u8 {
     return if (str.len > 0 and str[str.len - 1] == '\x00') str[0 .. str.len - 1] else str;
 }
 
-const Request = struct {
+pub const Request = struct {
     pub const GlxCreateContext = struct {
         major_opcode: phx.opcode.Major = .glx,
         minor_opcode: MinorOpcode = .create_context,
@@ -662,7 +662,7 @@ const Request = struct {
     };
 };
 
-const Reply = struct {
+pub const Reply = struct {
     pub const GlxIsDirect = struct {
         type: phx.reply.ReplyType = .reply,
         pad1: x11.Card8 = 0,

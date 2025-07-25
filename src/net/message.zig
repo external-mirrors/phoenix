@@ -7,16 +7,19 @@ pub fn Request(comptime RequestType: type) type {
         const Self = @This();
 
         request: RequestType,
+        arena: std.heap.ArenaAllocator,
 
-        pub fn init(request: *const RequestType) Self {
+        pub fn init(request: *const RequestType, arena: *std.heap.ArenaAllocator) Self {
             return .{
                 .request = request.*,
+                .arena = arena.*,
             };
         }
 
         pub fn deinit(self: *Self) void {
             if (@hasDecl(RequestType, "deinit"))
                 self.request.deinit();
+            self.arena.deinit();
         }
     };
 }

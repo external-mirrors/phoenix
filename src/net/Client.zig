@@ -186,13 +186,21 @@ pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator)
         return error.RequestDataNotAvailableYet;
 
     var fsr = phx.request.FixedSizeReader(@TypeOf(self.read_buffer)).init(&self.read_buffer, request_length);
-    const req_data = try phx.request.read_request(T, fsr.reader(), allocator);
-    return phx.message.Request(T).init(&req_data);
+    const reader = fsr.reader();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    errdefer arena.deinit();
+
+    const req_data = try phx.request.read_request(T, reader, &arena);
+    return phx.message.Request(T).init(&req_data, &arena);
 }
 
 pub fn read_request_assume_correct_size(self: *Self, comptime T: type, allocator: std.mem.Allocator) !phx.message.Request(T) {
-    const req_data = try phx.request.read_request(T, self.read_buffer.reader(), allocator);
-    return phx.message.Request(T).init(&req_data);
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    errdefer arena.deinit();
+
+    const req_data = try phx.request.read_request(T, self.read_buffer.reader(), &arena);
+    return phx.message.Request(T).init(&req_data, &arena);
 }
 
 pub fn write_reply(self: *Self, reply_data: anytype) !void {

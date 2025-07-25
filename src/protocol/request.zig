@@ -1,13 +1,9 @@
 const std = @import("std");
 const x11 = @import("x11.zig");
 
-// TODO: Byteswap.
-// TODO: Use an arena allocator for all data and wrap the result type in a new struct which
-// includes the arena allocator and has a deinit method that does deinit on the arena,
-// just like how std.json.parse works.
-pub fn read_request(comptime T: type, reader: anytype, allocator: std.mem.Allocator) !T {
+pub fn read_request(comptime T: type, reader: anytype, arena: *std.heap.ArenaAllocator) !T {
     var request_size: usize = 0;
-    return read_request_with_size_calculation(T, reader, &request_size, allocator);
+    return read_request_with_size_calculation(T, reader, &request_size, arena.allocator());
 }
 
 fn read_request_with_size_calculation(comptime T: type, reader: anytype, request_size: *usize, allocator: std.mem.Allocator) !T {

@@ -94,16 +94,22 @@ pub fn get_property(self: *Self, atom: x11.Atom) ?*x11.PropertyValue {
     return self.properties.getPtr(atom);
 }
 
-pub fn set_property_string8(self: *Self, atom: x11.Atom, value: []const u8) !void {
+pub fn set_property_card8(self: *Self, property_name: x11.Atom, property_type: x11.Atom, value: []const u8) !void {
     var array_list = std.ArrayList(u8).init(self.allocator);
     errdefer array_list.deinit();
     try array_list.appendSlice(value);
 
-    var result = try self.properties.getOrPut(atom);
-    if (result.found_existing)
+    var result = try self.properties.getOrPut(property_name);
+    if (result.found_existing) {
+        if (result.value_ptr.type != property_type)
+            return error.PropertyTypeMismatch;
         result.value_ptr.deinit();
+    }
 
-    result.value_ptr.* = .{ .string8 = array_list };
+    result.value_ptr.* = .{
+        .type = property_type,
+        .item = .{ .string8 = array_list },
+    };
 }
 
 /// It's invalid to add multiple event listeners with the same client.

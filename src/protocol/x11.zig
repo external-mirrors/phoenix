@@ -112,13 +112,16 @@ pub const Timestamp = enum(Card32) {
     _,
 };
 
-pub const PropertyValue = union(enum) {
-    string8: std.ArrayList(Card8),
-    card16_list: std.ArrayList(Card16),
-    card32_list: std.ArrayList(Card32),
+pub const PropertyValue = struct {
+    type: Atom,
+    item: union(enum) {
+        string8: std.ArrayList(Card8),
+        card16_list: std.ArrayList(Card16),
+        card32_list: std.ArrayList(Card32),
+    },
 
     pub fn deinit(self: *PropertyValue) void {
-        switch (self.*) {
+        switch (self.item) {
             inline else => |*item| item.deinit(),
         }
     }

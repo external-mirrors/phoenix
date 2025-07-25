@@ -168,7 +168,11 @@ fn create_root_window(root_client: *phx.Client, allocator: std.mem.Allocator) !*
     var root_window = try phx.Window.create(null, root_window_id, &window_attributes, null, root_client, allocator);
     errdefer root_window.destroy();
 
-    try root_window.set_property_string8(phx.AtomManager.Predefined.resource_manager, "*background:\t#222222");
+    try root_window.set_property_card8(
+        phx.AtomManager.Predefined.resource_manager,
+        phx.AtomManager.Predefined.string,
+        "*background:\t#222222",
+    );
 
     return root_window;
 }

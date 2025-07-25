@@ -491,13 +491,13 @@ fn get_property(request_context: phx.RequestContext) !void {
     std.debug.assert(!req.request.delete);
 
     // TODO: Handle this properly
-    if (std.meta.activeTag(property.*) == .string8 and req.request.type == phx.AtomManager.Predefined.string) {
+    if (property.type == req.request.type and std.meta.activeTag(property.item) == .string8 and req.request.type == phx.AtomManager.Predefined.string) {
         // TODO: Properly set bytes_after and all that crap
         var rep = Reply.GetPropertyCard8{
             .sequence_number = request_context.sequence_number,
             .type = req.request.type,
             .bytes_after = 0,
-            .data = .{ .items = property.string8.items },
+            .data = .{ .items = property.item.string8.items },
         };
         try request_context.client.write_reply(&rep);
     } else {

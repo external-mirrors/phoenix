@@ -63,9 +63,10 @@ pub fn deinit(self: *Self) void {
     // This is recursive safe, if a resource is removed from |self.resources| while we are iterating it
     // (for example Window calling Client.remove_resource)
     while (self.resources.count() > 0) {
-        var resources_it = self.resources.valueIterator();
-        if (resources_it.next()) |res_val| {
-            res_val.deinit();
+        var resources_it = self.resources.keyIterator();
+        if (resources_it.next()) |res_key| {
+            if (self.resources.fetchRemove(res_key.*)) |res|
+                res.value.deinit();
         }
     }
     self.resources.deinit();

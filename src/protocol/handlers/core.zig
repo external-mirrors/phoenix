@@ -483,7 +483,7 @@ fn get_property(request_context: phx.RequestContext) !void {
     };
 
     const property = window.get_property(req.request.property) orelse {
-        std.log.err("Received invalid property atom {d} in GetProperty request", .{req.request.property});
+        std.log.err("GetProperty: the property atom {d} doesn't exist in window {d}", .{ req.request.property, window.id });
         return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.property));
     };
 

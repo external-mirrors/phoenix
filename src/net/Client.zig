@@ -193,6 +193,9 @@ pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator)
     errdefer arena.deinit();
 
     const req_data = try phx.request.read_request(T, reader, &arena);
+    if(fsr.num_bytes_read != request_length)
+        return error.InvalidRequestLength;
+
     return phx.message.Request(T).init(&req_data, &arena);
 }
 

@@ -102,7 +102,7 @@ pub const RequestHeader = extern struct {
 pub fn FixedSizeReader(comptime T: type) type {
     return struct {
         const Self = @This();
-        pub const Reader = std.io.Reader(*Self, error{EndOfStream}, read_fn);
+        pub const Reader = std.io.Reader(*Self, error{InvalidRequestLength}, read_fn);
 
         obj: *T,
         max_bytes_read: usize,
@@ -120,9 +120,9 @@ pub fn FixedSizeReader(comptime T: type) type {
             return .{ .context = self };
         }
 
-        fn read_fn(self: *Self, dest: []u8) error{EndOfStream}!usize {
+        fn read_fn(self: *Self, dest: []u8) error{InvalidRequestLength}!usize {
             if (self.num_bytes_read + dest.len > self.max_bytes_read)
-                return error.EndOfStream;
+                return error.InvalidRequestLength;
 
             const bytes_read = self.obj.read(dest);
             self.num_bytes_read += bytes_read;

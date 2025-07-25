@@ -285,6 +285,23 @@ pub fn get_resource(self: *Self, id: x11.ResourceId) ?phx.Resource {
     return self.resources.get(id);
 }
 
+pub fn register_as_window_listener(self: *Self, window: *phx.Window) !void {
+    for (self.listening_to_windows.items) |listen_window| {
+        if (listen_window == window)
+            return;
+    }
+    try self.listening_to_windows.append(window);
+}
+
+pub fn unregister_as_window_event_listener(self: *Self, window: *const phx.Window) void {
+    for (self.listening_to_windows.items, 0..) |listen_window, i| {
+        if (listen_window == window) {
+            _ = self.listening_to_windows.swapRemove(i);
+            return;
+        }
+    }
+}
+
 // TODO: Use this
 //const max_read_buffer_size: usize = 1 * 1024 * 1024; // 1mb. If the server doesn't dont manage to read the data fast enough then the client is forcefully disconnected
 // TODO: Use this

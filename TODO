@@ -26,3 +26,4 @@ Go through all requests and make sure they are all implemented correctly as acco
 Vulkan applications (vkcube) spam dri3 requests in render, but not with the xorg server. Why?
 Get current tty with /proc/self/stat, see `man proc_pid_stat`.
 When implementing reparent consider that the client might attempt to reparent a window to one of its children (or grandchildren) or itself. Handle that case according to spec.
+When SelectInput is added in more extensions then handle case when attempting to use an event id that belongs to another extension.

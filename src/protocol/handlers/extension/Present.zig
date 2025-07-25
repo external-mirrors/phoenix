@@ -125,11 +125,11 @@ fn select_input(request_context: phx.RequestContext) !void {
 
         if (req.request.event_mask.is_empty()) {
             request_context.client.remove_resource(event_id);
-            resource.event_context.window.remove_extension_event_listener(request_context.client, .present);
+            resource.event_context.window.remove_extension_event_listener(event_id);
             return;
         }
 
-        resource.event_context.window.modify_extension_event_listener(request_context.client, .present, @bitCast(req.request.event_mask));
+        resource.event_context.window.modify_extension_event_listener(event_id, @bitCast(req.request.event_mask));
     } else {
         const window = request_context.server.get_window(req.request.window) orelse {
             std.log.err("Received invalid window {d} in PresentSelectInput request", .{req.request.window});

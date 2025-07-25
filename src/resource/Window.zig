@@ -76,6 +76,7 @@ pub fn destroy(self: *Self) void {
         property.deinit();
     }
 
+    self.remove_event_listeners_from_clients();
     self.client_owner.remove_resource(self.id.to_id());
 
     self.core_event_listeners.deinit();
@@ -105,11 +106,12 @@ pub fn set_property_string8(self: *Self, atom: x11.Atom, value: []const u8) !voi
     result.value_ptr.* = .{ .string8 = array_list };
 }
 
-// TODO: Add assert that the client doesn't already exist as a listener.
 /// It's invalid to add multiple event listeners with the same client.
 pub fn add_core_event_listener(self: *Self, client: *phx.Client, event_mask: phx.core.EventMask) !void {
     if (event_mask.is_empty())
         return;
+
+    std.debug.assert(self.get_core_event_listener_index(client) == null);
 
     for (self.core_event_listeners.items) |*event_listener| {
         if (event_mask.substructure_redirect and event_listener.event_mask.substructure_redirect) {
@@ -124,25 +126,25 @@ pub fn add_core_event_listener(self: *Self, client: *phx.Client, event_mask: phx
     try self.core_event_listeners.append(.{ .client = client, .event_mask = event_mask });
     errdefer _ = self.core_event_listeners.pop();
 
-    try client.listening_to_windows.append(self);
+    try client.register_as_window_listener(self);
 }
 
 pub fn modify_core_event_listener(self: *Self, client: *phx.Client, event_mask: phx.core.EventMask) void {
-    for (self.core_event_listeners.items) |*event_listener| {
-        if (client == event_listener.client) {
-            event_listener.event_mask = event_mask;
-            return;
-        }
-    }
+    if (self.get_core_event_listener_index(client)) |index|
+        self.core_event_listeners.items[index].event_mask = event_mask;
 }
 
 pub fn remove_core_event_listener(self: *Self, client: *const phx.Client) void {
+    if (self.get_core_event_listener_index(client)) |index|
+        _ = self.core_event_listeners.orderedRemove(index);
+}
+
+fn get_core_event_listener_index(self: *Self, client: *const phx.Client) ?usize {
     for (self.core_event_listeners.items, 0..) |*event_listener, i| {
-        if (client == event_listener.client) {
-            _ = self.core_event_listeners.orderedRemove(i);
-            return;
-        }
+        if (event_listener.client == client)
+            return i;
     }
+    return null;
 }
 
 // TODO: Handle events that propagate to parent windows.
@@ -150,7 +152,7 @@ pub fn remove_core_event_listener(self: *Self, client: *const phx.Client) void {
 // TODO: Is redirect/button press mask recursive to parents? should only one client be allowed to use that, even if it's set on a parent?
 // TODO: If window has override-redirect set then map and configure requests on the window should override a SubstructureRedirect on parents.
 pub fn write_core_event_to_event_listeners(self: *const Self, event: *const phx.event.Event) void {
-    for (self.core_event_listeners.items) |event_listener| {
+    for (self.core_event_listeners.items) |*event_listener| {
         if (!core_event_mask_matches_event_code(event_listener.event_mask, event.any.code))
             continue;
 
@@ -188,11 +190,12 @@ inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, eve
     };
 }
 
-// TODO: Add assert that the client doesn't already exist as a listener with the same event id.
 /// It's invalid to add multiple event listeners with the same event id.
 pub fn add_extension_event_listener(self: *Self, client: *phx.Client, event_id: x11.ResourceId, extension_major_opcode: phx.opcode.Major, event_mask: u32) !void {
     if (event_mask == 0)
         return;
+
+    std.debug.assert(self.get_extension_event_listener_index(event_id) == null);
 
     try self.extension_event_listeners.append(.{
         .client = client,
@@ -202,26 +205,25 @@ pub fn add_extension_event_listener(self: *Self, client: *phx.Client, event_id: 
     });
     errdefer _ = self.extension_event_listeners.pop();
 
-    try client.listening_to_windows.append(self);
-    errdefer _ = client.listening_to_windows.pop();
+    try client.register_as_window_listener(self);
 }
 
-pub fn modify_extension_event_listener(self: *Self, client: *phx.Client, extension_major_opcode: phx.opcode.Major, event_mask: u32) void {
-    for (self.extension_event_listeners.items) |*event_listener| {
-        if (client == event_listener.client and extension_major_opcode == event_listener.extension_major_opcode) {
-            event_listener.event_mask = event_mask;
-            return;
-        }
-    }
+pub fn modify_extension_event_listener(self: *Self, event_id: x11.ResourceId, event_mask: u32) void {
+    if (self.get_extension_event_listener_index(event_id)) |index|
+        self.extension_event_listeners.items[index].event_mask = event_mask;
 }
 
-pub fn remove_extension_event_listener(self: *Self, client: *const phx.Client, extension_major_opcode: phx.opcode.Major) void {
+pub fn remove_extension_event_listener(self: *Self, event_id: x11.ResourceId) void {
+    if (self.get_extension_event_listener_index(event_id)) |index|
+        _ = self.extension_event_listeners.orderedRemove(index);
+}
+
+fn get_extension_event_listener_index(self: *Self, event_id: x11.ResourceId) ?usize {
     for (self.extension_event_listeners.items, 0..) |*event_listener, i| {
-        if (client == event_listener.client and extension_major_opcode == event_listener.extension_major_opcode) {
-            _ = self.extension_event_listeners.orderedRemove(i);
-            return;
-        }
+        if (event_listener.event_id == event_id)
+            return i;
     }
+    return null;
 }
 
 pub fn write_extension_event_to_event_listeners(self: *const Self, ev: anytype) void {
@@ -267,17 +269,25 @@ pub fn write_extension_event_to_event_listeners(self: *const Self, ev: anytype) 
 }
 
 pub fn remove_all_event_listeners_for_client(self: *Self, client: *const phx.Client) void {
-    for (self.core_event_listeners.items, 0..) |event_listener, i| {
-        if (client == event_listener.client) {
-            _ = self.core_event_listeners.orderedRemove(i);
-            break;
+    self.remove_core_event_listener(client);
+
+    var i: usize = 0;
+    while (i < self.extension_event_listeners.items.len) {
+        if (client == self.extension_event_listeners.items[i].client) {
+            _ = self.extension_event_listeners.orderedRemove(i);
+        } else {
+            i += 1;
         }
     }
+}
 
-    for (self.extension_event_listeners.items, 0..) |event_listener, i| {
-        if (client == event_listener.client) {
-            _ = self.extension_event_listeners.orderedRemove(i);
-        }
+fn remove_event_listeners_from_clients(self: *Self) void {
+    for (self.core_event_listeners.items) |*event_listener| {
+        event_listener.client.unregister_as_window_event_listener(self);
+    }
+
+    for (self.extension_event_listeners.items) |*event_listener| {
+        event_listener.client.unregister_as_window_event_listener(self);
     }
 }
 

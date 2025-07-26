@@ -47,16 +47,16 @@ fn read_request_field_with_size_calculation(
                 @field(request, field_name) = bitmask.sanitize();
                 request_size.* += @sizeOf(backing_integer);
             } else if (@hasDecl(FieldType, "is_union_list")) {
+                const union_type = FieldType.get_type();
                 const union_options = comptime FieldType.get_options();
                 const union_type_field = @field(request, union_options.type_field);
                 const union_length_field = @field(request, union_options.length_field);
                 switch (union_type_field) {
-                    inline else => |val| {
-                        const union_data = &@field(request, field_name).data;
-                        const union_tag_type = @TypeOf(@field(union_data.*, @tagName(val)));
+                    inline else => |union_type_field_value| {
+                        const union_tag_type = comptime std.meta.TagPayload(union_type, union_type_field_value);
                         const union_array_data_type = @typeInfo(union_tag_type).pointer.child;
                         const union_value = try read_request_array_with_size_calculation(union_array_data_type, union_length_field, reader, request_size, allocator);
-                        union_data.* = @unionInit(FieldType.get_type(), @tagName(val), union_value);
+                        @field(request, field_name).data = @unionInit(union_type, @tagName(union_type_field_value), union_value);
                     },
                 }
             } else if (@hasDecl(FieldType, "is_list_of")) {

@@ -425,7 +425,6 @@ fn intern_atom(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-// TODO: Implement properly
 fn change_property(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.ChangeProperty, request_context.allocator);
     defer req.deinit();
@@ -446,7 +445,16 @@ fn change_property(request_context: phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.type));
     };
 
-    // TODO: Actually set the property value
+    switch (req.request.data.data) {
+        inline else => |data| {
+            const array_element_type = @typeInfo(@TypeOf(data)).pointer.child;
+            switch (req.request.mode) {
+                .replace => try window.replace_property(array_element_type, req.request.property, req.request.type, data),
+                .prepend => try window.prepend_property(array_element_type, req.request.property, req.request.type, data),
+                .append => try window.append_property(array_element_type, req.request.property, req.request.type, data),
+            }
+        },
+    }
 
     const property_notify_event = phx.event.Event{
         .property_notify = .{
@@ -454,7 +462,7 @@ fn change_property(request_context: phx.RequestContext) !void {
             .window = req.request.window,
             .atom = req.request.property,
             .time = request_context.server.get_timestamp_milliseconds(),
-            .state = .new_value, // TODO:
+            .state = .new_value,
         },
     };
     window.write_core_event_to_event_listeners(&property_notify_event);
@@ -480,13 +488,13 @@ fn get_property(request_context: phx.RequestContext) !void {
     std.debug.assert(!req.request.delete);
 
     // TODO: Handle this properly
-    if (property.type == req.request.type and std.meta.activeTag(property.item) == .string8 and req.request.type == phx.AtomManager.Predefined.string) {
+    if (property.type == req.request.type and std.meta.activeTag(property.item) == .card8_list and req.request.type == phx.AtomManager.Predefined.string) {
         // TODO: Properly set bytes_after and all that crap
         var rep = Reply.GetPropertyCard8{
             .sequence_number = request_context.sequence_number,
             .type = req.request.type,
             .bytes_after = 0,
-            .data = .{ .items = property.item.string8.items },
+            .data = .{ .items = property.item.card8_list.items },
         };
         try request_context.client.write_reply(&rep);
     } else {
@@ -946,9 +954,6 @@ pub const Request = struct {
         pad3: x11.AlignmentPadding = .{},
     };
 
-    // TODO: Implement this in a better way.
-    // The |data_length| field should be multiplied by |format|/8 for the size of |data|
-    // and the element type of the |data| list should depend on the |format|, either Card8, Card16 or Card32.
     pub const ChangeProperty = struct {
         opcode: phx.opcode.Major = .change_property,
         mode: enum(x11.Card8) {

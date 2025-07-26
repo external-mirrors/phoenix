@@ -22,5 +22,5 @@ pub fn main() !void {
 }
 
 test "all tests" {
-    _ = @import("phoenix.zig");
+    std.testing.refAllDecls(phx);
 }

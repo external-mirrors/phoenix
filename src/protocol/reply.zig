@@ -27,6 +27,8 @@ fn write_reply_field(comptime FieldType: type, value: *const FieldType, writer: 
         .@"struct" => |*s| {
             if (@hasDecl(FieldType, "is_list_of")) {
                 try write_reply_list_of(FieldType, value, writer);
+            } else if (@hasDecl(FieldType, "is_union_list")) {
+                @compileError("UnionList is not supported in replies yet");
             } else if (FieldType == x11.AlignmentPadding) {
                 try writer.writeByteNTimes(0, x11.padding(writer.context.num_bytes_written, 4));
             } else if (s.backing_integer) |backing_integer| {

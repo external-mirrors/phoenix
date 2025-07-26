@@ -94,22 +94,87 @@ pub fn get_property(self: *Self, atom: x11.Atom) ?*x11.PropertyValue {
     return self.properties.getPtr(atom);
 }
 
-pub fn set_property_card8(self: *Self, property_name: x11.Atom, property_type: x11.Atom, value: []const u8) !void {
-    var array_list = std.ArrayList(u8).init(self.allocator);
+fn property_data_type_to_union_field(comptime DataType: type) []const u8 {
+    return switch (DataType) {
+        u8 => "card8_list",
+        u16 => "card16_list",
+        u32 => "card32_list",
+        else => @compileError("Expected DataType to be u8, u16 or u32, was: " ++ @typeName(DataType)),
+    };
+}
+
+// TODO: Add a max size for properties
+pub fn replace_property(
+    self: *Self,
+    comptime DataType: type,
+    property_name: x11.Atom,
+    property_type: x11.Atom,
+    value: []const DataType,
+) !void {
+    var array_list = try std.ArrayList(DataType).initCapacity(self.allocator, value.len);
     errdefer array_list.deinit();
-    try array_list.appendSlice(value);
+    array_list.appendSliceAssumeCapacity(value);
 
     var result = try self.properties.getOrPut(property_name);
-    if (result.found_existing) {
-        if (result.value_ptr.type != property_type)
-            return error.PropertyTypeMismatch;
+    if (result.found_existing)
         result.value_ptr.deinit();
-    }
 
+    const union_field_name = comptime property_data_type_to_union_field(DataType);
     result.value_ptr.* = .{
         .type = property_type,
-        .item = .{ .string8 = array_list },
+        .item = @unionInit(x11.PropertyValueData, union_field_name, array_list),
     };
+}
+
+// TODO: Add a max size for properties
+fn property_add(
+    self: *Self,
+    comptime DataType: type,
+    property_name: x11.Atom,
+    property_type: x11.Atom,
+    value: []const DataType,
+    operation: enum { prepend, append },
+) !void {
+    const union_field_name = comptime property_data_type_to_union_field(DataType);
+    if (self.properties.getPtr(property_name)) |property| {
+        if (property.type != property_type)
+            return error.PropertyTypeMismatch;
+
+        return switch (operation) {
+            .prepend => @field(property.item, union_field_name).insertSlice(0, value),
+            .append => @field(property.item, union_field_name).appendSlice(value),
+        };
+    } else {
+        var array_list = try std.ArrayList(DataType).initCapacity(self.allocator, value.len);
+        errdefer array_list.deinit();
+        array_list.appendSliceAssumeCapacity(value);
+
+        const property = x11.PropertyValue{
+            .type = property_type,
+            .item = @unionInit(x11.PropertyValueData, union_field_name, array_list),
+        };
+        return self.properties.put(property_name, property);
+    }
+}
+
+pub fn prepend_property(
+    self: *Self,
+    comptime DataType: type,
+    property_name: x11.Atom,
+    property_type: x11.Atom,
+    value: []const DataType,
+) !void {
+    return self.property_add(DataType, property_name, property_type, value, .prepend);
+}
+
+pub fn append_property(
+    self: *Self,
+    comptime DataType: type,
+    property_name: x11.Atom,
+    property_type: x11.Atom,
+    value: []const DataType,
+) !void {
+    return self.property_add(DataType, property_name, property_type, value, .append);
 }
 
 /// It's invalid to add multiple event listeners with the same client.

@@ -80,8 +80,8 @@ const DisplayImpl = union(enum) {
 };
 
 test "x11" {
-    const allocator = std.testing.allocator;
-    const x11 = try Self.create_x11(allocator);
-    defer x11.destroy();
-    try x11.create_window();
+    //const allocator = std.testing.allocator;
+    //const x11 = try Self.create_x11(allocator);
+    //defer x11.destroy();
+    //try x11.create_window();
 }

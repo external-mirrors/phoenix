@@ -484,10 +484,14 @@ fn get_property(request_context: phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.property));
     };
 
-    const type_atom_name = request_context.server.atom_manager.get_atom_name_by_id(req.request.type) orelse {
-        std.log.err("Received invalid type atom {d} in GetProperty request", .{req.request.type});
-        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.type));
-    };
+    const type_atom_name =
+        if (req.request.type == any_property_type)
+            ""
+        else
+            request_context.server.atom_manager.get_atom_name_by_id(req.request.type) orelse {
+                std.log.err("Received invalid type atom {d} in GetProperty request", .{req.request.type});
+                return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.type));
+            };
 
     const property = window.get_property(req.request.property) orelse {
         std.log.err("GetProperty: the property atom {d} ({s}) doesn't exist in window {d}, returning empty data", .{ req.request.property, property_atom_name, window.id });
@@ -500,7 +504,7 @@ fn get_property(request_context: phx.RequestContext) !void {
     // TODO: Ensure properties cant get this big
     const property_size_in_bytes: u32 = @min(property.get_size_in_bytes(), std.math.maxInt(u32));
 
-    if (req.request.type != property.type and req.request.type != phx.AtomManager.Predefined.any_property_type) {
+    if (req.request.type != property.type and req.request.type != any_property_type) {
         std.log.err(
             "GetProperty: the property atom {d} ({s}) exist in window {d} but it's of type {d}, not {d} ({s}) returning empty data",
             .{ req.request.property, property_atom_name, window.id, property.type, req.request.type, type_atom_name },
@@ -771,6 +775,7 @@ const ConfigureWindowValueMask = packed struct(x11.Card16) {
 };
 
 const none: x11.Card32 = 0;
+const any_property_type: x11.Atom = @enumFromInt(0);
 const parent_relative: x11.Card32 = 1;
 const window_none: x11.WindowId = 0;
 const pixmap_none: x11.PixmapId = 0;

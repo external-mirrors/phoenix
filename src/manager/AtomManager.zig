@@ -8,7 +8,6 @@ const name_max_length: usize = 255;
 const max_num_atoms: usize = 262144;
 
 pub const Predefined = struct {
-    pub const any_property_type: x11.Atom = @enumFromInt(0); // Special value, not specified in the protocol directly
     pub const primary: x11.Atom = @enumFromInt(1);
     pub const secondary: x11.Atom = @enumFromInt(2);
     pub const arc: x11.Atom = @enumFromInt(3);
@@ -91,10 +90,10 @@ pub fn init(allocator: std.mem.Allocator) !Self {
 
     inline for (@typeInfo(Predefined).@"struct".decls) |*decl| {
         const field_value = @field(Predefined, decl.name);
-        std.debug.assert(self.atoms.items.len == @intFromEnum(field_value));
         const atom_name = try std.ascii.allocUpperString(allocator, decl.name);
         errdefer allocator.free(atom_name);
         try self.atoms.append(atom_name);
+        std.debug.assert(self.atoms.items.len == @intFromEnum(field_value));
     }
 
     return self;
@@ -108,7 +107,8 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn get_atom_name_by_id(self: *Self, atom_id: x11.Atom) ?[]const u8 {
-    return if (@intFromEnum(atom_id) < self.atoms.items.len) self.atoms.items[@intFromEnum(atom_id)] else null;
+    const atom_id_num = @intFromEnum(atom_id);
+    return if (atom_id_num > 0 and atom_id_num - 1 < self.atoms.items.len) self.atoms.items[atom_id_num - 1] else null;
 }
 
 pub fn get_atom_by_name(self: *Self, name: []const u8) ?x11.Atom {
@@ -133,5 +133,14 @@ pub fn get_atom_by_name_create_if_not_exists(self: *Self, name: []const u8) !x11
     const atom_name = try self.allocator.dupe(u8, name);
     errdefer self.allocator.free(atom_name);
     try self.atoms.append(atom_name);
-    return @enumFromInt(self.atoms.items.len - 1);
+    return @enumFromInt(self.atoms.items.len);
+}
+
+test "get atom" {
+    var atom_manager = try Self.init(std.testing.allocator);
+    defer atom_manager.deinit();
+
+    try std.testing.expect(atom_manager.get_atom_name_by_id(@enumFromInt(0)) == null);
+    try std.testing.expectEqualSlices(u8, "PRIMARY", atom_manager.get_atom_name_by_id(Predefined.primary).?);
+    try std.testing.expectEqualSlices(u8, "WM_TRANSIENT_FOR", atom_manager.get_atom_name_by_id(Predefined.wm_transient_for).?);
 }

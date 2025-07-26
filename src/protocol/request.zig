@@ -9,77 +9,126 @@ pub fn read_request(comptime T: type, reader: anytype, arena: *std.heap.ArenaAll
 fn read_request_with_size_calculation(comptime T: type, reader: anytype, request_size: *usize, allocator: std.mem.Allocator) !T {
     var request: T = undefined;
     inline for (@typeInfo(T).@"struct".fields) |*field| {
-        switch (@typeInfo(field.type)) {
-            .@"enum" => |e| {
-                @field(request, field.name) = try std.meta.intToEnum(field.type, try reader.readInt(e.tag_type, x11.native_endian));
-                request_size.* += @sizeOf(field.type);
-            },
-            .int => |int| {
-                const int_type = @Type(.{ .int = int });
-                @field(request, field.name) = try reader.readInt(int_type, x11.native_endian);
-                request_size.* += @sizeOf(int_type);
-            },
-            .bool => {
-                @field(request, field.name) = if (try reader.readInt(u8, x11.native_endian) == 0) false else true;
-                request_size.* += 1;
-            },
-            .@"struct" => |*s| {
-                if (field.type == x11.AlignmentPadding) {
-                    const num_bytes_to_skip = x11.padding(request_size.*, 4);
-                    try reader.skipBytes(num_bytes_to_skip, .{});
-                    request_size.* += num_bytes_to_skip;
-                    continue;
-                } else if (s.backing_integer) |backing_integer| {
-                    const bitmask: field.type = @bitCast(try reader.readInt(backing_integer, x11.native_endian));
-                    @field(request, field.name) = bitmask.sanitize();
-                    request_size.* += @sizeOf(backing_integer);
-                    continue;
-                }
-
-                // TODO: Validate that ListOf length field is parsed before the ListOf list (that it's declared before in the struct)
-
-                const element_type = comptime field.type.get_element_type();
-                const list_of_options = comptime field.type.get_options();
-                var list_of = &@field(request, field.name);
-
-                var list_length: usize = 0;
-                switch (list_of_options.length_field_type) {
-                    .integer => {
-                        comptime std.debug.assert(!std.mem.eql(u8, list_of_options.length_field.?, "length")); // It can't be the request length field
-                        list_length = @field(request, list_of_options.length_field.?);
-                    },
-                    .bitmask => {
-                        comptime std.debug.assert(!std.mem.eql(u8, list_of_options.length_field.?, "length")); // It can't be the request length field
-                        list_length = @popCount(@field(request, list_of_options.length_field.?).to_int());
-                    },
-                    .request_remainder => {
-                        comptime std.debug.assert(std.mem.eql(u8, list_of_options.length_field.?, "length")); // It needs to be the request length field
-                        const unit_size: u32 = 4;
-                        const length_field_size = @field(request, list_of_options.length_field.?) * unit_size;
-                        if (request_size.* > length_field_size)
-                            return error.InvalidRequestLength;
-                        list_length = length_field_size - request_size.*;
-                    },
-                }
-
-                list_of.items = try allocator.alloc(element_type, list_length); // TODO: Cleanup on error
-                for (0..list_of.items.len) |i| {
-                    switch (@typeInfo(element_type)) {
-                        .int => |int| {
-                            const int_type = @Type(.{ .int = int });
-                            list_of.items[i] = try reader.readInt(int_type, x11.native_endian);
-                            request_size.* += @sizeOf(int_type);
-                        },
-                        .@"struct" => list_of.items[i] = try read_request_with_size_calculation(element_type, reader, request_size, allocator),
-                        else => @compileError("Only integer and structs are supported in ListOf in requests right now, got: " ++ @typeName(element_type)),
-                    }
-                }
-            },
-            else => @compileError("Only enum, integer and struct types are supported in requests right now, got: " ++
-                @tagName(@typeInfo(field.type)) ++ " for " ++ @typeName(T) ++ "." ++ field.name),
-        }
+        try read_request_field_with_size_calculation(T, &request, field.type, field.name, reader, request_size, allocator);
     }
     return request;
+}
+
+fn read_request_field_with_size_calculation(
+    comptime T: type,
+    request: *T,
+    comptime FieldType: type,
+    comptime field_name: []const u8,
+    reader: anytype,
+    request_size: *usize,
+    allocator: std.mem.Allocator,
+) !void {
+    switch (@typeInfo(FieldType)) {
+        .@"enum" => |e| {
+            @field(request, field_name) = try std.meta.intToEnum(FieldType, try reader.readInt(e.tag_type, x11.native_endian));
+            request_size.* += @sizeOf(FieldType);
+        },
+        .int => |int| {
+            const int_type = @Type(.{ .int = int });
+            @field(request, field_name) = try reader.readInt(int_type, x11.native_endian);
+            request_size.* += @sizeOf(int_type);
+        },
+        .bool => {
+            @field(request, field_name) = if (try reader.readInt(u8, x11.native_endian) == 0) false else true;
+            request_size.* += 1;
+        },
+        .@"struct" => |*s| {
+            if (FieldType == x11.AlignmentPadding) {
+                const num_bytes_to_skip = x11.padding(request_size.*, 4);
+                try reader.skipBytes(num_bytes_to_skip, .{});
+                request_size.* += num_bytes_to_skip;
+            } else if (s.backing_integer) |backing_integer| {
+                const bitmask: FieldType = @bitCast(try reader.readInt(backing_integer, x11.native_endian));
+                @field(request, field_name) = bitmask.sanitize();
+                request_size.* += @sizeOf(backing_integer);
+            } else if (@hasDecl(FieldType, "is_union_list")) {
+                const union_options = comptime FieldType.get_options();
+                const union_type_field = @field(request, union_options.type_field);
+                const union_length_field = @field(request, union_options.length_field);
+                switch (union_type_field) {
+                    inline else => |val| {
+                        const union_data = &@field(request, field_name).data;
+                        const union_tag_type = @TypeOf(@field(union_data.*, @tagName(val)));
+                        const union_array_data_type = @typeInfo(union_tag_type).pointer.child;
+                        const union_value = try read_request_array_with_size_calculation(union_array_data_type, union_length_field, reader, request_size, allocator);
+                        union_data.* = @unionInit(FieldType.get_type(), @tagName(val), union_value);
+                    },
+                }
+            } else if (@hasDecl(FieldType, "is_list_of")) {
+                const list_of_field = &@field(request, field_name);
+                list_of_field.* = try read_request_list_of_with_size_calculation(T, request, @TypeOf(list_of_field.*), reader, request_size, allocator);
+            } else {
+                @compileError("Only AlignmentPadding, packed struct, UnionList and ListOf are supported as structs in requests right now, got: " ++
+                    @typeName(FieldType) ++ " which is a regular struct");
+            }
+        },
+        else => @compileError("Only enum, integer and struct types are supported in requests right now, got: " ++
+            @tagName(@typeInfo(FieldType)) ++ " for " ++ @typeName(T) ++ "." ++ field_name),
+    }
+}
+
+// TODO: Validate that ListOf length field is parsed before the ListOf list (that it's declared before in the struct)
+fn read_request_list_of_with_size_calculation(
+    comptime T: type,
+    request: *T,
+    comptime ListOfType: type,
+    reader: anytype,
+    request_size: *usize,
+    allocator: std.mem.Allocator,
+) !ListOfType {
+    const element_type = comptime ListOfType.get_element_type();
+    const list_of_options = comptime ListOfType.get_options();
+    var list_of: ListOfType = undefined;
+
+    var list_length: usize = 0;
+    switch (list_of_options.length_field_type) {
+        .integer => {
+            comptime std.debug.assert(!std.mem.eql(u8, list_of_options.length_field.?, "length")); // It can't be the request length field
+            list_length = @field(request, list_of_options.length_field.?);
+        },
+        .bitmask => {
+            comptime std.debug.assert(!std.mem.eql(u8, list_of_options.length_field.?, "length")); // It can't be the request length field
+            list_length = @popCount(@field(request, list_of_options.length_field.?).to_int());
+        },
+        .request_remainder => {
+            comptime std.debug.assert(std.mem.eql(u8, list_of_options.length_field.?, "length")); // It needs to be the request length field
+            const unit_size: u32 = 4;
+            const length_field_size = @field(request, list_of_options.length_field.?) * unit_size;
+            if (request_size.* > length_field_size)
+                return error.InvalidRequestLength;
+            list_length = length_field_size - request_size.*;
+        },
+    }
+
+    list_of.items = try read_request_array_with_size_calculation(element_type, list_length, reader, request_size, allocator);
+    return list_of;
+}
+
+fn read_request_array_with_size_calculation(
+    comptime ElementType: type,
+    list_length: usize,
+    reader: anytype,
+    request_size: *usize,
+    allocator: std.mem.Allocator,
+) ![]ElementType {
+    var items = try allocator.alloc(ElementType, list_length);
+    for (0..items.len) |i| {
+        switch (@typeInfo(ElementType)) {
+            .int => |int| {
+                const int_type = @Type(.{ .int = int });
+                items[i] = try reader.readInt(int_type, x11.native_endian);
+                request_size.* += @sizeOf(int_type);
+            },
+            .@"struct" => items[i] = try read_request_with_size_calculation(ElementType, reader, request_size, allocator),
+            else => @compileError("Only integer and structs are supported in arrays in requests right now, got: " ++ @typeName(ElementType)),
+        }
+    }
+    return items;
 }
 
 pub const RequestHeader = extern struct {

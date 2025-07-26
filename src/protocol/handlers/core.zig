@@ -431,17 +431,6 @@ fn change_property(request_context: phx.RequestContext) !void {
     defer req.deinit();
     std.log.info("ChangeProperty request: {s}", .{x11.stringify_fmt(req.request)});
 
-    if (req.request.format != 8 and req.request.format != 16 and req.request.format != 32) {
-        std.log.err("Received invalid format {d} in ChangeProperty request", .{req.request.format});
-        return request_context.client.write_error(request_context, .value, req.request.format);
-    }
-
-    const format_bytesize = req.request.format / 8;
-    if (req.request.data_length * format_bytesize != req.request.data.items.len) {
-        std.log.err("Received invalid data length {d} in ChangeProperty request", .{req.request.data_length});
-        return request_context.client.write_error(request_context, .value, req.request.data_length);
-    }
-
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in ChangeProperty request", .{req.request.window});
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
@@ -847,6 +836,12 @@ const String8WithLength = struct {
     data: x11.ListOf(x11.Card8, .{ .length_field = "length" }),
 };
 
+const PropertyFormat = enum(x11.Card8) {
+    format8 = 8,
+    format16 = 16,
+    format32 = 32,
+};
+
 pub const Request = struct {
     pub const CreateWindow = struct {
         opcode: phx.opcode.Major = .create_window,
@@ -965,14 +960,17 @@ pub const Request = struct {
         window: x11.WindowId,
         property: x11.Atom,
         type: x11.Atom,
-        format: x11.Card8, // 8, 16 or 32
+        format: PropertyFormat,
         pad1: x11.Card8,
         pad2: x11.Card16,
         // In |format| units
         data_length: x11.Card32,
-        // TODO: Data length can be incorrect because of padding that gets included as data
-        data: x11.ListOf(x11.Card8, .{ .length_field = "length", .length_field_type = .request_remainder }),
-        // TODO: Padding
+        data: x11.UnionList(union(PropertyFormat) {
+            format8: []x11.Card8,
+            format16: []x11.Card16,
+            format32: []x11.Card32,
+        }, .{ .type_field = "format", .length_field = "data_length" }),
+        pad3: x11.AlignmentPadding,
     };
 
     pub const GetProperty = struct {

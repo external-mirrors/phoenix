@@ -145,6 +145,7 @@ fn generate_protocol_docs(comptime file_struct: type, install_path_dir: *std.fs.
         inline for (@typeInfo(request_type).@"struct".fields) |field| {
             switch (@typeInfo(field.type)) {
                 .@"struct" => {
+                    // TODO: Handle UnionList
                     if (@hasDecl(field.type, "is_list_of")) {
                         const field_value = comptime "ListOf" ++ type_get_name_only(@typeName(field.type.get_element_type()));
                         const list_options = field.type.get_options();

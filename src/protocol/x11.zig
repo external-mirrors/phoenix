@@ -36,7 +36,32 @@ pub fn ListOf(comptime T: type, comptime options: ListOfOptions) type {
     };
 }
 
-/// When used in a struct this adds padding to align the next item to 4 bytes
+pub const UnionOptions = struct {
+    type_field: []const u8,
+    length_field: []const u8,
+};
+
+pub fn UnionList(comptime UnionType: type, comptime options: UnionOptions) type {
+    std.debug.assert(std.meta.activeTag(@typeInfo(UnionType)) == .@"union");
+    return struct {
+        data: UnionType,
+
+        pub fn get_options() UnionOptions {
+            return options;
+        }
+
+        pub fn is_union_list() bool {
+            return true;
+        }
+
+        pub fn get_type() type {
+            return UnionType;
+        }
+    };
+}
+
+/// When used in a struct this adds padding to align the next item to 4 bytes.
+/// If there is no item after this AlignmentPadding then padding is still applied for the total struct size.
 pub const AlignmentPadding = struct {};
 
 pub const ScreenId = enum(Card32) {

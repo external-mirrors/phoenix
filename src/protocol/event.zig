@@ -40,6 +40,23 @@ pub const KeyButMask = packed struct(x11.Card16) {
     }
 };
 
+// TODO: Change size? this has to be 2 bytes in some requests (like GrabButton) but 1 byte in some replies, like XkbGetDeviceInfo
+pub const KeyMask = packed struct(x11.Card8) {
+    shift: bool = false,
+    lock: bool = false,
+    control: bool = false,
+    mod1: bool = false,
+    mod2: bool = false,
+    mod3: bool = false,
+    mod4: bool = false,
+    mod5: bool = false,
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == @sizeOf(x11.Card8));
+        std.debug.assert(@bitSizeOf(@This()) == @bitSizeOf(x11.Card8));
+    }
+};
+
 fn KeyEvent(comptime code: EventCode) type {
     return extern struct {
         code: EventCode = code,

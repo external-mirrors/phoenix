@@ -37,7 +37,7 @@ pub fn ListOf(comptime T: type, comptime options: ListOfOptions) type {
 }
 
 /// When used in a struct this adds padding to align the next item to 4 bytes
-pub const DynamicPadding = struct {};
+pub const AlignmentPadding = struct {};
 
 pub const ScreenId = enum(Card32) {
     _,

@@ -948,7 +948,7 @@ pub const Request = struct {
         length_of_name: x11.Card16,
         pad2: x11.Card16,
         name: x11.ListOf(x11.Card8, .{ .length_field = "length_of_name" }),
-        pad3: x11.DynamicPadding = .{},
+        pad3: x11.AlignmentPadding = .{},
     };
 
     // TODO: Implement this in a better way.
@@ -1007,7 +1007,7 @@ pub const Request = struct {
         length_of_name: x11.Card16,
         pad1: x11.Card16,
         name: x11.ListOf(x11.Card8, .{ .length_field = "length_of_name" }),
-        pad2: x11.DynamicPadding = .{},
+        pad2: x11.AlignmentPadding = .{},
     };
 };
 
@@ -1066,7 +1066,7 @@ const Reply = struct {
             data_length: x11.Card32 = 0,
             pad1: [12]x11.Card8 = [_]x11.Card8{0} ** 12,
             data: x11.ListOf(DataType, .{ .length_field = "data_length" }),
-            pad2: x11.DynamicPadding = .{},
+            pad2: x11.AlignmentPadding = .{},
         };
     }
 
@@ -1116,6 +1116,6 @@ const Reply = struct {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         pad1: [24]x11.Card8 = [_]x11.Card8{0} ** 24,
         names: x11.ListOf(String8WithLength, .{ .length_field = "num_strs" }),
-        pad2: x11.DynamicPadding = .{},
+        pad2: x11.AlignmentPadding = .{},
     };
 };

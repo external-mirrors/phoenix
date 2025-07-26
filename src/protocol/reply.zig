@@ -27,7 +27,7 @@ fn write_reply_field(comptime FieldType: type, value: *const FieldType, writer: 
         .@"struct" => |*s| {
             if (@hasDecl(FieldType, "is_list_of")) {
                 try write_reply_list_of(FieldType, value, writer);
-            } else if (FieldType == x11.DynamicPadding) {
+            } else if (FieldType == x11.AlignmentPadding) {
                 try writer.writeByteNTimes(0, x11.padding(writer.context.num_bytes_written, 4));
             } else if (s.backing_integer) |backing_integer| {
                 try writer.writeInt(backing_integer, @bitCast(value.*), x11.native_endian);
@@ -122,7 +122,7 @@ fn calculate_reply_length_bytes(comptime T: type, reply: *T) u32 {
             .@"struct" => |*s| {
                 if (@hasDecl(field.type, "is_list_of")) {
                     size += calculate_reply_length_bytes_list_of(field.type, &@field(reply, field.name));
-                } else if (field.type == x11.DynamicPadding) {
+                } else if (field.type == x11.AlignmentPadding) {
                     size += x11.padding(size, 4);
                 } else if (s.backing_integer) |backing_integer| {
                     size += @sizeOf(backing_integer);

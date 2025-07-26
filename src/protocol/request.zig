@@ -24,7 +24,7 @@ fn read_request_with_size_calculation(comptime T: type, reader: anytype, request
                 request_size.* += 1;
             },
             .@"struct" => |*s| {
-                if (field.type == x11.DynamicPadding) {
+                if (field.type == x11.AlignmentPadding) {
                     const num_bytes_to_skip = x11.padding(request_size.*, 4);
                     try reader.skipBytes(num_bytes_to_skip, .{});
                     request_size.* += num_bytes_to_skip;

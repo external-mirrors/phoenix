@@ -115,6 +115,7 @@ fn generate_docs(install_path: []const u8) !void {
         else => return err,
     };
 
+    try generate_protocol_docs(phx.ConnectionSetup, &install_path_dir);
     try generate_protocol_docs(phx.core, &install_path_dir);
     try generate_protocol_docs(phx.Dri3, &install_path_dir);
     try generate_protocol_docs(phx.Glx, &install_path_dir);
@@ -148,7 +149,7 @@ fn generate_protocol_docs(comptime file_struct: type, install_path_dir: *std.fs.
                         const field_value = comptime "ListOf" ++ type_get_name_only(@typeName(field.type.get_element_type()));
                         const list_options = field.type.get_options();
                         try writer.print("    {s: <14}    {s: <10}    {s}\n", .{ list_options.length_field orelse "", field_value, field.name });
-                    } else if (field.type == phx.x11.DynamicPadding) {
+                    } else if (field.type == phx.x11.AlignmentPadding) {
                         try writer.print("    {s: <14}    {s: <10}    p=padding\n", .{ "p", "" });
                     } else {
                         const field_value = type_get_name_only(@typeName(field.type));

@@ -947,7 +947,8 @@ pub const Request = struct {
         length: x11.Card16,
         length_of_name: x11.Card16,
         pad2: x11.Card16,
-        name: x11.String8(.{ .length_field = "length_of_name" }),
+        name: x11.ListOf(x11.Card8, .{ .length_field = "length_of_name" }),
+        pad3: x11.DynamicPadding = .{},
     };
 
     // TODO: Implement this in a better way.
@@ -969,7 +970,9 @@ pub const Request = struct {
         pad2: x11.Card16,
         // In |format| units
         data_length: x11.Card32,
+        // TODO: Data length can be incorrect because of padding that gets included as data
         data: x11.ListOf(x11.Card8, .{ .length_field = "length", .length_field_type = .request_remainder }),
+        // TODO: Padding
     };
 
     pub const GetProperty = struct {
@@ -1003,7 +1006,8 @@ pub const Request = struct {
         length: x11.Card16,
         length_of_name: x11.Card16,
         pad1: x11.Card16,
-        name: x11.String8(.{ .length_field = "length_of_name" }),
+        name: x11.ListOf(x11.Card8, .{ .length_field = "length_of_name" }),
+        pad2: x11.DynamicPadding = .{},
     };
 };
 
@@ -1061,7 +1065,8 @@ const Reply = struct {
             bytes_after: x11.Card32,
             data_length: x11.Card32 = 0,
             pad1: [12]x11.Card8 = [_]x11.Card8{0} ** 12,
-            data: x11.ListOf(DataType, .{ .length_field = "data_length", .padding = 4 }),
+            data: x11.ListOf(DataType, .{ .length_field = "data_length" }),
+            pad2: x11.DynamicPadding = .{},
         };
     }
 
@@ -1110,6 +1115,7 @@ const Reply = struct {
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         pad1: [24]x11.Card8 = [_]x11.Card8{0} ** 24,
-        names: x11.ListOf(String8WithLength, .{ .length_field = "num_strs", .padding = 4 }),
+        names: x11.ListOf(String8WithLength, .{ .length_field = "num_strs" }),
+        pad2: x11.DynamicPadding = .{},
     };
 };

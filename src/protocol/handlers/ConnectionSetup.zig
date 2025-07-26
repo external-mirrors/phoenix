@@ -221,8 +221,10 @@ pub const Request = struct {
         auth_protocol_name_length: x11.Card16,
         auth_protocol_data_length: x11.Card16,
         pad2: x11.Card16,
-        auth_protocol_name: x11.String8(.{ .length_field = "auth_protocol_name_length" }),
-        auth_protocol_data: x11.String8(.{ .length_field = "auth_protocol_data_length" }),
+        auth_protocol_name: x11.ListOf(x11.Card8, .{ .length_field = "auth_protocol_name_length" }),
+        pad3: x11.DynamicPadding = .{},
+        auth_protocol_data: x11.ListOf(x11.Card8, .{ .length_field = "auth_protocol_data_length" }),
+        pad4: x11.DynamicPadding = .{},
 
         // TODO:
         // pub fn deinit(self: *ConnectionSetupRequest, allocator: std.mem.Allocator) void {
@@ -254,7 +256,8 @@ pub const Reply = struct {
         min_keycode: x11.KeyCode,
         max_keycode: x11.KeyCode,
         pad2: x11.Card32 = 0,
-        vendor: x11.String8(.{ .length_field = "vendor_length" }),
+        vendor: x11.ListOf(x11.Card8, .{ .length_field = "vendor_length" }),
+        pad3: x11.DynamicPadding = .{},
         pixmap_formats: x11.ListOf(PixmapFormat, .{ .length_field = "num_pixmap_formats" }),
         screens: x11.ListOf(Screen, .{ .length_field = "num_screens" }),
     };
@@ -265,7 +268,8 @@ pub const Reply = struct {
         protocol_major_version: x11.Card16 = 28000, // TODO:
         protocol_minor_version: x11.Card16 = 0, // TODO:
         length: x11.Card16 = 0, // This is automatically updated with the size of the reply
-        reason: x11.String8(.{ .length_field = "reason_length" }),
+        reason: x11.ListOf(x11.Card8, .{ .length_field = "reason_length" }),
+        pad1: x11.DynamicPadding = .{},
     };
 
     pub const ConnectionSetupAuthenticate = struct {
@@ -273,6 +277,7 @@ pub const Reply = struct {
         pad1: x11.Card8 = 0,
         pad2: x11.Card32 = 0,
         length: x11.Card16 = 0, // This is automatically updated with the size of the reply
-        reason: x11.String8(.{ .length_field = null }),
+        reason: x11.ListOf(x11.Card8, .{ .length_field = null }),
+        pad3: x11.DynamicPadding = .{},
     };
 };

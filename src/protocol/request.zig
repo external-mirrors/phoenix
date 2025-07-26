@@ -24,7 +24,12 @@ fn read_request_with_size_calculation(comptime T: type, reader: anytype, request
                 request_size.* += 1;
             },
             .@"struct" => |*s| {
-                if (s.backing_integer) |backing_integer| {
+                if (field.type == x11.DynamicPadding) {
+                    const num_bytes_to_skip = x11.padding(request_size.*, 4);
+                    try reader.skipBytes(num_bytes_to_skip, .{});
+                    request_size.* += num_bytes_to_skip;
+                    continue;
+                } else if (s.backing_integer) |backing_integer| {
                     const bitmask: field.type = @bitCast(try reader.readInt(backing_integer, x11.native_endian));
                     @field(request, field.name) = bitmask.sanitize();
                     request_size.* += @sizeOf(backing_integer);
@@ -48,7 +53,6 @@ fn read_request_with_size_calculation(comptime T: type, reader: anytype, request
                         list_length = @popCount(@field(request, list_of_options.length_field.?).to_int());
                     },
                     .request_remainder => {
-                        comptime std.debug.assert(list_of_options.padding == 0);
                         comptime std.debug.assert(std.mem.eql(u8, list_of_options.length_field.?, "length")); // It needs to be the request length field
                         const unit_size: u32 = 4;
                         const length_field_size = @field(request, list_of_options.length_field.?) * unit_size;
@@ -70,11 +74,6 @@ fn read_request_with_size_calculation(comptime T: type, reader: anytype, request
                         else => @compileError("Only integer and structs are supported in ListOf in requests right now, got: " ++ @typeName(element_type)),
                     }
                 }
-
-                // TODO: Should item length for padding by multiplied by size?
-                const num_bytes_to_skip = x11.padding(list_of.items.len, list_of_options.padding);
-                try reader.skipBytes(num_bytes_to_skip, .{});
-                request_size.* += num_bytes_to_skip;
             },
             else => @compileError("Only enum, integer and struct types are supported in requests right now, got: " ++
                 @tagName(@typeInfo(field.type)) ++ " for " ++ @typeName(T) ++ "." ++ field.name),

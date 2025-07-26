@@ -643,8 +643,10 @@ pub const Request = struct {
         gl_extension_string_length: x11.Card32,
         glx_extension_string_length: x11.Card32,
         context_versions: x11.ListOf(ContextVersion, .{ .length_field = "num_context_versions" }),
-        gl_extension_string: x11.String8(.{ .length_field = "gl_extension_string_length" }),
-        glx_extension_string: x11.String8(.{ .length_field = "glx_extension_string_length" }),
+        gl_extension_string: x11.ListOf(x11.Card8, .{ .length_field = "gl_extension_string_length" }),
+        pad1: x11.DynamicPadding = .{},
+        glx_extension_string: x11.ListOf(x11.Card8, .{ .length_field = "glx_extension_string_length" }),
+        pad2: x11.DynamicPadding = .{},
     };
 
     pub const GlxSetClientInfo2Arb = struct {
@@ -657,8 +659,10 @@ pub const Request = struct {
         gl_extension_string_length: x11.Card32,
         glx_extension_string_length: x11.Card32,
         context_versions: x11.ListOf(ContextVersion2, .{ .length_field = "num_context_versions" }),
-        gl_extension_string: x11.String8(.{ .length_field = "gl_extension_string_length" }),
-        glx_extension_string: x11.String8(.{ .length_field = "glx_extension_string_length" }),
+        gl_extension_string: x11.ListOf(x11.Card8, .{ .length_field = "gl_extension_string_length" }),
+        pad1: x11.DynamicPadding = .{},
+        glx_extension_string: x11.ListOf(x11.Card8, .{ .length_field = "glx_extension_string_length" }),
+        pad2: x11.DynamicPadding = .{},
     };
 };
 
@@ -701,7 +705,8 @@ pub const Reply = struct {
         pad2: x11.Card32 = 0,
         string_length: x11.Card32 = 0,
         pad3: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
-        string: x11.String8(.{ .length_field = "string_length" }),
+        string: x11.ListOf(x11.Card8, .{ .length_field = "string_length" }),
+        pad4: x11.DynamicPadding = .{},
     };
 
     pub const GlxGetFbConfigs = struct {

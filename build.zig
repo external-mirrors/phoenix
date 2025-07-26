@@ -144,13 +144,12 @@ fn generate_protocol_docs(comptime file_struct: type, install_path_dir: *std.fs.
         inline for (@typeInfo(request_type).@"struct".fields) |field| {
             switch (@typeInfo(field.type)) {
                 .@"struct" => {
-                    const is_list_of = @hasDecl(field.type, "get_options");
-                    if (is_list_of) {
+                    if (@hasDecl(field.type, "is_list_of")) {
                         const field_value = comptime "ListOf" ++ type_get_name_only(@typeName(field.type.get_element_type()));
                         const list_options = field.type.get_options();
                         try writer.print("    {s: <14}    {s: <10}    {s}\n", .{ list_options.length_field orelse "", field_value, field.name });
-                        if (list_options.padding > 0)
-                            try writer.print("    {s: <14}    {s: <10}    p=pad({s}.len)\n", .{ "p", "", field.name });
+                    } else if (field.type == phx.x11.DynamicPadding) {
+                        try writer.print("    {s: <14}    {s: <10}    p=padding\n", .{ "p", "" });
                     } else {
                         const field_value = type_get_name_only(@typeName(field.type));
                         try writer.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), field_value, field.name });

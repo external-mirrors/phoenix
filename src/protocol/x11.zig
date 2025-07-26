@@ -15,7 +15,6 @@ pub const ListOfLengthType = enum {
 pub const ListOfOptions = struct {
     length_field: ?[]const u8,
     length_field_type: ListOfLengthType = .integer,
-    padding: u8 = 0,
 };
 
 // TODO: Use a different type in replies. In replies the items is never modified so it can be const
@@ -30,17 +29,15 @@ pub fn ListOf(comptime T: type, comptime options: ListOfOptions) type {
         pub fn get_element_type() type {
             return T;
         }
+
+        pub fn is_list_of() bool {
+            return true;
+        }
     };
 }
 
-pub const String8Options = struct {
-    length_field: ?[]const u8,
-};
-
-/// Automatically adds the padding (4) after the string
-pub fn String8(comptime options: String8Options) type {
-    return ListOf(Card8, .{ .length_field = options.length_field, .padding = 4 });
-}
+/// When used in a struct this adds padding to align the next item to 4 bytes
+pub const DynamicPadding = struct {};
 
 pub const ScreenId = enum(Card32) {
     _,

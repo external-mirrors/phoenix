@@ -149,6 +149,20 @@ pub const PropertyValue = struct {
             inline else => |*item| item.deinit(),
         }
     }
+
+    pub fn get_size_in_bytes(self: *const PropertyValue) usize {
+        return switch (self.item) {
+            inline else => |*item| item.items.len * self.get_data_type_size(),
+        };
+    }
+
+    pub fn get_data_type_size(self: *const PropertyValue) usize {
+        return switch (self.item) {
+            .card8_list => 1,
+            .card16_list => 2,
+            .card32_list => 4,
+        };
+    }
 };
 
 pub const PropertyHashMap = std.HashMap(Atom, PropertyValue, struct {

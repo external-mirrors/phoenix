@@ -8,7 +8,7 @@ const name_max_length: usize = 255;
 const max_num_atoms: usize = 262144;
 
 pub const Predefined = struct {
-    pub const none: x11.Atom = @enumFromInt(0);
+    pub const any_property_type: x11.Atom = @enumFromInt(0); // Special value, not specified in the protocol directly
     pub const primary: x11.Atom = @enumFromInt(1);
     pub const secondary: x11.Atom = @enumFromInt(2);
     pub const arc: x11.Atom = @enumFromInt(3);

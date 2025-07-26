@@ -410,11 +410,11 @@ fn intern_atom(request_context: phx.RequestContext) !void {
 
     var atom: x11.Atom = undefined;
     if (req.request.only_if_exists) {
-        atom = if (request_context.server.atom_manager.get_atom_by_name(req.request.name.items)) |atom_id| atom_id else phx.AtomManager.Predefined.none;
+        atom = if (request_context.server.atom_manager.get_atom_by_name(req.request.name.items)) |atom_id| atom_id else @enumFromInt(none);
     } else {
         atom = if (request_context.server.atom_manager.get_atom_by_name_create_if_not_exists(req.request.name.items)) |atom_id| atom_id else |err| switch (err) {
             error.OutOfMemory, error.TooManyAtoms => return request_context.client.write_error(request_context, .alloc, 0),
-            error.NameTooLong => return request_context.client.write_error(request_context, .value, 0),
+            error.NameTooLong => return request_context.client.write_error(request_context, .value, @truncate(req.request.name.items.len)),
         };
     }
 
@@ -447,7 +447,7 @@ fn change_property(request_context: phx.RequestContext) !void {
 
     switch (req.request.data.data) {
         inline else => |data| {
-            const array_element_type = @typeInfo(@TypeOf(data)).pointer.child;
+            const array_element_type = std.meta.Elem(@TypeOf(data));
             switch (req.request.mode) {
                 .replace => try window.replace_property(array_element_type, req.request.property, req.request.type, data),
                 .prepend => try window.prepend_property(array_element_type, req.request.property, req.request.type, data),
@@ -468,38 +468,101 @@ fn change_property(request_context: phx.RequestContext) !void {
     window.write_core_event_to_event_listeners(&property_notify_event);
 }
 
-// TODO: Actually read the request values, handling them properly
 fn get_property(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetProperty, request_context.allocator);
     defer req.deinit();
     std.log.info("GetProperty request: {s}", .{x11.stringify_fmt(req.request)});
+
     // TODO: Error if running in security mode and the window is not owned by the client
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in GetProperty request", .{req.request.window});
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
 
-    const property = window.get_property(req.request.property) orelse {
-        std.log.err("GetProperty: the property atom {d} doesn't exist in window {d}", .{ req.request.property, window.id });
+    const property_atom_name = request_context.server.atom_manager.get_atom_name_by_id(req.request.property) orelse {
+        std.log.err("Received invalid property atom {d} in GetProperty request", .{req.request.property});
         return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.property));
     };
 
-    // TODO: Implement delete
-    std.debug.assert(!req.request.delete);
+    const type_atom_name = request_context.server.atom_manager.get_atom_name_by_id(req.request.type) orelse {
+        std.log.err("Received invalid type atom {d} in GetProperty request", .{req.request.type});
+        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.type));
+    };
 
-    // TODO: Handle this properly
-    if (property.type == req.request.type and std.meta.activeTag(property.item) == .card8_list and req.request.type == phx.AtomManager.Predefined.string) {
-        // TODO: Properly set bytes_after and all that crap
-        var rep = Reply.GetPropertyCard8{
+    const property = window.get_property(req.request.property) orelse {
+        std.log.err("GetProperty: the property atom {d} ({s}) doesn't exist in window {d}, returning empty data", .{ req.request.property, property_atom_name, window.id });
+        var rep = Reply.GetPropertyNone{
             .sequence_number = request_context.sequence_number,
-            .type = req.request.type,
-            .bytes_after = 0,
-            .data = .{ .items = property.item.card8_list.items },
         };
-        try request_context.client.write_reply(&rep);
-    } else {
-        // TODO: Proper error
-        return request_context.client.write_error(request_context, .implementation, 0);
+        return request_context.client.write_reply(&rep);
+    };
+
+    // TODO: Ensure properties cant get this big
+    const property_size_in_bytes: u32 = @min(property.get_size_in_bytes(), std.math.maxInt(u32));
+
+    if (req.request.type != property.type and req.request.type != phx.AtomManager.Predefined.any_property_type) {
+        std.log.err(
+            "GetProperty: the property atom {d} ({s}) exist in window {d} but it's of type {d}, not {d} ({s}) returning empty data",
+            .{ req.request.property, property_atom_name, window.id, property.type, req.request.type, type_atom_name },
+        );
+        var rep = Reply.GetPropertyNoData{
+            .sequence_number = request_context.sequence_number,
+            .format = @intCast(property.get_data_type_size()),
+            .type = property.type,
+            .bytes_after = property_size_in_bytes,
+        };
+        return request_context.client.write_reply(&rep);
+    }
+
+    const offset_in_bytes, const overflow_offset = @mulWithOverflow(4, req.request.long_offset);
+    if (overflow_offset != 0) {
+        std.log.err("Received invalid long-offset {d} (overflow) in GetProperty request", .{req.request.long_offset});
+        return request_context.client.write_error(request_context, .value, req.request.long_offset);
+    }
+
+    if (offset_in_bytes > property_size_in_bytes) {
+        std.log.err("Received invalid long-offset {d} (larger than property size {d}) in GetProperty request", .{ req.request.long_offset, property_size_in_bytes / 4 });
+        return request_context.client.write_error(request_context, .value, req.request.long_offset);
+    }
+
+    const length_in_bytes, const overflow_length = @mulWithOverflow(4, req.request.long_length);
+    if (overflow_length != 0) {
+        std.log.err("Received invalid long-length {d} (overflow) in GetProperty request", .{req.request.long_length});
+        return request_context.client.write_error(request_context, .value, req.request.long_length);
+    }
+
+    const bytes_available_to_read = property_size_in_bytes - offset_in_bytes;
+    const num_bytes_to_read = @min(bytes_available_to_read, length_in_bytes);
+    const bytes_remaining_after_read = property_size_in_bytes - (offset_in_bytes + num_bytes_to_read);
+
+    switch (property.item) {
+        inline else => |item| {
+            const property_element_type = std.meta.Elem(@TypeOf(item.items));
+            const offset_in_units = offset_in_bytes / @sizeOf(property_element_type);
+            const num_items_to_read = num_bytes_to_read / @sizeOf(property_element_type);
+
+            var rep = Reply.GetProperty(property_element_type){
+                .sequence_number = request_context.sequence_number,
+                .type = property.type,
+                .bytes_after = bytes_remaining_after_read,
+                .data = .{ .items = item.items[offset_in_units .. offset_in_units + num_items_to_read] },
+            };
+            try request_context.client.write_reply(&rep);
+        },
+    }
+
+    if (req.request.delete) {
+        _ = window.delete_property(req.request.property);
+        const property_notify_event = phx.event.Event{
+            .property_notify = .{
+                .sequence_number = request_context.sequence_number,
+                .window = req.request.window,
+                .atom = req.request.property,
+                .time = request_context.server.get_timestamp_milliseconds(),
+                .state = .deleted,
+            },
+        };
+        window.write_core_event_to_event_listeners(&property_notify_event);
     }
 }
 
@@ -1058,7 +1121,7 @@ const Reply = struct {
         pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
     };
 
-    fn GetProperty(comptime DataType: type) type {
+    pub fn GetProperty(comptime DataType: type) type {
         return struct {
             reply_type: phx.reply.ReplyType = .reply,
             format: x11.Card8 = @sizeOf(DataType),
@@ -1076,6 +1139,28 @@ const Reply = struct {
     pub const GetPropertyCard8 = GetProperty(x11.Card8);
     pub const GetPropertyCard16 = GetProperty(x11.Card16);
     pub const GetPropertyCard32 = GetProperty(x11.Card32);
+
+    pub const GetPropertyNone = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        format: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        type: x11.Atom = @enumFromInt(none),
+        bytes_after: x11.Card32 = 0,
+        data_length: x11.Card32 = 0,
+        pad1: [12]x11.Card8 = [_]x11.Card8{0} ** 12,
+    };
+
+    pub const GetPropertyNoData = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        format: x11.Card8,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        type: x11.Atom,
+        bytes_after: x11.Card32 = 0,
+        data_length: x11.Card32 = 0,
+        pad1: [12]x11.Card8 = [_]x11.Card8{0} ** 12,
+    };
 
     pub const GetGeometry = struct {
         reply_type: phx.reply.ReplyType = .reply,

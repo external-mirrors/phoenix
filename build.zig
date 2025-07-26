@@ -141,6 +141,9 @@ fn generate_protocol_docs(comptime file_struct: type, install_path_dir: *std.fs.
     try writer.print("Requests\n", .{});
     inline for (@typeInfo(file_struct.Request).@"struct".decls) |decl| {
         const request_type = @field(file_struct.Request, decl.name);
+        if (comptime std.meta.activeTag(@typeInfo(request_type)) != .@"struct")
+            continue;
+
         try writer.print("{s}\n", .{type_get_name_only(@typeName(request_type))});
         inline for (@typeInfo(request_type).@"struct".fields) |field| {
             switch (@typeInfo(field.type)) {

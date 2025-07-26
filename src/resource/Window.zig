@@ -94,7 +94,7 @@ pub fn get_property(self: *Self, atom: x11.Atom) ?*x11.PropertyValue {
     return self.properties.getPtr(atom);
 }
 
-fn property_data_type_to_union_field(comptime DataType: type) []const u8 {
+fn property_element_type_to_union_field(comptime DataType: type) []const u8 {
     return switch (DataType) {
         u8 => "card8_list",
         u16 => "card16_list",
@@ -119,7 +119,7 @@ pub fn replace_property(
     if (result.found_existing)
         result.value_ptr.deinit();
 
-    const union_field_name = comptime property_data_type_to_union_field(DataType);
+    const union_field_name = comptime property_element_type_to_union_field(DataType);
     result.value_ptr.* = .{
         .type = property_type,
         .item = @unionInit(x11.PropertyValueData, union_field_name, array_list),
@@ -135,7 +135,7 @@ fn property_add(
     value: []const DataType,
     operation: enum { prepend, append },
 ) !void {
-    const union_field_name = comptime property_data_type_to_union_field(DataType);
+    const union_field_name = comptime property_element_type_to_union_field(DataType);
     if (self.properties.getPtr(property_name)) |property| {
         if (property.type != property_type)
             return error.PropertyTypeMismatch;
@@ -175,6 +175,10 @@ pub fn append_property(
     value: []const DataType,
 ) !void {
     return self.property_add(DataType, property_name, property_type, value, .append);
+}
+
+pub fn delete_property(self: *Self, property_name: x11.Atom) bool {
+    return self.properties.remove(property_name);
 }
 
 /// It's invalid to add multiple event listeners with the same client.

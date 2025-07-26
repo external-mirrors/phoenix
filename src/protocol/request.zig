@@ -54,7 +54,7 @@ fn read_request_field_with_size_calculation(
                 switch (union_type_field) {
                     inline else => |union_type_field_value| {
                         const union_tag_type = comptime std.meta.TagPayload(union_type, union_type_field_value);
-                        const union_array_data_type = @typeInfo(union_tag_type).pointer.child;
+                        const union_array_data_type = std.meta.Elem(union_tag_type);
                         const union_value = try read_request_array_with_size_calculation(union_array_data_type, union_length_field, reader, request_size, allocator);
                         @field(request, field_name).data = @unionInit(union_type, @tagName(union_type_field_value), union_value);
                     },

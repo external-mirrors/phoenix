@@ -511,7 +511,7 @@ fn get_property(request_context: phx.RequestContext) !void {
         );
         var rep = Reply.GetPropertyNoData{
             .sequence_number = request_context.sequence_number,
-            .format = @intCast(property.get_data_type_size()),
+            .format = @intCast(property.get_data_type_size() * 8),
             .type = property.type,
             .bytes_after = property_size_in_bytes,
         };

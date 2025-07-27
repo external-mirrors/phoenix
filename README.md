@@ -48,6 +48,9 @@ The Xorg server will always support more features of the X11 protocol and wider 
 ### Multiple _screens_
 Multiple displays (monitors) are going to be supported but not X11 screens.
 
+### Exclusive access
+GrabServer has no effect in Phoenix.
+
 ### Endian-swapped client/server
 This can be reconsidered if there is a reason.
 

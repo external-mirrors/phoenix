@@ -24,6 +24,8 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .intern_atom => intern_atom(request_context),
         .change_property => change_property(request_context),
         .get_property => get_property(request_context),
+        .grab_server => grab_server(request_context),
+        .ungrab_server => ungrab_server(request_context),
         .get_input_focus => get_input_focus(request_context),
         .free_pixmap => free_pixmap(request_context),
         .create_gc => create_gc(request_context),
@@ -570,6 +572,18 @@ fn get_property(request_context: phx.RequestContext) !void {
     }
 }
 
+fn grab_server(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GrabServer, request_context.allocator);
+    defer req.deinit();
+    std.log.err("Received GrabServer request from client {d}, ignoring...", .{request_context.client.connection.stream.handle});
+}
+
+fn ungrab_server(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.UngrabServer, request_context.allocator);
+    defer req.deinit();
+    std.log.err("Received UngrabServer request from client {d}, ignoring...", .{request_context.client.connection.stream.handle});
+}
+
 fn get_input_focus(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetInputFocus, request_context.allocator);
     defer req.deinit();
@@ -985,6 +999,18 @@ pub const Request = struct {
                 return null;
             }
         }
+    };
+
+    pub const GrabServer = struct {
+        opcode: phx.opcode.Major = .grab_server,
+        pad1: x11.Card8,
+        length: x11.Card16,
+    };
+
+    pub const UngrabServer = struct {
+        opcode: phx.opcode.Major = .ungrab_server,
+        pad1: x11.Card8,
+        length: x11.Card16,
     };
 
     pub const GetInputFocus = struct {

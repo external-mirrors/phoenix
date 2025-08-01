@@ -39,3 +39,4 @@ If GrabServer is really needed to prevent race conditions on resource get/set th
     until UngrabServer is called, if the GrabServer client didn't do a set operation on a resource that it did get on.
 Add option to only allow clipboard read for applications after ctrl+v is pressed in the application, for the next 2-3 seconds or until XSetClipboardOwner is called again.
 Use io_uring for data and sendmsg/recvmsg for file descriptors.
+Preallocate capacity in write reply/error/event.

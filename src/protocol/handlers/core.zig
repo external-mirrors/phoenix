@@ -1137,7 +1137,7 @@ const Reply = struct {
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         focused_window: x11.WindowId,
-        pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
+        pad1: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
     };
 
     pub const QueryExtension = struct {

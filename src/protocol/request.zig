@@ -44,7 +44,11 @@ fn read_request_field_with_size_calculation(
                 request_size.* += num_bytes_to_skip;
             } else if (s.backing_integer) |backing_integer| {
                 const bitmask: FieldType = @bitCast(try reader.readInt(backing_integer, x11.native_endian));
-                @field(request, field_name) = bitmask.sanitize();
+                if (@hasDecl(FieldType, "sanitize")) {
+                    @field(request, field_name) = bitmask.sanitize();
+                } else {
+                    @field(request, field_name) = bitmask;
+                }
                 request_size.* += @sizeOf(backing_integer);
             } else if (@hasDecl(FieldType, "is_union_list")) {
                 const union_type = FieldType.get_type();

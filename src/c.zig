@@ -10,6 +10,7 @@ pub usingnamespace @cImport({
     // TODO: Need to do it like this for zls
     //if (config.backends.x11)
     @cInclude("xcb/xcb.h");
+    @cInclude("xcb/xkb.h");
 
     if (config.backends.wayland)
         @cInclude("wayland-client.h");

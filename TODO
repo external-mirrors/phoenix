@@ -30,3 +30,12 @@ When SelectInput is added in more extensions then handle case when attempting to
 Optimize allocation strategy in request handler. Right now it uses an arena and all lists are allocated on heap as arrays.
     Since requests have a known size we could allocate one block of memory once and add the data to that.
     The size could be extended based on required alignment and padding of structs (calculate size with sizeof).
+When functions that require large replies are implemented (such as GetImage) then implement that by adding a new fifo in the client,
+    that is a fifo of arrays (pointers) with the image data. This is to prevent too large linear memory.
+    Or optimize the fifo to not use std.fifo.LinearFifo and instead make our own fifo that uses mmap directly,
+    where it allocated page size blocks and when reading from the fifo unmap the block region.
+If GrabServer is really needed to prevent race conditions on resource get/set then maybe instead make GrabServer lock resources accessed by the client.
+    Maybe instead of locking the resource, make the resource read-only (silently ignore set operations) for other clients, or delay the set operation
+    until UngrabServer is called, if the GrabServer client didn't do a set operation on a resource that it did get on.
+Add option to only allow clipboard read for applications after ctrl+v is pressed in the application, for the next 2-3 seconds or until XSetClipboardOwner is called again.
+Use io_uring for data and sendmsg/recvmsg for file descriptors.

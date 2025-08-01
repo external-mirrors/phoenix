@@ -76,6 +76,7 @@ pub const ResourceId = enum(Card32) {
     }
 };
 
+/// Top three bits guaranteed to be zero
 pub const WindowId = enum(Card32) {
     _,
 
@@ -84,6 +85,7 @@ pub const WindowId = enum(Card32) {
     }
 };
 
+/// Top three bits guaranteed to be zero
 pub const ColormapId = enum(Card32) {
     _,
 
@@ -92,6 +94,7 @@ pub const ColormapId = enum(Card32) {
     }
 };
 
+/// Top three bits guaranteed to be zero
 pub const PixmapId = enum(Card32) {
     _,
 
@@ -109,15 +112,22 @@ pub const DrawableId = enum(Card32) {
     }
 };
 
+/// Top three bits guaranteed to be zero
 pub const VisualId = enum(Card32) {
     _,
 };
 
+/// Top three bits guaranteed to be zero
 pub const Atom = enum(Card32) {
     _,
 };
 
 pub const KeyCode = enum(Card8) {
+    _,
+};
+
+/// Top three bits guaranteed to be zero
+pub const KeySym = enum(Card32) {
     _,
 };
 

@@ -131,6 +131,13 @@ pub fn get_supported_modifiers(self: *Self, window: *phx.Window, depth: u8, bpp:
     return self.graphics.get_supported_modifiers(depth, bpp, modifiers);
 }
 
+pub fn get_keyboard_map(self: *Self) void {
+    _ = self;
+    //c.XCB_XKB_ID_USE_CORE_KBD
+    //c.XCB_XKB_MAP_PART_VIRTUAL_MODS
+    //c.xcb_xkb_get_map(self.connection, deviceSpec: xcb_xkb_device_spec_t, full: u16, partial: u16, firstType: u8, nTypes: u8, firstKeySym: xcb_keycode_t, nKeySyms: u8, firstKeyAction: xcb_keycode_t, nKeyActions: u8, firstKeyBehavior: xcb_keycode_t, nKeyBehaviors: u8, virtualMods: u16, firstKeyExplicit: xcb_keycode_t, nKeyExplicit: u8, firstModMapKey: xcb_keycode_t, nModMapKeys: u8, firstVModMapKey: xcb_keycode_t, nVModMapKeys: u8)
+}
+
 fn update_thread(self: *Self) !void {
     while (self.running) {
         while (c.xcb_poll_for_event(self.connection)) |event| {

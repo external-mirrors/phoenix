@@ -11,12 +11,13 @@ Be a simpler X server than the Xorg server by only supporting a subset of the X1
 Only relatively modern hardware (made in the last ~15 years) which support linux drm and mesa gbm will be supported, and no server driver interface like the Xorg server. Just like how Wayland compositors work.
 
 ### Security
-Be safer than the Xorg server by parsing protocol messages automatically. As it's written in Zig, which automatically catches illegal behaviors (such as index out of array bounds).
+Be safer than the Xorg server by parsing protocol messages automatically. As it's written in Zig, it also automatically catches illegal behaviors (such as index out of array bounds) when building with the `ReleaseSafe` option.
 
-Applications will be isolated and can only interact with other applications either through a GUI prompt asking for permission,
+Applications will be isolated from each other by default and can only interact with other applications either through a GUI prompt asking for permission,
 such as with screen recorders, where it will only be allowed to record the window specified
-or by explicitly giving the application permission before launched (such as a window manager or external compositor).\
-There will be an option to disable this to make the X server behave like the Xorg server. This will not break existing clients as clients wont receive errors when they try to access more than they need.
+or by explicitly giving the application permission before launched (such as a window manager or external compositor).
+This will not break existing clients as clients wont receive errors when they try to access more than they need, they will instead receive dummy data.\
+There will be an option to disable this to make the X server behave like the Xorg server.
 
 ### Improvements for modern technology
 Support modern hardware better than the Xorg server, such as proper support for multiple monitors (different refresh rates, VRR - not a single framebuffer for the whole collection of displays) and technology like HDR.
@@ -58,9 +59,11 @@ This can be reconsidered if there is a reason.
 This is very complex as there are a lot of functions that would need to be implemented. These days remote streaming options are more efficient. Alternatively a proxy for glx could be implemented that does remote rendering.
 
 ## Differences between the X11 protocol and Phoenix
-* Several parts of the X11 protocol (core) are mandatory to be implemented by an X server, such as font related operations. However these are not going to be implemented in Phoenix.
-* Strings are in ISO Latin-1 encoding in the X11 protocol unless specified otherwise, however in Phoenix all strings
-are UTF-8 unless the protocol states that it's not an ISO Latin-1 string.
+### Core protocol
+Several parts of the X11 protocol (core) are mandatory to be implemented by an X server, such as font related operations. However these are not going to be implemented in Phoenix.
+
+### Strings
+Strings are in ISO Latin-1 encoding in the X11 protocol unless specified otherwise, however in Phoenix all strings are UTF-8 unless the protocol states that it's not an ISO Latin-1 string.
 
 ## Installing
 Run:

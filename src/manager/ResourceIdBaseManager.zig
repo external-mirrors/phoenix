@@ -8,7 +8,7 @@ const std = @import("std");
 const Self = @This();
 
 pub const resource_id_mask: u32 = 0x001FFFFF;
-pub const resource_id_base_mask: u32 = (0xFFFFFFFF - resource_id_mask) & 0x1FFFFFFF;
+pub const resource_id_base_mask: u32 = 0xFFFFFFFF - resource_id_mask;
 pub const resource_id_base_size: u32 = 0xFF; // Dont change this
 const base_bit_shift: u32 = @popCount(@as(u32, resource_id_mask)) + 1;
 
@@ -39,5 +39,5 @@ pub fn free(self: *Self, resource_id_base: u32) void {
 }
 
 pub inline fn resource_id_get_base_index(resource_id: u32) u32 {
-    return (resource_id & 0x1FFFFFFF) >> base_bit_shift;
+    return resource_id >> base_bit_shift;
 }

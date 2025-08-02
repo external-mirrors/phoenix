@@ -43,6 +43,7 @@ pub fn deinit(self: *Self) void {
 
 pub fn add_client(self: *Self, client: phx.Client) !*phx.Client {
     const client_index = phx.ResourceIdBaseManager.resource_id_get_base_index(client.resource_id_base);
+    std.debug.assert(client_index <= self.clients.len);
     std.debug.assert(self.clients[client_index] == null);
 
     const new_client = try self.allocator.create(phx.Client);
@@ -74,7 +75,9 @@ pub fn get_client_by_fd(self: *Self, client_fd: std.posix.socket_t) ?*phx.Client
 
 pub fn get_resource(self: *Self, resource_id: x11.ResourceId) ?phx.Resource {
     const client_index = phx.ResourceIdBaseManager.resource_id_get_base_index(resource_id.to_int());
-    if (self.clients[client_index]) |client| {
+    if (client_index >= self.clients.len) {
+        return null;
+    } else if (self.clients[client_index]) |client| {
         return client.get_resource(resource_id);
     } else {
         return null;

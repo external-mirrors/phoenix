@@ -88,6 +88,6 @@ const Reply = struct {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         major_version: x11.Card8,
         minor_version: x11.Card8,
-        pad2: [22]x11.Card8 = [_]x11.Card8{0} ** 22,
+        pad2: [22]x11.Card8 = @splat(0),
     };
 };

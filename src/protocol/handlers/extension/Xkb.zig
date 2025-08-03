@@ -114,7 +114,7 @@ const ModDef = struct {
 const KeyAction = union(enum) {
     none: struct {
         type: x11.Card8 = 0,
-        pad1: [6]x11.Card8 = [_]x11.Card8{0} ** 6,
+        pad1: [6]x11.Card8 = @splat(0),
     },
     // set_mods: struct {
     //     type: x11.Card8 = 1,
@@ -393,7 +393,7 @@ const Reply = struct {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         major_version: x11.Card16,
         minor_version: x11.Card16,
-        pad1: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
+        pad1: [20]x11.Card8 = @splat(0),
     };
 
     pub const GetMap = struct {

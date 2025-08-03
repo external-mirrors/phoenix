@@ -1137,7 +1137,7 @@ const Reply = struct {
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         focused_window: x11.WindowId,
-        pad1: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
+        pad1: [20]x11.Card8 = @splat(0),
     };
 
     pub const QueryExtension = struct {
@@ -1149,7 +1149,7 @@ const Reply = struct {
         major_opcode: x11.Card8,
         first_event: x11.Card8,
         first_error: x11.Card8,
-        pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
+        pad2: [20]x11.Card8 = @splat(0),
     };
 
     pub fn GetProperty(comptime DataType: type) type {
@@ -1161,7 +1161,7 @@ const Reply = struct {
             type: x11.Atom,
             bytes_after: x11.Card32,
             data_length: x11.Card32 = 0,
-            pad1: [12]x11.Card8 = [_]x11.Card8{0} ** 12,
+            pad1: [12]x11.Card8 = @splat(0),
             data: x11.ListOf(DataType, .{ .length_field = "data_length" }),
             pad2: x11.AlignmentPadding = .{},
         };
@@ -1179,7 +1179,7 @@ const Reply = struct {
         type: x11.Atom = @enumFromInt(none),
         bytes_after: x11.Card32 = 0,
         data_length: x11.Card32 = 0,
-        pad1: [12]x11.Card8 = [_]x11.Card8{0} ** 12,
+        pad1: [12]x11.Card8 = @splat(0),
     };
 
     pub const GetPropertyNoData = struct {
@@ -1190,7 +1190,7 @@ const Reply = struct {
         type: x11.Atom,
         bytes_after: x11.Card32 = 0,
         data_length: x11.Card32 = 0,
-        pad1: [12]x11.Card8 = [_]x11.Card8{0} ** 12,
+        pad1: [12]x11.Card8 = @splat(0),
     };
 
     pub const GetGeometry = struct {
@@ -1204,7 +1204,7 @@ const Reply = struct {
         width: x11.Card16,
         height: x11.Card16,
         border_width: x11.Card16,
-        pad1: [10]x11.Card8 = [_]x11.Card8{0} ** 10,
+        pad1: [10]x11.Card8 = @splat(0),
     };
 
     pub const QueryTree = struct {
@@ -1215,7 +1215,7 @@ const Reply = struct {
         root: x11.WindowId,
         parent: x11.WindowId, // Or none(0) if the window is the root window
         num_children: x11.Card16 = 0,
-        pad2: [14]x11.Card8 = [_]x11.Card8{0} ** 14,
+        pad2: [14]x11.Card8 = @splat(0),
         children: x11.ListOf(x11.WindowId, .{ .length_field = "num_children" }),
     };
 
@@ -1225,7 +1225,7 @@ const Reply = struct {
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         atom: x11.Atom,
-        pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
+        pad2: [20]x11.Card8 = @splat(0),
     };
 
     pub const ListExtensions = struct {
@@ -1233,7 +1233,7 @@ const Reply = struct {
         num_strs: x11.Card8,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        pad1: [24]x11.Card8 = [_]x11.Card8{0} ** 24,
+        pad1: [24]x11.Card8 = @splat(0),
         names: x11.ListOf(String8WithLength, .{ .length_field = "num_strs" }),
         pad2: x11.AlignmentPadding = .{},
     };

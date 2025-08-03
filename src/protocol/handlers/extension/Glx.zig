@@ -673,7 +673,7 @@ pub const Reply = struct {
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         is_direct: bool,
-        pad2: [23]x11.Card8 = [_]x11.Card8{0} ** 23,
+        pad2: [23]x11.Card8 = @splat(0),
     };
 
     pub const GlxQueryVersion = struct {
@@ -683,7 +683,7 @@ pub const Reply = struct {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         major_version: x11.Card32,
         minor_version: x11.Card32,
-        pad2: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
+        pad2: [16]x11.Card8 = @splat(0),
     };
 
     pub const GlxGetVisualConfigs = struct {
@@ -693,7 +693,7 @@ pub const Reply = struct {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         num_visuals: x11.Card32 = 0,
         num_properties: x11.Card32 = @typeInfo(VisualProperties).@"struct".fields.len,
-        pad2: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
+        pad2: [16]x11.Card8 = @splat(0),
         properties: x11.ListOf(VisualProperties, .{ .length_field = "num_visuals" }),
     };
 
@@ -704,7 +704,7 @@ pub const Reply = struct {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         pad2: x11.Card32 = 0,
         string_length: x11.Card32 = 0,
-        pad3: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
+        pad3: [16]x11.Card8 = @splat(0),
         string: x11.ListOf(x11.Card8, .{ .length_field = "string_length" }),
         pad4: x11.AlignmentPadding = .{},
     };
@@ -716,7 +716,7 @@ pub const Reply = struct {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         num_fbconfigs: x11.Card32,
         num_properties: x11.Card32,
-        pad2: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
+        pad2: [16]x11.Card8 = @splat(0),
         properties: x11.ListOf(FbAttributePair, .{ .length_field = null }),
     };
 
@@ -726,7 +726,7 @@ pub const Reply = struct {
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         num_attributes: x11.Card32 = 0,
-        pad2: [20]x11.Card8 = [_]x11.Card8{0} ** 20,
+        pad2: [20]x11.Card8 = @splat(0),
         properties: x11.ListOf(FbAttributePair, .{ .length_field = "num_attributes" }),
     };
 };

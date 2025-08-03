@@ -335,6 +335,7 @@ pub const Request = struct {
         stride: x11.Card16,
         depth: x11.Card8,
         bpp: x11.Card8,
+        // TODO: include this. It shouldn't write the data, but it's needed for documentation/protocol files generation
         // buffer: Fd,
     };
 
@@ -347,6 +348,7 @@ pub const Request = struct {
         initially_triggered: bool,
         pad1: x11.Card8,
         pad2: x11.Card16,
+        // TODO: include this. It shouldn't write the data, but it's needed for documentation/protocol files generation
         // fence_fd: Fd,
     };
 
@@ -383,6 +385,7 @@ pub const Request = struct {
         bpp: x11.Card8,
         pad3: x11.Card16,
         modifier: x11.Card64,
+        // TODO: include this. It shouldn't write the data, but it's needed for documentation/protocol files generation
         // buffers: x11.ListOf(Fd, .{ .length_field = "num_buffers" }),
     };
 };
@@ -395,7 +398,7 @@ const Reply = struct {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         major_version: x11.Card32,
         minor_version: x11.Card32,
-        pad2: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
+        pad2: [16]x11.Card8 = @splat(0),
     };
 
     pub const Dri3Open = struct {
@@ -403,7 +406,8 @@ const Reply = struct {
         nfd: x11.Card8 = 1,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        pad1: [24]x11.Card8 = [_]x11.Card8{0} ** 24,
+        pad1: [24]x11.Card8 = @splat(0),
+        // TODO: include this. It shouldn't write the data, but it's needed for documentation/protocol files generation
         // device: Fd,
     };
 
@@ -414,7 +418,7 @@ const Reply = struct {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         num_window_modifiers: x11.Card32,
         num_screen_modifiers: x11.Card32,
-        pad2: [16]x11.Card8 = [_]x11.Card8{0} ** 16,
+        pad2: [16]x11.Card8 = @splat(0),
         window_modifiers: x11.ListOf(x11.Card64, .{ .length_field = "num_window_modifiers" }),
         screen_modifiers: x11.ListOf(x11.Card64, .{ .length_field = "num_screen_modifiers" }),
     };

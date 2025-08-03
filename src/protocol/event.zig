@@ -123,7 +123,7 @@ pub const CreateNotifyEvent = extern struct {
     height: x11.Card16,
     border_width: x11.Card16,
     override_redirect: bool,
-    pad2: [9]x11.Card8 = [_]x11.Card8{0} ** 9,
+    pad2: [9]x11.Card8 = @splat(0),
 
     comptime {
         std.debug.assert(@sizeOf(@This()) == 32);
@@ -137,7 +137,7 @@ pub const MapNotifyEvent = extern struct {
     event: x11.WindowId,
     window: x11.WindowId,
     override_redirect: bool,
-    pad2: [19]x11.Card8 = [_]x11.Card8{0} ** 19,
+    pad2: [19]x11.Card8 = @splat(0),
 
     comptime {
         std.debug.assert(@sizeOf(@This()) == 32);
@@ -157,7 +157,7 @@ pub const ConfigureNotifyEvent = extern struct {
     height: x11.Card16,
     border_width: x11.Card16,
     override_redirect: bool,
-    pad2: [5]x11.Card8 = [_]x11.Card8{0} ** 5,
+    pad2: [5]x11.Card8 = @splat(0),
 
     comptime {
         std.debug.assert(@sizeOf(@This()) == 32);
@@ -175,7 +175,7 @@ pub const PropertyNotifyEvent = extern struct {
         new_value = 0,
         deleted = 1,
     },
-    pad2: [15]x11.Card8 = [_]x11.Card8{0} ** 15,
+    pad2: [15]x11.Card8 = @splat(0),
 
     comptime {
         std.debug.assert(@sizeOf(@This()) == 32);

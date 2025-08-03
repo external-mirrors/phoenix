@@ -24,6 +24,7 @@ server_net: std.net.Server,
 epoll_fd: i32,
 epoll_events: [32]std.os.linux.epoll_event = undefined,
 signal_fd: std.posix.fd_t,
+event_fd: std.posix.fd_t,
 resource_id_base_manager: phx.ResourceIdBaseManager,
 atom_manager: phx.AtomManager,
 client_manager: phx.ClientManager,
@@ -53,10 +54,6 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     if (epoll_fd == -1) return error.FailedToCreateEpoll;
     errdefer std.posix.close(epoll_fd);
 
-    // TODO: Choose backend from argv but give an error if phoenix is built without that backend
-    var display = try phx.Display.create_x11(allocator);
-    errdefer display.destroy();
-
     var signal_mask = std.mem.zeroes(std.posix.sigset_t);
     std.os.linux.sigaddset(&signal_mask, std.posix.SIG.INT);
     std.posix.sigprocmask(std.posix.SIG.BLOCK, &signal_mask, null);
@@ -70,6 +67,20 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     };
     try std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_ADD, signal_fd, &signal_fd_epoll_event);
     errdefer std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, signal_fd, null) catch {};
+
+    const event_fd = try std.posix.eventfd(0, std.os.linux.EFD.CLOEXEC);
+    errdefer std.posix.close(event_fd);
+
+    var event_fd_epoll_event = std.os.linux.epoll_event{
+        .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.ET,
+        .data = .{ .fd = event_fd },
+    };
+    try std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_ADD, event_fd, &event_fd_epoll_event);
+    errdefer std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, event_fd, null) catch {};
+
+    // TODO: Choose backend from argv but give an error if phoenix is built without that backend
+    var display = try phx.Display.create_x11(event_fd, allocator);
+    errdefer display.destroy();
 
     var resource_id_base_manager = phx.ResourceIdBaseManager{};
 
@@ -101,6 +112,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         .server_net = server,
         .epoll_fd = epoll_fd,
         .signal_fd = signal_fd,
+        .event_fd = event_fd,
         .resource_id_base_manager = resource_id_base_manager,
         .atom_manager = atom_manager,
         .client_manager = client_manager,
@@ -115,6 +127,8 @@ pub fn deinit(self: *Self) void {
     self.atom_manager.deinit();
     self.installed_colormaps.deinit();
     std.posix.close(self.epoll_fd);
+    std.posix.close(self.signal_fd);
+    std.posix.close(self.event_fd);
     self.display.destroy();
 }
 
@@ -187,7 +201,10 @@ pub fn run(self: *Self) void {
         for (0..num_events) |event_index| {
             const epoll_event = &self.epoll_events[event_index];
 
-            if (epoll_event.data.fd == self.signal_fd) {
+            if (epoll_event.data.fd == self.event_fd) {
+                var buf: [@sizeOf(u64)]u8 = undefined;
+                _ = std.posix.read(self.event_fd, &buf) catch unreachable;
+            } else if (epoll_event.data.fd == self.signal_fd) {
                 std.log.info("Received SIGINT signal, stopping " ++ vendor, .{});
                 running = false;
             } else if (epoll_event.data.fd == self.server_net.stream.handle) {
@@ -228,7 +245,7 @@ pub fn run(self: *Self) void {
             }
 
             if (epoll_event.events & (std.os.linux.EPOLL.RDHUP | std.os.linux.EPOLL.HUP) != 0) {
-                if (epoll_event.data.fd == self.signal_fd) {
+                if (epoll_event.data.fd == self.signal_fd or epoll_event.data.fd == self.event_fd) {
                     // What? how is this possible?
                 } else if (epoll_event.data.fd == self.server_net.stream.handle) {
                     std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_DEL, epoll_event.data.fd, null) catch |err| {
@@ -242,6 +259,12 @@ pub fn run(self: *Self) void {
                     remove_client(self, epoll_event.data.fd);
                     continue;
                 }
+            }
+
+            if (!self.display.is_running()) {
+                std.log.info("Server: display closed, shutting down the server...", .{});
+                running = false;
+                break;
             }
         }
     }

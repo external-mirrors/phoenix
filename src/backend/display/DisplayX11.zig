@@ -9,6 +9,7 @@ const Self = @This();
 // TODO:
 const gl_debug = builtin.mode == .Debug;
 
+event_fd: std.posix.fd_t,
 allocator: std.mem.Allocator,
 connection: *c.xcb_connection_t,
 root_window: c.xcb_window_t,
@@ -16,6 +17,7 @@ graphics: phx.Graphics,
 width: u32,
 height: u32,
 size_updated: bool,
+wm_delete_window_atom: c.xcb_atom_t,
 
 thread: std.Thread,
 thread_started: bool,
@@ -23,7 +25,7 @@ running: bool,
 
 // No need to explicitly cleanup all x11 resources on failure, xcb_disconnect will do that (server-side)
 
-pub fn init(allocator: std.mem.Allocator) !Self {
+pub fn init(event_fd: std.posix.fd_t, allocator: std.mem.Allocator) !Self {
     const connection = c.xcb_connect(null, null) orelse return error.FailedToConnectToXServer;
     errdefer c.xcb_disconnect(connection);
 
@@ -64,7 +66,18 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         return error.FailedToMapRootWindow;
     }
 
+    const wm_delete_window_cookie = c.xcb_intern_atom(connection, 0, 16, "WM_DELETE_WINDOW");
+    const wm_delete_window_reply = c.xcb_intern_atom_reply(connection, wm_delete_window_cookie, null) orelse return error.FailedToGetAtom;
+    defer cstdlib.free(wm_delete_window_reply);
+
+    const wm_protocols_cookie = c.xcb_intern_atom(connection, 0, 12, "WM_PROTOCOLS");
+    const wm_protocols_reply = c.xcb_intern_atom_reply(connection, wm_protocols_cookie, null) orelse return error.FailedToGetAtom;
+    defer cstdlib.free(wm_protocols_reply);
+
+    _ = c.xcb_change_property(connection, c.XCB_PROP_MODE_REPLACE, window_id, wm_protocols_reply.*.atom, c.XCB_ATOM_ATOM, 32, 1, &wm_delete_window_reply.*.atom);
+
     return .{
+        .event_fd = event_fd,
         .allocator = allocator,
         .connection = connection,
         .root_window = window_id,
@@ -72,6 +85,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         .width = width,
         .height = height,
         .size_updated = true,
+        .wm_delete_window_atom = wm_delete_window_reply.*.atom,
 
         .thread = undefined,
         .thread_started = false,
@@ -138,6 +152,10 @@ pub fn get_keyboard_map(self: *Self) void {
     //c.xcb_xkb_get_map(self.connection, deviceSpec: xcb_xkb_device_spec_t, full: u16, partial: u16, firstType: u8, nTypes: u8, firstKeySym: xcb_keycode_t, nKeySyms: u8, firstKeyAction: xcb_keycode_t, nKeyActions: u8, firstKeyBehavior: xcb_keycode_t, nKeyBehaviors: u8, virtualMods: u16, firstKeyExplicit: xcb_keycode_t, nKeyExplicit: u8, firstModMapKey: xcb_keycode_t, nModMapKeys: u8, firstVModMapKey: xcb_keycode_t, nVModMapKeys: u8)
 }
 
+pub fn is_running(self: *Self) bool {
+    return self.running;
+}
+
 fn update_thread(self: *Self) !void {
     while (self.running) {
         while (c.xcb_poll_for_event(self.connection)) |event| {
@@ -159,6 +177,15 @@ fn update_thread(self: *Self) !void {
                 //         self.size_updated = true;
                 //     }
                 // },
+                c.XCB_CLIENT_MESSAGE => {
+                    const client_message: *const c.xcb_client_message_event_t = @ptrCast(event);
+                    if (client_message.data.data32[0] == self.wm_delete_window_atom) {
+                        std.log.info("DisplayX11: window closed", .{});
+                        self.running = false;
+                        self.signal_event_fd();
+                        break;
+                    }
+                },
                 else => {},
             }
             cstdlib.free(event);
@@ -175,4 +202,9 @@ fn update_thread(self: *Self) !void {
             continue;
         };
     }
+}
+
+fn signal_event_fd(self: *Self) void {
+    const value: u64 = 1;
+    _ = std.posix.write(self.event_fd, std.mem.bytesAsSlice(u8, std.mem.asBytes(&value))) catch unreachable;
 }

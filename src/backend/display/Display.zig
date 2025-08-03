@@ -6,11 +6,11 @@ const Self = @This();
 allocator: std.mem.Allocator,
 impl: DisplayImpl,
 
-pub fn create_x11(allocator: std.mem.Allocator) !Self {
+pub fn create_x11(event_fd: std.posix.fd_t, allocator: std.mem.Allocator) !Self {
     const x11 = try allocator.create(phx.DisplayX11);
     errdefer allocator.destroy(x11);
 
-    x11.* = try .init(allocator);
+    x11.* = try .init(event_fd, allocator);
     errdefer x11.deinit();
 
     try x11.run_update_thread();
@@ -72,6 +72,12 @@ pub fn present_pixmap(self: *Self, pixmap: *const phx.Pixmap, window: *const phx
 pub fn get_supported_modifiers(self: *Self, window: *phx.Window, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {
     return switch (self.impl) {
         inline else => |item| item.get_supported_modifiers(window, depth, bpp, modifiers),
+    };
+}
+
+pub fn is_running(self: *Self) bool {
+    return switch (self.impl) {
+        inline else => |item| item.is_running(),
     };
 }
 

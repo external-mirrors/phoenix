@@ -46,13 +46,13 @@ fn write_reply_field(comptime FieldType: type, value: *FieldType, writer: anytyp
             }
         },
         .array => |*arr| {
-            switch (arr.child) {
-                x11.Card8 => {
+            switch (@typeInfo(arr.child)) {
+                .int => |i| {
                     for (value) |element| {
-                        try writer.writeInt(@TypeOf(element), element, x11.native_endian);
+                        try writer.writeInt(@Type(.{ .int = i }), element, x11.native_endian);
                     }
                 },
-                else => @compileError("Only x11.Card8 arrays are supported right now, got array of " ++ @typeName(arr.child)),
+                else => @compileError("Only int arrays are supported right now, got array of " ++ @typeName(arr.child)),
             }
         },
         .optional => |opt| {

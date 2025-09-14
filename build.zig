@@ -42,6 +42,7 @@ pub fn build(b: *std.Build) !void {
     if (backends.x11) {
         // TODO: Remove this, we can just use our existing X11 code to connect to the X server directly
         exe.root_module.linkSystemLibrary("xcb", .{});
+        exe.root_module.linkSystemLibrary("xcb-xkb", .{});
     }
 
     if (backends.wayland) {

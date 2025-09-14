@@ -75,6 +75,12 @@ pub fn get_supported_modifiers(self: *Self, window: *phx.Window, depth: u8, bpp:
     };
 }
 
+pub fn get_keyboard_map(self: *Self, params: *const phx.Xkb.Request.GetMap, arena: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetMap {
+    return switch (self.impl) {
+        inline else => |item| item.get_keyboard_map(params, arena),
+    };
+}
+
 pub fn is_running(self: *Self) bool {
     return switch (self.impl) {
         inline else => |item| item.is_running(),

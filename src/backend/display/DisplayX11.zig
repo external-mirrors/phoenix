@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const phx = @import("../../phoenix.zig");
+const x11 = phx.x11;
 const c = phx.c;
 const cstdlib = std.c;
 
@@ -28,6 +29,9 @@ running: bool,
 pub fn init(event_fd: std.posix.fd_t, allocator: std.mem.Allocator) !Self {
     const connection = c.xcb_connect(null, null) orelse return error.FailedToConnectToXServer;
     errdefer c.xcb_disconnect(connection);
+
+    const xkb_use_extension_reply = c.xcb_xkb_use_extension_reply(connection, c.xcb_xkb_use_extension(connection, 1, 0), null) orelse return error.XkbUseExtensionFailed;
+    cstdlib.free(xkb_use_extension_reply);
 
     const event_mask: u32 = c.XCB_EVENT_MASK_KEY_PRESS | c.XCB_EVENT_MASK_STRUCTURE_NOTIFY;
     const attributes = [_]u32{ 0, c.XCB_GRAVITY_NORTH_WEST, event_mask };
@@ -145,12 +149,216 @@ pub fn get_supported_modifiers(self: *Self, window: *phx.Window, depth: u8, bpp:
     return self.graphics.get_supported_modifiers(depth, bpp, modifiers);
 }
 
-pub fn get_keyboard_map(self: *Self) void {
-    _ = self;
-    //c.XCB_XKB_ID_USE_CORE_KBD
-    //c.XCB_XKB_MAP_PART_VIRTUAL_MODS
-    //c.xcb_xkb_get_map(self.connection, deviceSpec: xcb_xkb_device_spec_t, full: u16, partial: u16, firstType: u8, nTypes: u8, firstKeySym: xcb_keycode_t, nKeySyms: u8, firstKeyAction: xcb_keycode_t, nKeyActions: u8, firstKeyBehavior: xcb_keycode_t, nKeyBehaviors: u8, virtualMods: u16, firstKeyExplicit: xcb_keycode_t, nKeyExplicit: u8, firstModMapKey: xcb_keycode_t, nModMapKeys: u8, firstVModMapKey: xcb_keycode_t, nVModMapKeys: u8)
+pub fn get_keyboard_map(self: *Self, params: *const phx.Xkb.Request.GetMap, arena: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetMap {
+    const allocator = arena.allocator();
+
+    //std.log.err("xkb get map: {any}", .{params.*});
+
+    const cookie = c.xcb_xkb_get_map(
+        self.connection,
+        @intFromEnum(params.device_spec),
+        @bitCast(params.full),
+        @bitCast(params.partial),
+        params.first_type,
+        params.num_types,
+        @intFromEnum(params.first_key_sym),
+        params.num_key_syms,
+        @intFromEnum(params.first_key_action),
+        params.num_key_action,
+        @intFromEnum(params.first_key_behavior),
+        params.num_key_behaviors,
+        @bitCast(params.virtual_mods),
+        @intFromEnum(params.first_key_explicit),
+        params.num_key_explicit,
+        @intFromEnum(params.first_mod_map_key),
+        params.num_mod_map_keys,
+        @intFromEnum(params.first_virtual_mod_map_key),
+        params.num_virtual_mod_map_keys,
+    );
+
+    var err: [*c]c.xcb_generic_error_t = null;
+    defer if (err) |e| cstdlib.free(e);
+
+    const xcb_reply: *c.xcb_xkb_get_map_reply_t = c.xcb_xkb_get_map_reply(self.connection, cookie, &err) orelse {
+        if (err) |e| {
+            std.log.err("xcb_xkb_get_map_reply failed, error: {d}, {d}", .{ e.*.error_code, e.*.resource_id });
+        } else {
+            std.log.err("xcb_xkb_get_map_reply failed, unknown error", .{});
+        }
+        return error.FailedToGetReply;
+    };
+    defer cstdlib.free(xcb_reply);
+    if (err != null) return error.FailedToGetReply;
+
+    var map: c.xcb_xkb_get_map_map_t = undefined;
+    const buffer = c.xcb_xkb_get_map_map(xcb_reply);
+    _ = c.xcb_xkb_get_map_map_unpack(
+        buffer,
+        xcb_reply.nTypes,
+        xcb_reply.nKeySyms,
+        xcb_reply.nKeyActions,
+        xcb_reply.totalActions,
+        xcb_reply.totalKeyBehaviors,
+        xcb_reply.nVModMapKeys,
+        xcb_reply.totalKeyExplicit,
+        xcb_reply.totalModMapKeys,
+        xcb_reply.totalVModMapKeys,
+        xcb_reply.present,
+        &map,
+    );
+
+    const present: phx.Xkb.MapPartMask = @bitCast(xcb_reply.present);
+    const key_types_opt = if (present.key_types and xcb_reply.nTypes > 0) try get_keyboard_map_key_types(&map, xcb_reply.nTypes, allocator) else null;
+    const key_syms_opt = if (present.key_syms and xcb_reply.nKeySyms > 0) try get_keyboard_map_key_sym_map(&map, xcb_reply.nKeySyms, allocator) else null;
+    const key_actions_opt = if (present.key_actions) try get_keyboard_map_key_actions(&map, xcb_reply.nKeyActions, xcb_reply.totalActions, allocator) else null;
+
+    std.log.err("TODO: Implement get_keyboard_map\n", .{});
+    const reply = phx.Xkb.Reply.GetMap{
+        .device_id = xcb_reply.deviceID,
+        .sequence_number = 0,
+        .min_key_code = @enumFromInt(xcb_reply.minKeyCode),
+        .max_key_code = @enumFromInt(xcb_reply.maxKeyCode),
+        .present = present,
+        .first_type = xcb_reply.firstType,
+        .num_types = xcb_reply.nTypes,
+        .total_types = xcb_reply.totalTypes,
+        .first_key_sym = @enumFromInt(xcb_reply.firstKeySym),
+        .total_syms = xcb_reply.totalSyms,
+        .num_key_syms = xcb_reply.nKeySyms,
+        .first_key_action = @enumFromInt(xcb_reply.firstKeyAction),
+        .total_actions = xcb_reply.totalActions,
+        .num_key_actions = xcb_reply.nKeyActions,
+        .first_key_behavior = @enumFromInt(xcb_reply.firstKeyBehavior),
+        .num_key_behaviors = xcb_reply.nKeyBehaviors,
+        .total_key_behaviors = xcb_reply.totalKeyBehaviors,
+        .first_key_explicit = @enumFromInt(xcb_reply.firstKeyExplicit),
+        .num_key_explicit = xcb_reply.nKeyExplicit,
+        .total_key_explicit = xcb_reply.totalKeyExplicit,
+        .first_mod_map_key = @enumFromInt(xcb_reply.firstModMapKey),
+        .num_mod_map_keys = xcb_reply.nModMapKeys,
+        .total_mod_map_keys = xcb_reply.totalModMapKeys,
+        .first_virtual_mod_map_key = @enumFromInt(xcb_reply.firstVModMapKey),
+        .num_virtual_mod_map_keys = xcb_reply.nVModMapKeys,
+        .total_virtual_mod_map_keys = xcb_reply.totalVModMapKeys,
+        .virtual_mods_mask = @bitCast(xcb_reply.virtualMods),
+        .key_types = if (key_types_opt) |key_types| .{ .types_return = .{ .items = key_types } } else null,
+        .key_syms = if (key_syms_opt) |key_syms| .{ .syms_return = .{ .items = key_syms } } else null,
+        .key_actions = if (key_actions_opt) |key_actions| key_actions else null,
+        .key_behaviors = null, // TODO: Set
+        .virtual_mods = null, // TODO: Set
+        .explicit_components = null, // TODO: Set
+        .modmap = null, // TODO: Set
+        .virtual_mod_map = null, // TODO: Set
+    };
+
+    return reply;
 }
+
+fn get_keyboard_map_key_types(map: *const c.xcb_xkb_get_map_map_t, num_types: u8, allocator: std.mem.Allocator) ![]phx.Xkb.KeyType {
+    const key_types: []phx.Xkb.KeyType = try allocator.alloc(phx.Xkb.KeyType, num_types);
+
+    for (key_types, 0..) |*key_type, i| {
+        const kt_map_entries = c.xcb_xkb_key_type_map(&map.types_rtrn[i]);
+        const mod_defs = c.xcb_xkb_key_type_preserve(&map.types_rtrn[i]);
+
+        var key_type_map_entries_opt: ?[]phx.Xkb.KeyTypeMapEntry = null;
+        var key_type_mod_defs_opt: ?[]phx.Xkb.ModDef = null;
+
+        if (map.types_rtrn[i].nMapEntries > 0) {
+            key_type_map_entries_opt = try allocator.alloc(phx.Xkb.KeyTypeMapEntry, map.types_rtrn[i].nMapEntries);
+
+            for (kt_map_entries[0..map.types_rtrn[i].nMapEntries], 0..) |*map_entry, map_entry_index| {
+                key_type_map_entries_opt.?[map_entry_index] = .{
+                    .active = if (map_entry.active == 0) false else true,
+                    .mods_mask = @bitCast(map_entry.mods_mask),
+                    .level = map_entry.level,
+                    .mods_mods = @bitCast(map_entry.mods_mods),
+                    .mods_virtual_mods = @bitCast(map_entry.mods_vmods),
+                };
+            }
+        }
+
+        if (map.types_rtrn[i].nMapEntries > 0 and map.types_rtrn[i].hasPreserve != 0) {
+            key_type_mod_defs_opt = try allocator.alloc(phx.Xkb.ModDef, map.types_rtrn[i].nMapEntries);
+
+            for (mod_defs[0..map.types_rtrn[i].nMapEntries], 0..) |*mod_def, map_entry_index| {
+                key_type_mod_defs_opt.?[map_entry_index] = .{
+                    .mask = @bitCast(mod_def.mask),
+                    .real_mods = @bitCast(mod_def.realMods),
+                    .virtual_mods = @bitCast(mod_def.vmods),
+                };
+            }
+        }
+
+        key_type.* = .{
+            .mods_mask = @bitCast(map.types_rtrn[i].mods_mask),
+            .mods_mods = @bitCast(map.types_rtrn[i].mods_mods),
+            .mods_virtual_mods = @bitCast(map.types_rtrn[i].mods_vmods),
+            .num_levels = map.types_rtrn[i].numLevels,
+            .num_map_entries = map.types_rtrn[i].nMapEntries,
+            .has_preserve = key_type_mod_defs_opt != null,
+            .map = .{ .items = if (key_type_map_entries_opt) |key_type_map_entries| key_type_map_entries else &[_]phx.Xkb.KeyTypeMapEntry{} },
+            .preserve = if (key_type_mod_defs_opt) |key_type_mod_defs| .{ .items = key_type_mod_defs } else null,
+        };
+    }
+
+    return key_types;
+}
+
+fn get_keyboard_map_key_sym_map(map: *const c.xcb_xkb_get_map_map_t, num_key_syms: u8, allocator: std.mem.Allocator) ![]phx.Xkb.KeySymMap {
+    const key_sym_maps: []phx.Xkb.KeySymMap = try allocator.alloc(phx.Xkb.KeySymMap, num_key_syms);
+
+    for (key_sym_maps, 0..) |*key_sym_map, i| {
+        const xcb_key_syms: [*c]x11.KeySym = @ptrCast(c.xcb_xkb_key_sym_map_syms(&map.syms_rtrn[i]));
+        const key_syms: []x11.KeySym = try allocator.dupe(x11.KeySym, xcb_key_syms[0..map.syms_rtrn[i].nSyms]);
+
+        key_sym_map.* = .{
+            .kt_index = undefined,
+            .group_info = map.syms_rtrn[i].groupInfo,
+            .width = map.syms_rtrn[i].width,
+            .syms = .{ .items = key_syms },
+        };
+        @memcpy(key_sym_map.kt_index[0..], map.syms_rtrn[i].kt_index[0..]);
+    }
+
+    return key_sym_maps;
+}
+
+fn get_keyboard_map_key_actions(map: *const c.xcb_xkb_get_map_map_t, num_key_actions: u8, total_actions: u16, allocator: std.mem.Allocator) !phx.Xkb.KeyActions {
+    const actions_count = try allocator.dupe(x11.Card8, map.acts_rtrn_count[0..num_key_actions]);
+    const actions: []phx.Xkb.KeyAction = try allocator.alloc(phx.Xkb.KeyAction, total_actions);
+
+    std.log.err("TODO: Implement get_keyboard_map_key_actions", .{});
+    // for (actions, 0..) |*action, i| {
+    //     const key_action_type: phx.Xkb.KeyActionType = @enumFromInt(map.acts_rtrn_acts[i].type);
+    //     switch (key_action_type) {
+    //         inline else => |e| {
+    //             const enum_name = comptime @tagName(e);
+    //             const active_field_name = comptime @typeInfo(c.xcb_xkb_action_t).@"union".fields[@intFromEnum(e)].name;
+    //             action.* = @unionInit(phx.Xkb.KeyAction, enum_name, undefined);
+    //             copy_key_actions(&@field(action, enum_name), &@field(&map.acts_rtrn_acts[i], active_field_name));
+    //         },
+    //     }
+    // }
+
+    return .{
+        .actions_count_return = .{ .items = actions_count },
+        .actions_return = .{ .items = actions },
+    };
+}
+
+// fn copy_key_actions(dest: anytype, source: anytype) void {
+//     inline for (@typeInfo(@TypeOf(dest.*)).@"struct".fields) |*dest_field| {
+//         if (comptime std.mem.startsWith(u8, dest_field.name, "pad")) {
+//             @field(dest_field, dest_field.name) = 0;
+//             continue;
+//         }
+
+//         inline for (@typeInfo(@TypeOf(source.*)).@"struct".fields) |*source_field| {
+//             @field(dest_field, dest_field.name) = @field(source_field.*, source_field.name);
+//         }
+//     }
+// }
 
 pub fn is_running(self: *Self) bool {
     return self.running;
@@ -169,14 +377,6 @@ fn update_thread(self: *Self) !void {
                         self.size_updated = true;
                     }
                 },
-                // c.XCB_CONFIGURE_REQUEST => {
-                //     const configure_request: *const c.xcb_configure_request_event_t = @ptrCast(event);
-                //     if (configure_request.width != self.width or configure_request.height != self.height) {
-                //         self.width = configure_request.width;
-                //         self.height = configure_request.height;
-                //         self.size_updated = true;
-                //     }
-                // },
                 c.XCB_CLIENT_MESSAGE => {
                     const client_message: *const c.xcb_client_message_event_t = @ptrCast(event);
                     if (client_message.data.data32[0] == self.wm_delete_window_atom) {

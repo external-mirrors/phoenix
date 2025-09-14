@@ -37,3 +37,14 @@ If GrabServer is really needed to prevent race conditions on resource get/set th
 Add option to only allow clipboard read for applications after ctrl+v is pressed in the application, for the next 2-3 seconds or until XSetClipboardOwner is called again.
 Use io_uring for data and sendmsg/recvmsg for file descriptors.
 Preallocate capacity in write reply/error/event.
+Compositors could be made to work automatically with multiple monitors by handling overlay window differently (or maybe do it for all applications):
+    Dont sync swapBuffers directly to display, instead do triple buffering where they update the buffer directly
+    and pause the present event until the timing is good to process the next frame.
+To get msc and ust use drmCrtcGetSequence. The sequence is the msc and ust is the ns divided by 1000.
+    If that fails then use drmWaitVBlank relative with 0 sequence, see ms_get_kernel_ust_msc in the xserver.
+    drmWaitVBlank is 32-bit and needs to be converted to 64-bit, see how it's done in xserver ms_kernel_msc_to_crtc_msc.
+        drmCrtcGetSequence was added in linux 4.15 released on 28 Jan 2018, so maybe drmWaitVBlank is not needed?
+    If the drawable isn't inside any monitor then return ust = microseconds from clock_gettime(CLOCK_MONOTONIC),
+        and msc with a fake value, see: present_fake_get_ust_msc in the xserver.
+Dont create an opengl texture for windows. Dont create opengl textures for every pixmap, only do that if the window has no other pixmap(?).
+Move read_request data size check (header size vs actually read size) to request.zig instead of client.zig.

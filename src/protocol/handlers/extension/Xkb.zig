@@ -46,20 +46,32 @@ fn get_map(request_context: phx.RequestContext) !void {
     defer req.deinit();
     std.log.info("GetMap request: {s}", .{x11.stringify_fmt(req.request)});
 
-    std.log.err("TODO: Implement XkbGetMap", .{});
+    if (!request_context.client.xkb_initialized) {
+        std.log.err("Received XkbGetMap, but the client hasn't called XkbUseExtension, returning access error", .{});
+        return request_context.client.write_error(request_context, .access, 0);
+    }
 
-    // const server_version = phx.Version{ .major = 1, .minor = 0 };
-    // const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
-    // request_context.client.extension_versions.xkb = phx.Version.min(server_version, client_version);
-    // request_context.client.xkb_initialized = true;
+    var arena = std.heap.ArenaAllocator.init(request_context.allocator);
+    defer arena.deinit();
 
-    //var rep: Reply.GetMap = undefined;
-    //try request_context.client.write_reply(&rep);
+    var reply = request_context.server.display.get_keyboard_map(&req.request, &arena) catch |err| {
+        std.log.err("XkbGetMap: error: {s}", .{@errorName(err)});
+        std.log.err("XkbGetMap: TODO: Use the correct error message", .{});
+        return request_context.client.write_error(request_context, .implementation, 0);
+    };
+    reply.sequence_number = request_context.sequence_number;
+
+    try request_context.client.write_reply(&reply);
 }
 
 // TODO: implement this
-fn get_device_info(_: phx.RequestContext) !void {
+fn get_device_info(request_context: phx.RequestContext) !void {
     std.log.err("TODO: Implement XkbGetDeviceInfo", .{});
+
+    if (!request_context.client.xkb_initialized) {
+        std.log.err("Received XkbGetDeviceInfo, but the client hasn't called XkbUseExtension, returning access error", .{});
+        return request_context.client.write_error(request_context, .access, 0);
+    }
 }
 
 const MinorOpcode = enum(x11.Card8) {
@@ -104,38 +116,129 @@ const FeatureMask = packed struct(x11.Card16) {
     indicator_state: bool,
 };
 
-const ModDef = struct {
+pub const ModDef = struct {
     mask: phx.event.KeyMask,
     real_mods: phx.event.KeyMask,
     virtual_mods: VirtualMod,
 };
 
+pub const KeyActionType = enum(u8) {
+    none = 0,
+    set_mods = 1,
+    latch_mods = 2,
+    lock_mods = 3,
+    set_group = 4,
+    latch_group = 5,
+    lock_group = 6,
+    move_pointer = 7,
+    pointer_button = 8,
+    lock_pointer_button = 9,
+    set_pointer_default = 10,
+    iso_lock = 11,
+    terminate = 12,
+    switch_screen = 13,
+    set_controls = 14,
+    lock_controls = 15,
+    action_message = 16,
+    redirect_key = 17,
+    device_button = 18,
+    lock_device_button = 19,
+    device_valuator = 20,
+};
+
+pub const ValWhat = packed struct(x11.Card8) {
+    ignore_val: bool,
+    set_val_min: bool,
+    set_val_center: bool,
+    set_val_max: bool,
+    set_val_relative: bool,
+    set_val_absolute: bool,
+
+    _padding: u2 = 0,
+};
+
+pub fn KeyActionMods(comptime action_type: KeyActionType) type {
+    return extern struct {
+        type: KeyActionType = action_type,
+        flags: packed struct(x11.Card8) {
+            clear_locks: bool,
+            latch_to_lock: bool,
+            use_mod_map_mods: bool, // aka group_absolute
+
+            _padding: u5 = 0,
+        },
+        mask: phx.event.ModMask,
+        real_mods: phx.event.ModMask,
+        virtual_mods_high: VirtualModsHigh,
+        virtual_mods_low: VirtualModsLow,
+        pad1: x11.Card16 = 0,
+    };
+}
+
+pub fn KeyActionGroup(comptime action_type: KeyActionType) type {
+    return extern struct {
+        type: KeyActionType = action_type,
+        flags: packed struct(x11.Card8) {
+            clear_locks: bool,
+            latch_to_lock: bool,
+            use_mod_map_mods: bool, // aka group_absolute
+
+            _padding: u5 = 0,
+        },
+        group: i8,
+        pad1: [5]x11.Card8 = @splat(0),
+    };
+}
+
+pub fn KeyActionControls(comptime action_type: KeyActionType) type {
+    return extern struct {
+        type: KeyActionType = action_type,
+        pad1: [3]x11.Card8 = @splat(0),
+        bool_ctrls_high: packed struct(x11.Card8) {
+            access_x_feedback: bool,
+            audible_bell: bool,
+            overlay1: bool,
+            overlay2: bool,
+            ignore_group_lock: bool,
+
+            _padding: u3 = 0,
+        },
+        bool_ctrls_low: packed struct(x11.Card8) {
+            repeat_keys: bool,
+            slow_keys: bool,
+            bounce_keys: bool,
+            sticky_keys: bool,
+            mouse_keys: bool,
+            mouse_keys_accel: bool,
+            access_x_keys: bool,
+            access_x_timeout: bool,
+        },
+        pad2: [2]x11.Card8 = @splat(0),
+    };
+}
+
+pub const SetPointerDefaultFlags = packed struct(x11.Card8) {
+    affect_default_button: bool,
+    _padding1: u1 = 0,
+    // The spec says that this should be field 2, but Xlib uses field 3
+    default_button_absolute: bool,
+    _padding2: u5 = 0,
+};
+
 /// https://www.x.org/releases/X11R7.7/doc/kbproto/xkbproto.html#Key_Actions
-const KeyAction = union(enum) {
-    none: struct {
-        type: x11.Card8 = 0,
-        pad1: [6]x11.Card8 = @splat(0),
+pub const KeyAction = union(KeyActionType) {
+    none: extern struct {
+        type: KeyActionType = .none,
+        pad1: [7]x11.Card8 = @splat(0),
     },
-    // set_mods: struct {
-    //     type: x11.Card8 = 1,
-    //     flags: packed struct(x11.Card8) {
-    //         clear_locks: bool,
-    //         latch_to_lock: bool,
-    //         use_mod_map_mods: bool,
-    //     },
-    //     mods: ModDef,
-    //     use_mod_map: bool,
-    //     clear_locks: bool,
-    // },
-    // latch_mods: struct {
-    //     type: x11.Card8 = 2,
-    //     mods: ModDef,
-    //     use_mod_map: bool,
-    //     clear_locks: bool,
-    //     latch_to_lock: bool,
-    // },
-    move_pointer: struct {
-        type: x11.Card8 = 7,
+    set_mods: KeyActionMods(.set_mods),
+    latch_mods: KeyActionMods(.latch_mods),
+    lock_mods: KeyActionMods(.lock_mods),
+    set_group: KeyActionGroup(.set_group),
+    latch_group: KeyActionGroup(.latch_group),
+    lock_group: KeyActionGroup(.lock_group),
+    move_pointer: extern struct {
+        type: KeyActionType = .move_pointer,
         flags: packed struct(x11.Card8) {
             no_acceleration: bool,
             move_absolute_x: bool,
@@ -149,7 +252,125 @@ const KeyAction = union(enum) {
         y_low: x11.Card8,
         pad1: x11.Card16 = 0,
     },
-    // TODO: Define remaining fields
+    pointer_button: extern struct {
+        type: KeyActionType = .pointer_button,
+        flags: x11.Card8, // TODO: ?
+        count: x11.Card8,
+        button: x11.Card8, // TODO: ?
+        pad1: [4]x11.Card8 = @splat(0),
+    },
+    lock_pointer_button: extern struct {
+        type: KeyActionType = .lock_pointer_button,
+        flags: x11.Card8, // TODO: ?
+        pad1: x11.Card8 = 0,
+        button: x11.Card8, // TODO: ?
+        pad2: [4]x11.Card8 = @splat(0),
+    },
+    set_pointer_default: extern struct {
+        type: KeyActionType = .set_pointer_default,
+        flags: SetPointerDefaultFlags,
+        affect: SetPointerDefaultFlags,
+        value: i8,
+        pad1: [4]x11.Card8 = @splat(0),
+    },
+    iso_lock: extern struct {
+        type: KeyActionType = .iso_lock,
+        flags: packed struct(x11.Card8) {
+            no_lock: bool,
+            no_unlock: bool,
+            use_mod_map_mods: bool,
+            group_absolute: bool,
+            iso_dflt_is_group: bool,
+
+            _padding1: u3 = 0,
+        },
+        mask: phx.event.ModMask,
+        real_mods: phx.event.ModMask,
+        group: i8,
+        affect: packed struct(x11.Card8) {
+            _padding1: u3 = 0,
+
+            ctrls: bool,
+            ptr: bool,
+            group: bool,
+            mods: bool,
+
+            _padding2: u1 = 0,
+        },
+        virtual_mods_high: VirtualModsHigh,
+        virtual_mods_low: VirtualModsLow,
+    },
+    terminate: extern struct {
+        type: KeyActionType = .terminate,
+        pad1: [7]x11.Card8 = @splat(0),
+    },
+    switch_screen: extern struct {
+        type: KeyActionType = .switch_screen,
+        flags: packed struct(x11.Card8) {
+            application: bool,
+            _padding: u1 = 0,
+            absolute: bool,
+            _padding2: u5 = 0,
+        },
+        new_screen: i8,
+        pad1: [5]x11.Card8 = @splat(0),
+    },
+    set_controls: KeyActionControls(.set_controls),
+    lock_controls: KeyActionControls(.lock_controls),
+    action_message: extern struct {
+        type: KeyActionType = .action_message,
+        flags: packed struct(x11.Card8) {
+            on_press: bool,
+            on_release: bool,
+            generic_key_event: bool,
+
+            _padding: u5 = 0,
+        },
+        message: [6]x11.Card8, // TODO: ?
+    },
+    redirect_key: extern struct {
+        type: KeyActionType = .redirect_key,
+        new_key: x11.KeyCode,
+        mask: phx.event.ModMask,
+        real_modifiers: phx.event.ModMask,
+        virtual_mods_mask_high: VirtualModsHigh,
+        virtual_mods_mask_low: VirtualModsLow,
+        virtual_mods_high: VirtualModsHigh,
+        virtual_mods_low: VirtualModsLow,
+    },
+    device_button: extern struct {
+        type: KeyActionType = .device_button,
+        flags: x11.Card8, // TODO: ?
+        count: x11.Card8,
+        button: x11.Card8, // TODO: ?
+        device: x11.Card8, // TODO: ?
+        pad1: [3]x11.Card8 = @splat(0),
+    },
+    lock_device_button: extern struct {
+        type: KeyActionType = .lock_device_button,
+        flags: packed struct(x11.Card8) {
+            no_lock: bool,
+            no_unlock: bool,
+
+            _padding: u6 = 0,
+        },
+        pad1: x11.Card8 = 0,
+        button: x11.Card8, // TODO: ?
+        device: x11.Card8, // TODO: ?
+        pad2: [3]x11.Card8 = @splat(0),
+    },
+    device_valuator: extern struct {
+        type: KeyActionType = .device_valuator,
+        device: x11.Card8, // TODO: ?
+
+        val1_what: ValWhat,
+        val1_index: x11.Card8,
+        val1_value: x11.Card8,
+
+        val2_what: ValWhat,
+        val2_index: x11.Card8,
+        val2_value: x11.Card8,
+    },
 };
 
 const ImFlags = packed struct(x11.Card8) {
@@ -180,6 +401,28 @@ const ImModsWhich = packed struct(x11.Card8) {
     use_locked: bool,
     use_effective: bool,
     use_compat: bool,
+};
+
+const VirtualModsLow = packed struct(x11.Card8) {
+    vmod0: bool,
+    vmod1: bool,
+    vmod2: bool,
+    vmod3: bool,
+    vmod4: bool,
+    vmod5: bool,
+    vmod6: bool,
+    vmod7: bool,
+};
+
+const VirtualModsHigh = packed struct(x11.Card8) {
+    vmod8: bool,
+    vmod9: bool,
+    vmod10: bool,
+    vmod11: bool,
+    vmod12: bool,
+    vmod13: bool,
+    vmod14: bool,
+    vmod15: bool,
 };
 
 const VirtualMod = packed struct(x11.Card16) {
@@ -239,7 +482,7 @@ const DeviceLedInfo = struct {
     maps: x11.ListOf(IndicatorMap, .{ .length_field = "maps_present", .length_field_type = .bitmask }),
 };
 
-const MapPartMask = packed struct(x11.Card16) {
+pub const MapPartMask = packed struct(x11.Card16) {
     key_types: bool,
     key_syms: bool,
     modifier_map: bool,
@@ -269,7 +512,7 @@ const ExplicitMask = packed struct(x11.Card8) {
     explicit_v_mod_map: bool,
 };
 
-const KtMapEntry = struct {
+pub const KeyTypeMapEntry = struct {
     active: bool,
     mods_mask: phx.event.KeyMask,
     level: x11.Card8,
@@ -278,11 +521,8 @@ const KtMapEntry = struct {
     pad1: x11.Card16 = 0,
 };
 
-const KeySymMap = struct {
-    kt_index0: x11.Card8,
-    kt_index1: x11.Card8,
-    kt_index2: x11.Card8,
-    kt_index3: x11.Card8,
+pub const KeySymMap = struct {
+    kt_index: [4]x11.Card8,
     group_info: x11.Card8,
     width: x11.Card8,
     num_syms: x11.Card16 = 0,
@@ -306,7 +546,7 @@ const SetBehavior = struct {
     pad1: x11.Card8 = 0,
 };
 
-const KeyType = struct {
+pub const KeyType = struct {
     mods_mask: phx.event.KeyMask,
     mods_mods: phx.event.KeyMask,
     mods_virtual_mods: VirtualMod,
@@ -314,7 +554,7 @@ const KeyType = struct {
     num_map_entries: x11.Card8 = 0,
     has_preserve: bool,
     pad1: x11.Card8 = 0,
-    map: x11.ListOf(KtMapEntry, .{ .length_field = "num_map_entries" }),
+    map: x11.ListOf(KeyTypeMapEntry, .{ .length_field = "num_map_entries" }),
     // TODO: This should only be added if |has_preserve| is set to true,
     // or in other words if length is > 0 then set |has_preserve| to true
     preserve: ?x11.ListOf(ModDef, .{ .length_field = "num_map_entries" }),
@@ -334,6 +574,14 @@ const KeyVirtualModMap = struct {
     keycode: x11.KeyCode,
     pad1: x11.Card8 = 0,
     virtual_mods: VirtualMod,
+};
+
+pub const KeyActions = struct {
+    /// The length is specified by Reply.GetMap.num_key_actions
+    actions_count_return: x11.ListOf(x11.Card8, .{ .length_field = null }),
+    pad1: x11.AlignmentPadding = .{},
+    /// The length is specified by Reply.GetMap.total_actions
+    actions_return: x11.ListOf(KeyAction, .{ .length_field = null }),
 };
 
 pub const Request = struct {
@@ -385,7 +633,7 @@ pub const Request = struct {
     };
 };
 
-const Reply = struct {
+pub const Reply = struct {
     pub const UseExtension = struct {
         type: phx.reply.ReplyType = .reply,
         supported: bool,
@@ -440,13 +688,7 @@ const Reply = struct {
             syms_return: x11.ListOf(KeySymMap, .{ .length_field = null }),
         },
         /// This has values if |present.key_actions| is set
-        key_actions: ?struct {
-            /// The length is specified by Reply.GetMap.num_key_actions
-            actions_count_return: x11.ListOf(x11.Card8, .{ .length_field = null }),
-            pad1: x11.AlignmentPadding = .{},
-            /// The length is specified by Reply.GetMap.total_actions
-            actions_return: x11.ListOf(KeyAction, .{ .length_field = null }),
-        },
+        key_actions: ?KeyActions,
         /// This has values if |present.key_behaviors| is set
         key_behaviors: ?struct {
             /// The length is specified by Reply.GetMap.total_key_behaviors

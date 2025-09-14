@@ -19,6 +19,17 @@ pub const AnyEvent = extern struct {
     code: EventCode,
 };
 
+pub const ModMask = packed struct(x11.Card8) {
+    shift: bool = false,
+    lock: bool = false,
+    control: bool = false,
+    mod1: bool = false,
+    mod2: bool = false,
+    mod3: bool = false,
+    mod4: bool = false,
+    mod5: bool = false,
+};
+
 pub const KeyButMask = packed struct(x11.Card16) {
     shift: bool = false,
     lock: bool = false,

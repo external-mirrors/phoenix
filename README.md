@@ -17,6 +17,8 @@ Applications will be isolated from each other by default and can only interact w
 such as with screen recorders, where it will only be allowed to record the window specified
 or by explicitly giving the application permission before launched (such as a window manager or external compositor).
 This will not break existing clients as clients wont receive errors when they try to access more than they need, they will instead receive dummy data.\
+Applications that rely on global hotkeys should work, as long as a modifier key is pressed (keys such as ctrl, shift, alt and super). If an application needs global hotkeys without pressing a modifier key
+then it needs to be given permissions to do so (perhaps by adding a command to run a program with more X11 permissions).\
 There will be an option to disable this to make the X server behave like the Xorg server.
 
 ### Improvements for modern technology
@@ -34,8 +36,8 @@ Applications can use this property to scale their content to the specified DPI f
 If there is a need for new features (such as HDR) then the X11 protocol will be extended.
 
 ### Wayland compatibility
-Some applications might only run on Wayland in the future. Such applications should be supported by either Phoenix support Wayland natively or by running
-an external application that works as a proxy between Wayland and X11 (such as 12to11).
+Some applications might only run on Wayland in the future. Such applications should be supported by either Phoenix supporting Wayland natively or by running
+an external application that works as a bridge between Wayland and X11 (such as 12to11).
 
 ### Nested display server
 Being able to run Phoenix nested under X11 or Wayland with hardware acceleration.

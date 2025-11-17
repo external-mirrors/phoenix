@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 pub const max_fds: usize = 16;
 
@@ -44,7 +45,10 @@ pub const RecvMsgResult = struct {
 const SCM_RIGHTS: i32 = 1;
 
 const cmsghdr = extern struct {
-    len: usize, // TODO: This size is different on different OS'
+    // According to posix |len| should be a std.posix.socklen_t, but it seems the linux kernel fucked up
+    // and it has to be usize instead on linux.
+    // TODO: Are there other platforms that are also incorrect like linux?
+    len: if (builtin.target.os.tag == .linux) usize else std.posix.socklen_t,
     level: i32,
     type: i32,
 };

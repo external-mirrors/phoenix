@@ -48,3 +48,5 @@ To get msc and ust use drmCrtcGetSequence. The sequence is the msc and ust is th
         and msc with a fake value, see: present_fake_get_ust_msc in the xserver.
 Dont create an opengl texture for windows. Dont create opengl textures for every pixmap, only do that if the window has no other pixmap(?).
 Move read_request data size check (header size vs actually read size) to request.zig instead of client.zig.
+Replace fifo with the new io interface.
+Maybe move read/write x11 network transfer to another thread.

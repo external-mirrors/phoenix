@@ -88,6 +88,9 @@ pub fn deinit(self: *Self) void {
         reply_fd.deinit();
         self.write_buffer_fds.discard(1);
     }
+
+    self.read_buffer_fds.deinit();
+    self.write_buffer_fds.deinit();
 }
 
 // Unused right now, but this will be used similarly to how xace works

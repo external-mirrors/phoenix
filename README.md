@@ -26,8 +26,7 @@ There will be an option to disable this to make the X server behave like the Xor
 Support modern hardware better than the Xorg server, such as proper support for multiple monitors (different refresh rates, VRR - not a single framebuffer for the whole collection of displays) and technology like HDR.
 
 ### Improved graphics handling
-No tearing by default and a built-in compositor. The compositor will get disabled if the user runs an external compositor (client application), such as picom
-or if the client runs a fullscreen application and disabled vsync in the application.\
+No tearing by default and a built-in compositor. The compositor will get disabled if the user runs an external compositor (client application), such as picom or if the client runs a fullscreen application.\
 The goal is to also have lower vsync/compositor latency than the Xorg server.
 
 ### New standards

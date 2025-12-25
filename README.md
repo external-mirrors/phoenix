@@ -99,6 +99,6 @@ Note that the generated documentation feature is a work-in-progress.
 * OpenGL (`libglvnd` which provides both `gl` and `egl`)
 
 ## FAQ
-### Why write an X server? isn't it easier to write a Wayland compositor?
+### Isn't it easier to write a Wayland compositor?
 Despite popular belief, writing a simple X server that works in practice for a wide range of applications is easier to do than it is to write a Wayland compositor (+ related software).\
 Not many people have attempted to write an X server from scratch or have proper understanding of the protocol, but if you do you can see that it's quite simple.

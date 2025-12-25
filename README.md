@@ -7,18 +7,19 @@ Running Phoenix nested will be the only supported mode until Phoenix has progres
 
 ## Goals
 ### Simplicity
-Be a simpler X server than the Xorg server by only supporting a subset of the X11 protocol, the features that are needed by relatively modern applications (applications written in the last ~20 years).\
-Only relatively modern hardware (made in the last ~15 years) which support linux drm and mesa gbm will be supported, and no server driver interface like the Xorg server. Just like how Wayland compositors work.
+Be a simpler X server than the Xorg server by only supporting a subset of the X11 protocol, the features that are needed by relatively modern applications (applications written/updated in the last ~20 years).\
+This includes _all_ software that _you_ use, even old gtk2 applications.\
+Only relatively modern hardware (made/updated in the last ~15-20 years) which support linux drm and mesa gbm will be supported, and no server driver interface like the Xorg server. Just like how Wayland compositors work.
 
 ### Security
 Be safer than the Xorg server by parsing protocol messages automatically. As it's written in Zig, it also automatically catches illegal behaviors (such as index out of array bounds) when building with the `ReleaseSafe` option.
 
-Applications will be isolated from each other by default and can only interact with other applications either through a GUI prompt asking for permission,
+Applications will be isolated from each other by default and can only interact with other applications either through a GUI prompt asking for permission,\
 such as with screen recorders, where it will only be allowed to record the window specified
-or by explicitly giving the application permission before launched (such as a window manager or external compositor).
+or by explicitly giving the application permission before launched (such as a window manager or external compositor).\
 This will not break existing clients as clients wont receive errors when they try to access more than they need, they will instead receive dummy data.\
-Applications that rely on global hotkeys should work, as long as a modifier key is pressed (keys such as ctrl, shift, alt and super). If an application needs global hotkeys without pressing a modifier key
-then it needs to be given permissions to do so (perhaps by adding a command to run a program with more X11 permissions).\
+Applications that rely on global hotkeys should work, as long as a modifier key is pressed (keys such as ctrl, shift, alt and super).\
+If an application needs global hotkeys without pressing a modifier key then it needs to be given permissions to do so (perhaps by adding a command to run a program with more X11 permissions).\
 There will be an option to disable this to make the X server behave like the Xorg server.
 
 ### Improvements for modern technology
@@ -26,7 +27,8 @@ Support modern hardware better than the Xorg server, such as proper support for 
 
 ### Improved graphics handling
 No tearing by default and a built-in compositor. The compositor will get disabled if the user runs an external compositor (client application), such as picom
-or if the client runs a fullscreen application and disabled vsync in the application. The goal is to also have lower vsync/compositor latency than the Xorg server.
+or if the client runs a fullscreen application and disabled vsync in the application.\
+The goal is to also have lower vsync/compositor latency than the Xorg server.
 
 ### New standards
 New standards will be developed and documented, such as per-monitor DPI as randr properties.
@@ -62,7 +64,9 @@ This is very complex as there are a lot of functions that would need to be imple
 
 ## Differences between the X11 protocol and Phoenix
 ### Core protocol
-Several parts of the X11 protocol (core) are mandatory to be implemented by an X server, such as font related operations. However these are not going to be implemented in Phoenix.
+Several parts of the X11 protocol (core) are mandatory to be implemented by an X server, such as many font related operations.\
+However these are not going to be implemented in Phoenix, except for the simple ones that applications actually use (such as font operations used for cursors).\
+This will not affect applications that users actually use, even if they use old gtk2 applications.
 
 ### Strings
 Strings are in ISO Latin-1 encoding in the X11 protocol unless specified otherwise, however in Phoenix all strings are UTF-8 unless the protocol states that it's not an ISO Latin-1 string.
@@ -93,3 +97,8 @@ Note that the generated documentation feature is a work-in-progress.
 * wayland (`wayland-client`, `wayland-egl`) - for nested mode under Wayland, when building Phoenix with `-Dbackends=wayland` (not currently supported)
 * drm (`libdrm`, `gbm`) - for running Phoenix as a standalone X11 server, when building Phoenix with `-Dbackends=drm` (not currently supported)
 * OpenGL (`libglvnd` which provides both `gl` and `egl`)
+
+## FAQ
+### Why write an X server? isn't it easier to write a Wayland compositor?
+Despite popular belief, writing a simple X server that works in practice for a wide range of applications is easier to do than it is to write a Wayland compositor (+ related software).\
+Not many people have attempted to write an X server from scratch or have proper understanding of the protocol, but if you do you can see that it's quite simple.

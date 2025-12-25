@@ -50,3 +50,4 @@ Dont create an opengl texture for windows. Dont create opengl textures for every
 Move read_request data size check (header size vs actually read size) to request.zig instead of client.zig.
 Replace fifo with the new io interface.
 Maybe move read/write x11 network transfer to another thread.
+Add option for client windows to advertise that they should be in the overlay plane. The server should set a property on the window to indicate which plane it is actually on.

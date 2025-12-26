@@ -98,7 +98,7 @@ Note that the generated documentation feature is a work-in-progress.
 * OpenGL (`libglvnd` which provides both `gl` and `egl`)
 
 ## License
-This software is licensed under GPL3.0-only, see the LICENSE file for more information.
+This software is licensed under GPL-3.0-only, see the LICENSE file for more information.
 
 ## FAQ
 ### Isn't it easier to write a Wayland compositor?

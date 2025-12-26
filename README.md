@@ -97,6 +97,9 @@ Note that the generated documentation feature is a work-in-progress.
 * drm (`libdrm`, `gbm`) - for running Phoenix as a standalone X11 server, when building Phoenix with `-Dbackends=drm` (not currently supported)
 * OpenGL (`libglvnd` which provides both `gl` and `egl`)
 
+## License
+This software is licensed under GPL3.0-only, see the LICENSE file for more information.
+
 ## FAQ
 ### Isn't it easier to write a Wayland compositor?
 Despite popular belief, writing a simple X server that works in practice for a wide range of applications is easier to do than it is to write a Wayland compositor (+ related software).\

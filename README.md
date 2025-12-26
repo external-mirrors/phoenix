@@ -107,4 +107,4 @@ Not many people have attempted to write an X server from scratch or have proper 
 
 ### Doesn't X11 have fundamental issues with tearing/multiple monitors/hdr/security/etc that can't be fixed?
 No, most information about how X11 works online is wrong. Some of this misinformation has even been spread by Wayland compositor developers. These issues are related to the X.org server, not the X11 protocol.\
-When 10-bit color mode is enabled in the X.org server it can break some applications such as steam which fails to start, but all of these issues can be solved without affecting client applications.
+When 10-bit color mode is enabled in the X.org server it can break some applications such as steam which fails to start, but all of these issues can be solved without affecting client applications, even without introducing a new X11 protocol extension.

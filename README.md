@@ -92,6 +92,7 @@ Note that the generated documentation feature is a work-in-progress.
 
 ## Dependencies
 * [Zig 0.14.1](https://ziglang.org/download/)
+* libxkbcommon
 * x11 (`xcb`) - for nested mode under X11, when building Phoenix with `-Dbackends=x11`
 * wayland (`wayland-client`, `wayland-egl`) - for nested mode under Wayland, when building Phoenix with `-Dbackends=wayland` (not currently supported)
 * drm (`libdrm`, `gbm`) - for running Phoenix as a standalone X11 server, when building Phoenix with `-Dbackends=drm` (not currently supported)

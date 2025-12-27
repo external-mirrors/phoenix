@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 comptime {
     // TODO: Implement xshmfence on other operating systems
-    std.debug.assert(builtin.os.tag == .linux);
+    std.debug.assert(builtin.os.tag == .linux or builtin.os.tag == .freebsd);
 }
 
 // On linux futex is used.

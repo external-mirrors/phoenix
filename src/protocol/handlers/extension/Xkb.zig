@@ -46,6 +46,8 @@ fn get_map(request_context: phx.RequestContext) !void {
     defer req.deinit();
     std.log.info("GetMap request: {s}", .{x11.stringify_fmt(req.request)});
 
+    std.log.warn("TODO: Implement GetMap properly", .{});
+
     if (!request_context.client.xkb_initialized) {
         std.log.err("Received XkbGetMap, but the client hasn't called XkbUseExtension, returning access error", .{});
         return request_context.client.write_error(request_context, .access, 0);

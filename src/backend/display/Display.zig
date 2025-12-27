@@ -1,4 +1,5 @@
 const std = @import("std");
+const DisplayX11 = @import("DisplayX11.zig");
 const phx = @import("../../phoenix.zig");
 
 const Self = @This();
@@ -7,7 +8,7 @@ allocator: std.mem.Allocator,
 impl: DisplayImpl,
 
 pub fn create_x11(event_fd: std.posix.fd_t, allocator: std.mem.Allocator) !Self {
-    const x11 = try allocator.create(phx.DisplayX11);
+    const x11 = try allocator.create(DisplayX11);
     errdefer allocator.destroy(x11);
 
     x11.* = try .init(event_fd, allocator);
@@ -88,7 +89,7 @@ pub fn is_running(self: *Self) bool {
 }
 
 const DisplayImpl = union(enum) {
-    x11: *phx.DisplayX11,
+    x11: *DisplayX11,
 };
 
 test "x11" {

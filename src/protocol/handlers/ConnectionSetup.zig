@@ -109,8 +109,8 @@ pub fn handle_client_connect(server: *phx.Server, client: *phx.Client, root_wind
         .bitmap_format_bit_order = .least_significant, // TODO: Big-endian?
         .bitmap_format_scanline_unit = 0,
         .bitmap_format_scanline_pad = 32,
-        .min_keycode = @enumFromInt(8),
-        .max_keycode = @enumFromInt(255),
+        .min_keycode = phx.Server.min_keycode,
+        .max_keycode = phx.Server.max_keycode,
         .vendor = .{ .items = ven },
         .pixmap_formats = .{ .items = &pixmap_formats },
         .screens = .{ .items = &screens },

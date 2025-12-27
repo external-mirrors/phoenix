@@ -124,6 +124,10 @@ pub const Atom = enum(Card32) {
 
 pub const KeyCode = enum(Card8) {
     _,
+
+    pub fn to_int(key_code: KeyCode) Card8 {
+        return @intFromEnum(key_code);
+    }
 };
 
 /// Top three bits guaranteed to be zero

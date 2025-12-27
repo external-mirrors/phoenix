@@ -1,4 +1,5 @@
 const std = @import("std");
+const GraphicsEgl = @import("GraphicsEgl.zig");
 const phx = @import("../../phoenix.zig");
 const c = phx.c;
 
@@ -15,7 +16,7 @@ pub fn create_egl(
     debug: bool,
     allocator: std.mem.Allocator,
 ) !Self {
-    const egl = try allocator.create(phx.GraphicsEgl);
+    const egl = try allocator.create(GraphicsEgl);
     errdefer allocator.destroy(egl);
     egl.* = try .init(platform, screen_type, connection, window_id, debug, allocator);
     return .{
@@ -90,7 +91,7 @@ pub fn get_supported_modifiers(self: *Self, depth: u8, bpp: u8, modifiers: *[64]
 }
 
 const GraphicsImpl = union(enum) {
-    egl: *phx.GraphicsEgl,
+    egl: *GraphicsEgl,
 };
 
 pub const DmabufImport = struct {

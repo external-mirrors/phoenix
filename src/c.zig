@@ -7,6 +7,9 @@ pub usingnamespace @cImport({
 
     @cInclude("EGL/egl.h");
     @cInclude("EGL/eglext.h");
+
+    @cInclude("xkbcommon/xkbcommon.h");
+
     // TODO: Need to do it like this for zls
     //if (config.backends.x11)
     @cInclude("xcb/xcb.h");
@@ -23,3 +26,5 @@ pub usingnamespace @cImport({
         @cInclude("gbm.h");
     }
 });
+
+pub const KeySym = @cImport(@cInclude("xkbcommon/xkbcommon-keysyms.h"));

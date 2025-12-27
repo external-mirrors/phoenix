@@ -1,10 +1,14 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const phx = @import("../phoenix.zig");
 const x11 = phx.x11;
 
 const Self = @This();
 
 pub const vendor = "Phoenix";
+
+pub const min_keycode: x11.KeyCode = @enumFromInt(8);
+pub const max_keycode: x11.KeyCode = @enumFromInt(255);
 
 pub const screen_true_color_visual_id: x11.VisualId = @enumFromInt(0x21);
 const screen_true_color_visual = phx.Visual.create_true_color(screen_true_color_visual_id);
@@ -29,6 +33,7 @@ resource_id_base_manager: phx.ResourceIdBaseManager,
 atom_manager: phx.AtomManager,
 client_manager: phx.ClientManager,
 display: phx.Display,
+input: phx.Input,
 
 installed_colormaps: std.ArrayList(phx.Colormap),
 started_time_seconds: f64,
@@ -82,6 +87,13 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     var display = try phx.Display.create_x11(event_fd, allocator);
     errdefer display.destroy();
 
+    comptime {
+        // TODO: Implement input on other operating systems
+        std.debug.assert(builtin.os.tag == .linux or builtin.os.tag == .freebsd);
+    }
+    var input = phx.Input.create_linux();
+    errdefer input.deinit();
+
     var resource_id_base_manager = phx.ResourceIdBaseManager{};
 
     const server_connection = std.net.Server.Connection{
@@ -117,6 +129,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         .atom_manager = atom_manager,
         .client_manager = client_manager,
         .display = display,
+        .input = input,
         .installed_colormaps = installed_colormaps,
         .started_time_seconds = started_time_seconds,
     };
@@ -130,6 +143,7 @@ pub fn deinit(self: *Self) void {
     std.posix.close(self.signal_fd);
     std.posix.close(self.event_fd);
     self.display.destroy();
+    self.input.deinit();
 }
 
 fn clock_get_monotonic_seconds() f64 {

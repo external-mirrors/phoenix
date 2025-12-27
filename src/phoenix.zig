@@ -1,8 +1,6 @@
 pub const Display = @import("backend/display/Display.zig");
-pub const DisplayX11 = @import("backend/display/DisplayX11.zig");
-
 pub const Graphics = @import("backend/graphics/Graphics.zig");
-pub const GraphicsEgl = @import("backend/graphics/GraphicsEgl.zig");
+pub const Input = @import("backend/input/Input.zig");
 
 pub const AtomManager = @import("manager/AtomManager.zig");
 pub const ClientManager = @import("manager/ClientManager.zig");
@@ -52,5 +50,9 @@ pub const ResourceHashMap = resource.ResourceHashMap;
 
 pub const Geometry = @import("misc/Geometry.zig");
 pub const Version = @import("misc/Version.zig");
+
+pub const keysym = @import("keyboard/keysym.zig");
+pub const KeySym = keysym.KeySym;
+pub const KeySyms = keysym.KeySyms;
 
 pub const c = @import("c.zig");

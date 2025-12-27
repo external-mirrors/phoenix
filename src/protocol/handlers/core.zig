@@ -32,6 +32,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .free_gc => free_gc(request_context),
         .create_colormap => create_colormap(request_context),
         .query_extension => query_extension(request_context),
+        .get_keyboard_mapping => get_keyboard_mapping(request_context),
         else => unreachable,
     };
 }
@@ -273,6 +274,8 @@ fn map_window(request_context: phx.RequestContext) !void {
     defer req.deinit();
     std.log.info("MapWindow request: {s}", .{x11.stringify_fmt(req.request)});
 
+    std.log.warn("TODO: Implement MapWindow properly", .{});
+
     var window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in MapWindow request", .{req.request.window});
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
@@ -301,6 +304,8 @@ fn configure_window(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.ConfigureWindow, request_context.allocator);
     defer req.deinit();
     std.log.info("ConfigureWindow request: {s}", .{x11.stringify_fmt(req.request)});
+
+    std.log.warn("TODO: Implement ConfigureWindow properly", .{});
 
     var window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in ConfigureWindow request", .{req.request.window});
@@ -588,6 +593,8 @@ fn get_input_focus(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetInputFocus, request_context.allocator);
     defer req.deinit();
 
+    std.log.warn("TODO: Implement GetInputFocus properly", .{});
+
     // TODO: Implement properly
     var rep = Reply.GetInputFocus{
         .revert_to = .pointer_root,
@@ -689,6 +696,60 @@ fn query_extension(request_context: phx.RequestContext) !void {
         std.log.err("QueryExtension: unsupported extension: {s}", .{req.request.name.items});
     }
 
+    try request_context.client.write_reply(&rep);
+}
+
+fn get_keyboard_mapping(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GetKeyboardMapping, request_context.allocator);
+    defer req.deinit();
+    std.log.info("GetKeyboardMapping request: {s}", .{x11.stringify_fmt(req.request)});
+
+    std.log.warn("TODO: Implement GetKeyboardMapping properly", .{});
+
+    const first_keycode = req.request.first_keycode.to_int();
+
+    if (first_keycode < phx.Server.min_keycode.to_int()) {
+        std.log.err(
+            "Received GetKeyboardMapping with invalid first_keycode, expected to be >= {d}, actual value: {d}",
+            .{ phx.Server.min_keycode, first_keycode },
+        );
+        return request_context.client.write_error(request_context, .value, first_keycode);
+    }
+
+    const range_end = @as(i32, first_keycode) + @as(i32, req.request.count) - 1;
+    if (range_end > phx.Server.max_keycode.to_int()) {
+        std.log.err(
+            "Received GetKeyboardMapping with invalid first_keycode + count - 1, expected to be in the <= {d}, actual value: {d} (first_keycode: {d}, count: {d})",
+            .{ phx.Server.max_keycode, range_end, first_keycode, req.request.count },
+        );
+        return request_context.client.write_error(request_context, .value, req.request.count);
+    }
+
+    const keysyms_per_keycode: u32 = 7;
+    var keysyms = try request_context.allocator.alloc(x11.KeySym, req.request.count * keysyms_per_keycode);
+    defer request_context.allocator.free(keysyms);
+
+    // TODO: These structure is hardcoded for now
+    var keysym_index: usize = 0;
+    for (0..req.request.count) |i| {
+        const keycode: x11.KeyCode = @enumFromInt(first_keycode + i);
+        const keysym = request_context.server.input.x11_keycode_to_keysym(keycode);
+        const keysym_lowercase = phx.keysym.to_lowercase(keysym);
+        keysyms[keysym_index + 0] = @enumFromInt(keysym_lowercase);
+        keysyms[keysym_index + 1] = @enumFromInt(keysym);
+        keysyms[keysym_index + 2] = @enumFromInt(keysym_lowercase);
+        keysyms[keysym_index + 3] = @enumFromInt(keysym);
+        keysyms[keysym_index + 4] = @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol);
+        keysyms[keysym_index + 5] = @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol);
+        keysyms[keysym_index + 6] = @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol);
+        keysym_index += keysyms_per_keycode;
+    }
+
+    var rep = Reply.GetKeyboardMapping{
+        .keysyms_per_keycode = @as(x11.Card8, keysyms_per_keycode),
+        .sequence_number = request_context.sequence_number,
+        .keysyms = .{ .items = keysyms },
+    };
     try request_context.client.write_reply(&rep);
 }
 
@@ -1048,6 +1109,15 @@ pub const Request = struct {
         pad3: x11.AlignmentPadding = .{},
     };
 
+    pub const GetKeyboardMapping = struct {
+        opcode: phx.opcode.Major = .get_keyboard_mapping,
+        pad1: x11.Card8,
+        length: x11.Card16,
+        first_keycode: x11.KeyCode,
+        count: x11.Card8,
+        pad2: x11.Card16,
+    };
+
     pub const ChangeProperty = struct {
         opcode: phx.opcode.Major = .change_property,
         mode: enum(x11.Card8) {
@@ -1150,6 +1220,15 @@ const Reply = struct {
         first_event: x11.Card8,
         first_error: x11.Card8,
         pad2: [20]x11.Card8 = @splat(0),
+    };
+
+    pub const GetKeyboardMapping = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        keysyms_per_keycode: x11.Card8,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        pad2: [24]x11.Card8 = @splat(0),
+        keysyms: x11.ListOf(x11.KeySym, .{ .length_field = "length" }),
     };
 
     pub fn GetProperty(comptime DataType: type) type {

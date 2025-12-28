@@ -373,15 +373,16 @@ fn render_graphics_windows(self: *Self) void {
     }
 }
 
-pub fn render(self: *Self) !void {
+pub fn make_current_thread_active(self: *Self) !void {
     // TODO: If this fails propagate it up to the main thread, maybe by setting a variable if it succeeds
     // or not and wait for that in the main thread.
-    // TODO: Dont do this everytime?
     if (c.eglMakeCurrent(self.egl_display, self.egl_surface, self.egl_surface, self.egl_context) == c.EGL_FALSE) {
-        std.log.err("GraphicsEgl.render_loop: eglMakeCurrent failed, error: {d}", .{c.eglGetError()});
+        std.log.err("GraphicsEgl.make_current_thread_active: eglMakeCurrent failed, error: {d}", .{c.eglGetError()});
         return error.FailedToMakeEglContextCurrent;
     }
+}
 
+pub fn render(self: *Self) !void {
     self.run_updates();
 
     c.glClearColor(0.0, 0.47450, 0.73725, 1.0);

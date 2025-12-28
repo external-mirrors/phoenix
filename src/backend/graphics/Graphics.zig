@@ -40,6 +40,12 @@ pub fn get_dri_card_fd(self: *Self) std.posix.fd_t {
     };
 }
 
+pub fn make_current_thread_active(self: *Self) !void {
+    return switch (self.impl) {
+        inline else => |item| item.make_current_thread_active(),
+    };
+}
+
 pub fn render(self: *Self) !void {
     return switch (self.impl) {
         inline else => |item| item.render(),

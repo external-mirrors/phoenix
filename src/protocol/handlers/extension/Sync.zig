@@ -27,7 +27,6 @@ fn initialize(request_context: phx.RequestContext) !void {
     const server_version = phx.Version{ .major = 3, .minor = 1 };
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
     request_context.client.extension_versions.sync = phx.Version.min(server_version, client_version);
-    request_context.client.sync_initialized = true;
 
     var rep = Reply.SyncInitialize{
         .sequence_number = request_context.sequence_number,

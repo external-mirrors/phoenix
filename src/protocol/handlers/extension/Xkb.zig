@@ -28,14 +28,13 @@ fn use_extension(request_context: phx.RequestContext) !void {
 
     const server_version = phx.Version{ .major = 1, .minor = 0 };
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
-    request_context.client.extension_versions.xkb = phx.Version.min(server_version, client_version);
     request_context.client.xkb_initialized = true;
 
     var rep = Reply.UseExtension{
         .sequence_number = request_context.sequence_number,
-        .supported = true,
-        .major_version = @intCast(request_context.client.extension_versions.xkb.major),
-        .minor_version = @intCast(request_context.client.extension_versions.xkb.minor),
+        .supported = client_version.to_int() <= server_version.to_int(),
+        .major_version = @intCast(server_version.major),
+        .minor_version = @intCast(server_version.minor),
     };
     try request_context.client.write_reply(&rep);
 }

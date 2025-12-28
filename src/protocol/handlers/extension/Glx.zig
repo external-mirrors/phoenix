@@ -370,7 +370,7 @@ fn set_client_info_arb(request_context: phx.RequestContext) !void {
     const server_version = phx.Version{ .major = 1, .minor = 4 };
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
     request_context.client.extension_versions.client_glx = phx.Version.min(server_version, client_version);
-    // TODO: Do something with the data
+    // TODO: Do something with the data, see https://registry.khronos.org/OpenGL/extensions/ARB/GLX_ARB_create_context.txt
 }
 
 fn set_client_info2_arb(request_context: phx.RequestContext) !void {
@@ -381,7 +381,7 @@ fn set_client_info2_arb(request_context: phx.RequestContext) !void {
     const server_version = phx.Version{ .major = 1, .minor = 4 };
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
     request_context.client.extension_versions.client_glx = phx.Version.min(server_version, client_version);
-    // TODO: Do something with the data
+    // TODO: Do something with the data, see https://registry.khronos.org/OpenGL/extensions/ARB/GLX_ARB_create_context.txt
 }
 
 const MinorOpcode = enum(x11.Card8) {

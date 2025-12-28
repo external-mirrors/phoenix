@@ -365,6 +365,13 @@ pub fn is_running(self: *Self) bool {
 }
 
 fn update_thread(self: *Self) !void {
+    self.graphics.make_current_thread_active() catch |err| {
+        std.log.err("Failed to make current thread active for graphics!, error: {s}", .{@errorName(err)});
+        self.running = false;
+        self.signal_event_fd();
+        return;
+    };
+
     while (self.running) {
         while (c.xcb_poll_for_event(self.connection)) |event| {
             //std.log.info("got event: {d}", .{event.*.response_type & ~@as(u32, 0x80)});

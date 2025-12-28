@@ -23,16 +23,16 @@ listening_to_windows: std.ArrayList(*phx.Window),
 
 extension_versions: ExtensionVersions = .{
     .client_glx = .{ .major = 1, .minor = 0 },
-    .server_glx = .{ .major = 1, .minor = 0 },
-    .dri3 = .{ .major = 1, .minor = 0 },
-    .present = .{ .major = 1, .minor = 0 },
-    .sync = .{ .major = 1, .minor = 0 },
-    .xfixes = .{ .major = 1, .minor = 0 },
-    .xkb = .{ .major = 1, .minor = 0 },
-    .render = .{ .major = 1, .minor = 0 },
+    .server_glx = .{ .major = 1, .minor = 4 },
+    .dri3 = .{ .major = 1, .minor = 4 },
+    .present = .{ .major = 1, .minor = 4 },
+    .sync = .{ .major = 3, .minor = 1 },
+    .xfixes = .{ .major = 6, .minor = 1 },
+    // The server ignores the client requested version
+    //.xkb = .{ .major = 1, .minor = 0 },
+    .render = .{ .major = 0, .minor = 11 },
 },
 
-sync_initialized: bool = false,
 xkb_initialized: bool = false,
 
 pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, allocator: std.mem.Allocator) Self {
@@ -339,6 +339,6 @@ const ExtensionVersions = struct {
     present: phx.Version,
     sync: phx.Version,
     xfixes: phx.Version,
-    xkb: phx.Version,
+    //xkb: phx.Version,
     render: phx.Version,
 };

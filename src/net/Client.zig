@@ -29,6 +29,7 @@ extension_versions: ExtensionVersions = .{
     .sync = .{ .major = 1, .minor = 0 },
     .xfixes = .{ .major = 1, .minor = 0 },
     .xkb = .{ .major = 1, .minor = 0 },
+    .render = .{ .major = 1, .minor = 0 },
 },
 
 sync_initialized: bool = false,
@@ -339,4 +340,5 @@ const ExtensionVersions = struct {
     sync: phx.Version,
     xfixes: phx.Version,
     xkb: phx.Version,
+    render: phx.Version,
 };

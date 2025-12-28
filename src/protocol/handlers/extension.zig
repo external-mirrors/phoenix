@@ -11,6 +11,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .sync => phx.Sync.handle_request(request_context),
         .glx => phx.Glx.handle_request(request_context),
         .xkb => phx.Xkb.handle_request(request_context),
+        .render => phx.Render.handle_request(request_context),
         else => unreachable,
     };
 }

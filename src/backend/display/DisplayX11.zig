@@ -212,7 +212,7 @@ pub fn get_keyboard_map(self: *Self, params: *const phx.Xkb.Request.GetMap, aren
     const key_syms_opt = if (present.key_syms and xcb_reply.nKeySyms > 0) try get_keyboard_map_key_sym_map(&map, xcb_reply.nKeySyms, allocator) else null;
     const key_actions_opt = if (present.key_actions) try get_keyboard_map_key_actions(&map, xcb_reply.nKeyActions, xcb_reply.totalActions, allocator) else null;
 
-    std.log.err("TODO: Implement get_keyboard_map\n", .{});
+    std.log.err("TODO: Implement get_keyboard_map properly\n", .{});
     const reply = phx.Xkb.Reply.GetMap{
         .device_id = xcb_reply.deviceID,
         .sequence_number = 0,
@@ -328,7 +328,7 @@ fn get_keyboard_map_key_actions(map: *const c.xcb_xkb_get_map_map_t, num_key_act
     const actions_count = try allocator.dupe(x11.Card8, map.acts_rtrn_count[0..num_key_actions]);
     const actions: []phx.Xkb.KeyAction = try allocator.alloc(phx.Xkb.KeyAction, total_actions);
 
-    std.log.err("TODO: Implement get_keyboard_map_key_actions", .{});
+    std.log.err("TODO: Implement get_keyboard_map_key_actions properly", .{});
     // for (actions, 0..) |*action, i| {
     //     const key_action_type: phx.Xkb.KeyActionType = @enumFromInt(map.acts_rtrn_acts[i].type);
     //     switch (key_action_type) {

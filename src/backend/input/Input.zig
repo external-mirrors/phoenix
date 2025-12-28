@@ -18,9 +18,27 @@ pub fn deinit(self: *Self) void {
     }
 }
 
+pub fn get_min_keycode(self: *Self) x11.KeyCode {
+    return switch (self.impl) {
+        inline else => |*item| item.get_min_keycode(),
+    };
+}
+
+pub fn get_max_keycode(self: *Self) x11.KeyCode {
+    return switch (self.impl) {
+        inline else => |*item| item.get_max_keycode(),
+    };
+}
+
 pub fn x11_keycode_to_keysym(self: *Self, keycode: x11.KeyCode) phx.KeySym {
     return switch (self.impl) {
         inline else => |*item| item.x11_keycode_to_keysym(keycode),
+    };
+}
+
+pub fn x11_modifier_keysym_to_x11_keycode(self: *Self, comptime keysym: phx.KeySym) x11.KeyCode {
+    return switch (self.impl) {
+        inline else => |*item| item.x11_modifier_keysym_to_x11_keycode(keysym),
     };
 }
 

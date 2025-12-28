@@ -33,6 +33,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .create_colormap => create_colormap(request_context),
         .query_extension => query_extension(request_context),
         .get_keyboard_mapping => get_keyboard_mapping(request_context),
+        .get_modifier_mapping => get_modifier_mapping(request_context),
         else => unreachable,
     };
 }
@@ -704,23 +705,25 @@ fn get_keyboard_mapping(request_context: phx.RequestContext) !void {
     defer req.deinit();
     std.log.info("GetKeyboardMapping request: {s}", .{x11.stringify_fmt(req.request)});
 
-    std.log.warn("TODO: Implement GetKeyboardMapping properly", .{});
+    std.log.warn("TODO: Implement GetKeyboardMapping properly for different keyboard layouts", .{});
 
     const first_keycode = req.request.first_keycode.to_int();
+    const min_keycode = request_context.server.input.get_min_keycode();
+    const max_keycode = request_context.server.input.get_max_keycode();
 
-    if (first_keycode < phx.Server.min_keycode.to_int()) {
+    if (first_keycode < min_keycode.to_int()) {
         std.log.err(
             "Received GetKeyboardMapping with invalid first_keycode, expected to be >= {d}, actual value: {d}",
-            .{ phx.Server.min_keycode, first_keycode },
+            .{ min_keycode, first_keycode },
         );
         return request_context.client.write_error(request_context, .value, first_keycode);
     }
 
     const range_end = @as(i32, first_keycode) + @as(i32, req.request.count) - 1;
-    if (range_end > phx.Server.max_keycode.to_int()) {
+    if (range_end > max_keycode.to_int()) {
         std.log.err(
             "Received GetKeyboardMapping with invalid first_keycode + count - 1, expected to be in the <= {d}, actual value: {d} (first_keycode: {d}, count: {d})",
-            .{ phx.Server.max_keycode, range_end, first_keycode, req.request.count },
+            .{ max_keycode, range_end, first_keycode, req.request.count },
         );
         return request_context.client.write_error(request_context, .value, req.request.count);
     }
@@ -749,6 +752,63 @@ fn get_keyboard_mapping(request_context: phx.RequestContext) !void {
         .keysyms_per_keycode = @as(x11.Card8, keysyms_per_keycode),
         .sequence_number = request_context.sequence_number,
         .keysyms = .{ .items = keysyms },
+    };
+    try request_context.client.write_reply(&rep);
+}
+
+fn get_modifier_mapping(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GetModifierMapping, request_context.allocator);
+    defer req.deinit();
+    std.log.info("GetModifierMapping request: {s}", .{x11.stringify_fmt(req.request)});
+
+    std.log.warn("TODO: Implement GetModifierMapping properly for different keyboard layouts", .{});
+
+    var keycodes = [3 * 8]x11.KeyCode{
+        // Shift
+        request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Shift_L),
+        request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Shift_R),
+        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+
+        // Lock
+        request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Caps_Lock),
+        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+
+        // Control
+        request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Control_L),
+        request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Control_R),
+        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+
+        // Mod1
+        request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Alt_L),
+        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+
+        // Mod2
+        request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Num_Lock),
+        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+
+        // Mod3, unassigned
+        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+
+        // Mod4
+        request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Meta_L),
+        request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Meta_R),
+        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+
+        // Mod5
+        request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_ISO_Level3_Shift),
+        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+    };
+
+    var rep = Reply.GetModifierMapping{
+        .keycodes_per_modifier = 3,
+        .sequence_number = request_context.sequence_number,
+        .keycodes = .{ .items = &keycodes },
     };
     try request_context.client.write_reply(&rep);
 }
@@ -1118,6 +1178,12 @@ pub const Request = struct {
         pad2: x11.Card16,
     };
 
+    pub const GetModifierMapping = struct {
+        opcode: phx.opcode.Major = .get_modifier_mapping,
+        pad1: x11.Card8,
+        length: x11.Card16,
+    };
+
     pub const ChangeProperty = struct {
         opcode: phx.opcode.Major = .change_property,
         mode: enum(x11.Card8) {
@@ -1229,6 +1295,15 @@ const Reply = struct {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         pad2: [24]x11.Card8 = @splat(0),
         keysyms: x11.ListOf(x11.KeySym, .{ .length_field = "length" }),
+    };
+
+    pub const GetModifierMapping = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        keycodes_per_modifier: x11.Card8,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        pad2: [24]x11.Card8 = @splat(0),
+        keycodes: x11.ListOf(x11.KeyCode, .{ .length_field = "length" }),
     };
 
     pub fn GetProperty(comptime DataType: type) type {

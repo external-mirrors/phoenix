@@ -261,6 +261,10 @@ const Key = enum(u8) {
     pub const dashboard = Key.all_applications;
     pub const brightness_zero = Key.brightness_auto;
     pub const wimax = Key.wwan;
+
+    pub fn to_int(self: Key) u8 {
+        return @intFromEnum(self);
+    }
 };
 
 pub fn deinit(_: *Self) void {}
@@ -268,6 +272,19 @@ pub fn deinit(_: *Self) void {}
 fn x11_keycode_to_linux_key(keycode: x11.KeyCode) Key {
     std.debug.assert(keycode.to_int() >= 8);
     return @enumFromInt(keycode.to_int() - 8);
+}
+
+fn linux_key_to_x11_keycode(key: Key) x11.KeyCode {
+    std.debug.assert(key.to_int() <= 248);
+    return @enumFromInt(key.to_int() + 8);
+}
+
+pub fn get_min_keycode(_: *Self) x11.KeyCode {
+    return @enumFromInt(8);
+}
+
+pub fn get_max_keycode(_: *Self) x11.KeyCode {
+    return @enumFromInt(255);
 }
 
 // TODO: Read keyboard configuration from /usr/share/X11/xkb instead of manual mapping.
@@ -518,5 +535,22 @@ pub fn x11_keycode_to_keysym(_: *const Self, keycode: x11.KeyCode) phx.KeySym {
         .rfkill => phx.KeySyms.XKB_KEY_XF86RFKill,
         .micmute => phx.KeySyms.XKB_KEY_XF86AudioMicMute,
         else => phx.KeySyms.XKB_KEY_NoSymbol,
+    };
+}
+
+pub fn x11_modifier_keysym_to_x11_keycode(_: *Self, comptime keysym: phx.KeySym) x11.KeyCode {
+    return comptime switch (keysym) {
+        phx.KeySyms.XKB_KEY_Shift_L => linux_key_to_x11_keycode(.leftshift),
+        phx.KeySyms.XKB_KEY_Shift_R => linux_key_to_x11_keycode(.rightshift),
+        phx.KeySyms.XKB_KEY_Caps_Lock => linux_key_to_x11_keycode(.capslock),
+        phx.KeySyms.XKB_KEY_Control_L => linux_key_to_x11_keycode(.leftctrl),
+        phx.KeySyms.XKB_KEY_Control_R => linux_key_to_x11_keycode(.rightctrl),
+        phx.KeySyms.XKB_KEY_Alt_L => linux_key_to_x11_keycode(.leftalt),
+        phx.KeySyms.XKB_KEY_Alt_R => linux_key_to_x11_keycode(.rightalt),
+        phx.KeySyms.XKB_KEY_Num_Lock => linux_key_to_x11_keycode(.numlock),
+        phx.KeySyms.XKB_KEY_Meta_L => linux_key_to_x11_keycode(.leftmeta),
+        phx.KeySyms.XKB_KEY_Meta_R => linux_key_to_x11_keycode(.rightmeta),
+        phx.KeySyms.XKB_KEY_ISO_Level3_Shift => linux_key_to_x11_keycode(.rightalt),
+        else => unreachable,
     };
 }

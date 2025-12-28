@@ -7,9 +7,6 @@ const Self = @This();
 
 pub const vendor = "Phoenix";
 
-pub const min_keycode: x11.KeyCode = @enumFromInt(8);
-pub const max_keycode: x11.KeyCode = @enumFromInt(255);
-
 pub const screen_true_color_visual_id: x11.VisualId = @enumFromInt(0x21);
 const screen_true_color_visual = phx.Visual.create_true_color(screen_true_color_visual_id);
 

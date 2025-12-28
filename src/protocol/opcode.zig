@@ -21,6 +21,7 @@ pub const Major = enum(x11.Card8) {
     create_colormap = 78,
     query_extension = 98,
     get_keyboard_mapping = 101,
+    get_modifier_mapping = 119,
 
     // Extensions
     dri3 = 128,

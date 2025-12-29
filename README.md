@@ -112,6 +112,7 @@ Not many people have attempted to write an X server from scratch or have a prope
 
 ### Why write a new X11 server instead of a Wayland compositor?
 To keep it short: my applications can't ever work properly on Wayland, mainly [GPU Screen Recorder UI](https://git.dec05eba.com/gpu-screen-recorder-ui/about/). Many features of [GPU Screen Recorder UI](https://git.dec05eba.com/gpu-screen-recorder-ui/about/) don't work properly on Wayland.\
+A large number of non-standard graphical applications can simply never work properly on Wayland.\
 If it were to use the Wayland protocol only then it wouldn't work at all (and can't ever work). It has to rely on Xwayland and even in that case it faces many issues and has to rely on undefined behaviors in each Wayland compositor, which may or may not work.\
 Some things are implemented by bypassing the Wayland compositor and interfacing the Linux kernel directly with root access instead.\
 One of these things where it needs to bypass the Wayland compositor and can't use Xwayland either is global shortcuts. Despite there being a XDG desktop portal protocol for global shortcuts it's mostly useless. It only works (somewhat) on KDE Plasma.\

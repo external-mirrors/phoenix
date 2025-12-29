@@ -1,6 +1,7 @@
 # X11
 https://www.x.org/releases/current/doc/index.html
 https://gitlab.freedesktop.org/xorg/proto/xorgproto
+https://gitlab.freedesktop.org/xorg/proto/xcbproto
 
 # GLX
 https://registry.khronos.org/OpenGL/specs/gl/glxencode1.3.pdf

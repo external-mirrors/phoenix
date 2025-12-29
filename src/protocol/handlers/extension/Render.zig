@@ -15,6 +15,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 
     return switch (minor_opcode) {
         .query_version => query_version(request_context),
+        .query_pict_formats => query_pict_formats(request_context),
     };
 }
 
@@ -35,8 +36,101 @@ fn query_version(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn query_pict_formats(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.RenderQueryPictFormats, request_context.allocator);
+    defer req.deinit();
+    std.log.info("RenderQueryPictFormats request: {s}", .{x11.stringify_fmt(req.request)});
+
+    const screen_visual = request_context.server.get_visual_by_id(phx.Server.screen_true_color_visual_id) orelse unreachable;
+    const pict_format24: PictFormat = @enumFromInt(35);
+    const pict_format32: PictFormat = @enumFromInt(36);
+
+    var formats = [_]PictFormInfo{
+        .{
+            .id = pict_format24,
+            .type = .direct,
+            .depth = 24,
+            .direct = .{
+                .red_shift = 0,
+                .red_mask = 0xff,
+                .green_shift = 8,
+                .green_mask = 0xff,
+                .blue_shift = 16,
+                .blue_mask = 0xff,
+                .alpha_shift = 0,
+                .alpha_mask = 0,
+            },
+            .colormap = @enumFromInt(0),
+        },
+        .{
+            .id = pict_format32,
+            .type = .direct,
+            .depth = 32,
+            .direct = .{
+                .red_shift = 0,
+                .red_mask = 0xff,
+                .green_shift = 8,
+                .green_mask = 0xff,
+                .blue_shift = 16,
+                .blue_mask = 0xff,
+                .alpha_shift = 24,
+                .alpha_mask = 0xff,
+            },
+            .colormap = @enumFromInt(0),
+        },
+    };
+
+    var depth_visuals24 = [_]PictVisual{
+        .{
+            .visual = screen_visual.id,
+            .format = pict_format24,
+        },
+    };
+
+    var depth_visuals32 = [_]PictVisual{
+        .{
+            .visual = screen_visual.id,
+            .format = pict_format32,
+        },
+    };
+
+    var screen_depths = [_]PictDepth{
+        .{
+            .depth = 24,
+            .visuals = .{ .items = &depth_visuals24 },
+        },
+        .{
+            .depth = 32,
+            .visuals = .{ .items = &depth_visuals32 },
+        },
+    };
+
+    var screens = [_]PictScreen{
+        .{
+            .fallback = pict_format24,
+            .depths = .{ .items = &screen_depths },
+        },
+    };
+
+    var subpixels = [_]SubPixel{
+        .unknown,
+    };
+    const supports_subpixels = request_context.client.extension_versions.render.to_int() >= (phx.Version{ .major = 0, .minor = 6 }).to_int();
+
+    var rep = Reply.RenderQueryPictFormats{
+        .sequence_number = request_context.sequence_number,
+        .num_depths = 2, // Total number of depths the request (in screen depths)
+        .num_visuals = 2, // Total number of visuals the request (in screen depths)
+        .formats = .{ .items = &formats },
+        .screens = .{ .items = &screens },
+        .subpixels = .{ .items = if (supports_subpixels) &subpixels else &.{} },
+    };
+    try request_context.client.write_reply(&rep);
+}
+
 const MinorOpcode = enum(x11.Card8) {
     query_version = 0,
+    query_pict_formats = 1,
 };
 
 pub const PictFormat = enum(x11.Card32) {
@@ -123,24 +217,52 @@ pub const pict_op_maximum: x11.Card8 = 0x13;
 //pub const pict_op_blend_minimum: x11.Card8 = 0x30;
 //pub const pict_op_blend_maximum: x11.Card8 = 0x3e;
 
-pub const ChannelMask = struct {
-    shift: x11.Card16,
-    mask: x11.Card16,
-};
-
 pub const DirectFormat = struct {
-    red: ChannelMask,
-    green: ChannelMask,
-    blue: ChannelMask,
-    alpha: ChannelMask,
+    red_shift: x11.Card16,
+    red_mask: x11.Card16,
+    green_shift: x11.Card16,
+    green_mask: x11.Card16,
+    blue_shift: x11.Card16,
+    blue_mask: x11.Card16,
+    alpha_shift: x11.Card16,
+    alpha_mask: x11.Card16,
 };
 
 pub const PictFormInfo = struct {
     id: PictFormat,
     type: PictType,
-    depth: u8,
+    depth: x11.Card8,
+    pad1: x11.Card16 = 0,
     direct: DirectFormat,
     colormap: x11.ColormapId,
+};
+
+pub const PictVisual = struct {
+    visual: x11.VisualId,
+    format: PictFormat,
+};
+
+pub const PictDepth = struct {
+    depth: x11.Card8,
+    pad1: x11.Card8 = 0,
+    num_visuals: x11.Card16 = 0,
+    pad2: x11.Card32 = 0,
+    visuals: x11.ListOf(PictVisual, .{ .length_field = "num_visuals" }),
+};
+
+pub const PictScreen = struct {
+    num_depths: x11.Card32 = 0,
+    fallback: PictFormat,
+    depths: x11.ListOf(PictDepth, .{ .length_field = "num_depths" }),
+};
+
+pub const SubPixel = enum(x11.Card32) {
+    unknown = 0,
+    horizontal_rgb = 1,
+    horizontal_bgr = 2,
+    vertical_rgb = 3,
+    vertical_bgr = 4,
+    none = 5,
 };
 
 pub const Request = struct {
@@ -150,6 +272,12 @@ pub const Request = struct {
         length: x11.Card16,
         major_version: x11.Card32,
         minor_version: x11.Card32,
+    };
+
+    pub const RenderQueryPictFormats = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .query_pict_formats,
+        length: x11.Card16,
     };
 };
 
@@ -162,6 +290,22 @@ const Reply = struct {
         major_version: x11.Card32,
         minor_version: x11.Card32,
         pad2: [16]x11.Card8 = @splat(0),
+    };
+
+    pub const RenderQueryPictFormats = struct {
+        type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        num_formats: x11.Card32 = 0,
+        num_screens: x11.Card32 = 0,
+        num_depths: x11.Card32,
+        num_visuals: x11.Card32,
+        num_subpixels: x11.Card32 = 0, // New in version 0.6
+        pad2: x11.Card32 = 0,
+        formats: x11.ListOf(PictFormInfo, .{ .length_field = "num_formats" }),
+        screens: x11.ListOf(PictScreen, .{ .length_field = "num_screens" }),
+        subpixels: x11.ListOf(SubPixel, .{ .length_field = "num_subpixels" }),
     };
 };
 

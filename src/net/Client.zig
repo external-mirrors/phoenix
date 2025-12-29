@@ -24,13 +24,13 @@ listening_to_windows: std.ArrayList(*phx.Window),
 extension_versions: ExtensionVersions = .{
     .client_glx = .{ .major = 1, .minor = 0 },
     .server_glx = .{ .major = 1, .minor = 4 },
-    .dri3 = .{ .major = 1, .minor = 4 },
-    .present = .{ .major = 1, .minor = 4 },
-    .sync = .{ .major = 3, .minor = 1 },
-    .xfixes = .{ .major = 6, .minor = 1 },
+    .dri3 = .{ .major = 0, .minor = 0 },
+    .present = .{ .major = 0, .minor = 0 },
+    .sync = .{ .major = 0, .minor = 0 },
+    .xfixes = .{ .major = 0, .minor = 0 },
     // The server ignores the client requested version
     //.xkb = .{ .major = 1, .minor = 0 },
-    .render = .{ .major = 0, .minor = 11 },
+    .render = .{ .major = 0, .minor = 0 },
 },
 
 xkb_initialized: bool = false,

@@ -45,7 +45,7 @@ pub fn handle_client_connect(server: *phx.Server, client: *phx.Client, root_wind
     const screen_colormap = server.get_colormap(phx.Server.screen_true_color_colormap_id) orelse unreachable;
 
     var vendor_buf: [32]x11.Card8 = undefined;
-    const ven = std.fmt.bufPrint(&vendor_buf, "{s}", .{phx.Server.vendor}) catch unreachable;
+    const vendor_str = std.fmt.bufPrint(&vendor_buf, "{s}", .{phx.Server.vendor}) catch unreachable;
 
     var pixmap_formats = [_]PixmapFormat{
         .{
@@ -69,13 +69,13 @@ pub fn handle_client_connect(server: *phx.Server, client: *phx.Client, root_wind
 
     var depths = [_]Depth{
         .{
-            .depth = 32,
-            .visual_types = .{ .items = &visual_types },
-        },
-        .{
             .depth = 24,
             .visual_types = .{ .items = &visual_types },
         },
+        .{
+            .depth = 32,
+            .visual_types = .{ .items = &visual_types },
+        }
     };
 
     var screens = [_]Screen{
@@ -111,7 +111,7 @@ pub fn handle_client_connect(server: *phx.Server, client: *phx.Client, root_wind
         .bitmap_format_scanline_pad = 32,
         .min_keycode = server.input.get_min_keycode(),
         .max_keycode = server.input.get_max_keycode(),
-        .vendor = .{ .items = ven },
+        .vendor = .{ .items = vendor_str },
         .pixmap_formats = .{ .items = &pixmap_formats },
         .screens = .{ .items = &screens },
     };

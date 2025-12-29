@@ -20,7 +20,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 }
 
 fn query_version(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.RenderQueryVersion, request_context.allocator);
+    var req = try request_context.client.read_request(Request.QueryVersion, request_context.allocator);
     defer req.deinit();
     std.log.info("RenderQueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -28,7 +28,7 @@ fn query_version(request_context: phx.RequestContext) !void {
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
     request_context.client.extension_versions.render = phx.Version.min(server_version, client_version);
 
-    var rep = Reply.RenderQueryVersion{
+    var rep = Reply.QueryVersion{
         .sequence_number = request_context.sequence_number,
         .major_version = request_context.client.extension_versions.render.major,
         .minor_version = request_context.client.extension_versions.render.minor,
@@ -37,7 +37,7 @@ fn query_version(request_context: phx.RequestContext) !void {
 }
 
 fn query_pict_formats(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.RenderQueryPictFormats, request_context.allocator);
+    var req = try request_context.client.read_request(Request.QueryPictFormats, request_context.allocator);
     defer req.deinit();
     std.log.info("RenderQueryPictFormats request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -117,7 +117,7 @@ fn query_pict_formats(request_context: phx.RequestContext) !void {
     };
     const supports_subpixels = request_context.client.extension_versions.render.to_int() >= (phx.Version{ .major = 0, .minor = 6 }).to_int();
 
-    var rep = Reply.RenderQueryPictFormats{
+    var rep = Reply.QueryPictFormats{
         .sequence_number = request_context.sequence_number,
         .num_depths = 2, // Total number of depths the request (in screen depths)
         .num_visuals = 2, // Total number of visuals the request (in screen depths)
@@ -266,7 +266,7 @@ pub const SubPixel = enum(x11.Card32) {
 };
 
 pub const Request = struct {
-    pub const RenderQueryVersion = struct {
+    pub const QueryVersion = struct {
         major_opcode: phx.opcode.Major = .render,
         minor_opcode: MinorOpcode = .query_version,
         length: x11.Card16,
@@ -274,7 +274,7 @@ pub const Request = struct {
         minor_version: x11.Card32,
     };
 
-    pub const RenderQueryPictFormats = struct {
+    pub const QueryPictFormats = struct {
         major_opcode: phx.opcode.Major = .render,
         minor_opcode: MinorOpcode = .query_pict_formats,
         length: x11.Card16,
@@ -282,7 +282,7 @@ pub const Request = struct {
 };
 
 const Reply = struct {
-    pub const RenderQueryVersion = struct {
+    pub const QueryVersion = struct {
         type: phx.reply.ReplyType = .reply,
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,
@@ -292,7 +292,7 @@ const Reply = struct {
         pad2: [16]x11.Card8 = @splat(0),
     };
 
-    pub const RenderQueryPictFormats = struct {
+    pub const QueryPictFormats = struct {
         type: phx.reply.ReplyType = .reply,
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,

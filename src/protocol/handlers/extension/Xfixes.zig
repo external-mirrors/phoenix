@@ -20,7 +20,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 }
 
 fn query_version(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.XfixesQueryVersion, request_context.allocator);
+    var req = try request_context.client.read_request(Request.QueryVersion, request_context.allocator);
     defer req.deinit();
     std.log.info("XfixesQueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -28,7 +28,7 @@ fn query_version(request_context: phx.RequestContext) !void {
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
     request_context.client.extension_versions.xfixes = phx.Version.min(server_version, client_version);
 
-    var rep = Reply.XfixesQueryVersion{
+    var rep = Reply.QueryVersion{
         .sequence_number = request_context.sequence_number,
         .major_version = request_context.client.extension_versions.xfixes.major,
         .minor_version = request_context.client.extension_versions.xfixes.minor,
@@ -51,7 +51,7 @@ pub const Region = enum(x11.Card32) {
 };
 
 pub const Request = struct {
-    pub const XfixesQueryVersion = struct {
+    pub const QueryVersion = struct {
         major_opcode: phx.opcode.Major = .xfixes,
         minor_opcode: MinorOpcode = .query_version,
         length: x11.Card16,
@@ -61,7 +61,7 @@ pub const Request = struct {
 };
 
 const Reply = struct {
-    pub const XfixesQueryVersion = struct {
+    pub const QueryVersion = struct {
         type: phx.reply.ReplyType = .reply,
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,

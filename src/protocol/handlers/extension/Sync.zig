@@ -20,7 +20,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 }
 
 fn initialize(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.SyncInitialize, request_context.allocator);
+    var req = try request_context.client.read_request(Request.Initialize, request_context.allocator);
     defer req.deinit();
     std.log.info("SyncInitialize request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -28,7 +28,7 @@ fn initialize(request_context: phx.RequestContext) !void {
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
     request_context.client.extension_versions.sync = phx.Version.min(server_version, client_version);
 
-    var rep = Reply.SyncInitialize{
+    var rep = Reply.Initialize{
         .sequence_number = request_context.sequence_number,
         .major_version = @intCast(request_context.client.extension_versions.sync.major),
         .minor_version = @intCast(request_context.client.extension_versions.sync.minor),
@@ -37,7 +37,7 @@ fn initialize(request_context: phx.RequestContext) !void {
 }
 
 fn destroy_fence(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.SyncDestroyFence, request_context.allocator);
+    var req = try request_context.client.read_request(Request.DestroyFence, request_context.allocator);
     defer req.deinit();
     std.log.info("SyncDestroyFence request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -62,7 +62,7 @@ pub const FenceId = enum(x11.Card32) {
 };
 
 pub const Request = struct {
-    pub const SyncInitialize = struct {
+    pub const Initialize = struct {
         major_opcode: phx.opcode.Major = .sync,
         minor_opcode: MinorOpcode = .initialize,
         length: x11.Card16,
@@ -71,7 +71,7 @@ pub const Request = struct {
         pad1: x11.Card16,
     };
 
-    pub const SyncDestroyFence = struct {
+    pub const DestroyFence = struct {
         major_opcode: phx.opcode.Major = .sync,
         minor_opcode: MinorOpcode = .destroy_fence,
         length: x11.Card16,
@@ -80,7 +80,7 @@ pub const Request = struct {
 };
 
 const Reply = struct {
-    pub const SyncInitialize = struct {
+    pub const Initialize = struct {
         type: phx.reply.ReplyType = .reply,
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,

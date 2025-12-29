@@ -35,7 +35,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 }
 
 fn create_context(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.GlxCreateContext, request_context.allocator);
+    var req = try request_context.client.read_request(Request.CreateContext, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxCreateContext request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -79,7 +79,7 @@ fn create_context(request_context: phx.RequestContext) !void {
 }
 
 fn destroy_context(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.GlxDestroyContext, request_context.allocator);
+    var req = try request_context.client.read_request(Request.DestroyContext, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxDestroyContext request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -91,7 +91,7 @@ fn destroy_context(request_context: phx.RequestContext) !void {
 }
 
 fn is_direct(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.GlxIsDirect, request_context.allocator);
+    var req = try request_context.client.read_request(Request.IsDirect, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxIsDirect request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -100,7 +100,7 @@ fn is_direct(request_context: phx.RequestContext) !void {
         return request_context.client.write_error(request_context, phx.err.glx_error_bad_context, @intFromEnum(req.request.context));
     };
 
-    var rep = Reply.GlxIsDirect{
+    var rep = Reply.IsDirect{
         .sequence_number = request_context.sequence_number,
         .is_direct = glx_context.is_direct,
     };
@@ -108,7 +108,7 @@ fn is_direct(request_context: phx.RequestContext) !void {
 }
 
 fn query_version(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.GlxQueryVersion, request_context.allocator);
+    var req = try request_context.client.read_request(Request.QueryVersion, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxQueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -116,7 +116,7 @@ fn query_version(request_context: phx.RequestContext) !void {
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
     request_context.client.extension_versions.server_glx = phx.Version.min(server_version, client_version);
 
-    var rep = Reply.GlxQueryVersion{
+    var rep = Reply.QueryVersion{
         .sequence_number = request_context.sequence_number,
         .major_version = request_context.client.extension_versions.server_glx.major,
         .minor_version = request_context.client.extension_versions.server_glx.minor,
@@ -125,7 +125,7 @@ fn query_version(request_context: phx.RequestContext) !void {
 }
 
 fn get_visual_configs(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.GlxGetVisualConfigs, request_context.allocator);
+    var req = try request_context.client.read_request(Request.GetVisualConfigs, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxGetVisualConfigs request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -191,7 +191,7 @@ fn get_visual_configs(request_context: phx.RequestContext) !void {
         }
     }
 
-    var rep = Reply.GlxGetVisualConfigs{
+    var rep = Reply.GetVisualConfigs{
         .sequence_number = request_context.sequence_number,
         .properties = .{ .items = &visuals },
     };
@@ -199,7 +199,7 @@ fn get_visual_configs(request_context: phx.RequestContext) !void {
 }
 
 fn query_server_string(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.GlxQueryServerString, request_context.allocator);
+    var req = try request_context.client.read_request(Request.QueryServerString, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxQueryServerString request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -227,7 +227,7 @@ fn query_server_string(request_context: phx.RequestContext) !void {
         .vendor_names => result_string.appendSlice(glvnd ++ "\x00") catch unreachable,
     }
 
-    var rep = Reply.GlxQueryServerString{
+    var rep = Reply.QueryServerString{
         .sequence_number = request_context.sequence_number,
         .string = .{ .items = result_string.items },
     };
@@ -235,7 +235,7 @@ fn query_server_string(request_context: phx.RequestContext) !void {
 }
 
 fn get_fb_configs(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.GlxGetFbConfigs, request_context.allocator);
+    var req = try request_context.client.read_request(Request.GetFbConfigs, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxGetFbConfigs request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -319,7 +319,7 @@ fn get_fb_configs(request_context: phx.RequestContext) !void {
         }
     }
 
-    var rep = Reply.GlxGetFbConfigs{
+    var rep = Reply.GetFbConfigs{
         .sequence_number = request_context.sequence_number,
         .num_fbconfigs = num_fbconfigs,
         .num_properties = num_properties,
@@ -329,7 +329,7 @@ fn get_fb_configs(request_context: phx.RequestContext) !void {
 }
 
 fn get_drawable_attributes(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.GlxGetDrawableAttributes, request_context.allocator);
+    var req = try request_context.client.read_request(Request.GetDrawableAttributes, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxGetDrawableAttributes request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -355,7 +355,7 @@ fn get_drawable_attributes(request_context: phx.RequestContext) !void {
         .{ .type = .drawable_type, .value = GLX_WINDOW_BIT },
     };
 
-    var rep = Reply.GlxGetDrawableAttributes{
+    var rep = Reply.GetDrawableAttributes{
         .sequence_number = request_context.sequence_number,
         .properties = .{ .items = &properties },
     };
@@ -363,7 +363,7 @@ fn get_drawable_attributes(request_context: phx.RequestContext) !void {
 }
 
 fn set_client_info_arb(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.GlxSetClientInfoArb, request_context.allocator);
+    var req = try request_context.client.read_request(Request.SetClientInfoArb, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxSetClientInfoArb request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -374,7 +374,7 @@ fn set_client_info_arb(request_context: phx.RequestContext) !void {
 }
 
 fn set_client_info2_arb(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.GlxSetClientInfo2Arb, request_context.allocator);
+    var req = try request_context.client.read_request(Request.SetClientInfo2Arb, request_context.allocator);
     defer req.deinit();
     std.log.info("GlxSetClientInfo2Arb request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -564,7 +564,7 @@ fn null_term_to_slice(str: []const u8) []const u8 {
 }
 
 pub const Request = struct {
-    pub const GlxCreateContext = struct {
+    pub const CreateContext = struct {
         major_opcode: phx.opcode.Major = .glx,
         minor_opcode: MinorOpcode = .create_context,
         length: x11.Card16,
@@ -577,21 +577,21 @@ pub const Request = struct {
         pad2: x11.Card16,
     };
 
-    pub const GlxDestroyContext = struct {
+    pub const DestroyContext = struct {
         major_opcode: phx.opcode.Major = .glx,
         minor_opcode: MinorOpcode = .destroy_context,
         length: x11.Card16,
         context: ContextId,
     };
 
-    pub const GlxIsDirect = struct {
+    pub const IsDirect = struct {
         major_opcode: phx.opcode.Major = .glx,
         minor_opcode: MinorOpcode = .is_direct,
         length: x11.Card16,
         context: ContextId,
     };
 
-    pub const GlxQueryVersion = struct {
+    pub const QueryVersion = struct {
         major_opcode: phx.opcode.Major = .glx,
         minor_opcode: MinorOpcode = .query_version,
         length: x11.Card16,
@@ -599,14 +599,14 @@ pub const Request = struct {
         minor_version: x11.Card32,
     };
 
-    pub const GlxGetVisualConfigs = struct {
+    pub const GetVisualConfigs = struct {
         major_opcode: phx.opcode.Major = .glx,
         minor_opcode: MinorOpcode = .get_visual_configs,
         length: x11.Card16,
         screen: x11.ScreenId,
     };
 
-    pub const GlxQueryServerString = struct {
+    pub const QueryServerString = struct {
         major_opcode: phx.opcode.Major = .glx,
         minor_opcode: MinorOpcode = .query_server_string,
         length: x11.Card16,
@@ -619,21 +619,21 @@ pub const Request = struct {
         },
     };
 
-    pub const GlxGetFbConfigs = struct {
+    pub const GetFbConfigs = struct {
         major_opcode: phx.opcode.Major = .glx,
         minor_opcode: MinorOpcode = .get_fb_configs,
         length: x11.Card16,
         screen: x11.ScreenId,
     };
 
-    pub const GlxGetDrawableAttributes = struct {
+    pub const GetDrawableAttributes = struct {
         major_opcode: phx.opcode.Major = .glx,
         minor_opcode: MinorOpcode = .get_drawable_attributes,
         length: x11.Card16,
         drawable: DrawableId,
     };
 
-    pub const GlxSetClientInfoArb = struct {
+    pub const SetClientInfoArb = struct {
         major_opcode: phx.opcode.Major = .glx,
         minor_opcode: MinorOpcode = .set_client_info_arb,
         length: x11.Card16,
@@ -649,7 +649,7 @@ pub const Request = struct {
         pad2: x11.AlignmentPadding = .{},
     };
 
-    pub const GlxSetClientInfo2Arb = struct {
+    pub const SetClientInfo2Arb = struct {
         major_opcode: phx.opcode.Major = .glx,
         minor_opcode: MinorOpcode = .set_client_info2_arb,
         length: x11.Card16,
@@ -667,7 +667,7 @@ pub const Request = struct {
 };
 
 pub const Reply = struct {
-    pub const GlxIsDirect = struct {
+    pub const IsDirect = struct {
         type: phx.reply.ReplyType = .reply,
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,
@@ -676,7 +676,7 @@ pub const Reply = struct {
         pad2: [23]x11.Card8 = @splat(0),
     };
 
-    pub const GlxQueryVersion = struct {
+    pub const QueryVersion = struct {
         type: phx.reply.ReplyType = .reply,
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,
@@ -686,7 +686,7 @@ pub const Reply = struct {
         pad2: [16]x11.Card8 = @splat(0),
     };
 
-    pub const GlxGetVisualConfigs = struct {
+    pub const GetVisualConfigs = struct {
         type: phx.reply.ReplyType = .reply,
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,
@@ -697,7 +697,7 @@ pub const Reply = struct {
         properties: x11.ListOf(VisualProperties, .{ .length_field = "num_visuals" }),
     };
 
-    pub const GlxQueryServerString = struct {
+    pub const QueryServerString = struct {
         type: phx.reply.ReplyType = .reply,
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,
@@ -709,7 +709,7 @@ pub const Reply = struct {
         pad4: x11.AlignmentPadding = .{},
     };
 
-    pub const GlxGetFbConfigs = struct {
+    pub const GetFbConfigs = struct {
         type: phx.reply.ReplyType = .reply,
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,
@@ -720,7 +720,7 @@ pub const Reply = struct {
         properties: x11.ListOf(FbAttributePair, .{ .length_field = null }),
     };
 
-    pub const GlxGetDrawableAttributes = struct {
+    pub const GetDrawableAttributes = struct {
         type: phx.reply.ReplyType = .reply,
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,

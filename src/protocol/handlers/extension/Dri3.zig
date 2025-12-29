@@ -25,7 +25,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 }
 
 fn query_version(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.Dri3QueryExtension, request_context.allocator);
+    var req = try request_context.client.read_request(Request.QueryExtension, request_context.allocator);
     defer req.deinit();
     std.log.info("DRI3QueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -33,7 +33,7 @@ fn query_version(request_context: phx.RequestContext) !void {
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
     request_context.client.extension_versions.dri3 = phx.Version.min(server_version, client_version);
 
-    var rep = Reply.Dri3QueryExtension{
+    var rep = Reply.QueryExtension{
         .sequence_number = request_context.sequence_number,
         .major_version = request_context.client.extension_versions.dri3.major,
         .minor_version = request_context.client.extension_versions.dri3.minor,
@@ -74,7 +74,7 @@ fn validate_drm_auth(card_fd: std.posix.fd_t, render_fd: std.posix.fd_t) bool {
 }
 
 fn open(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.Dri3Open, request_context.allocator);
+    var req = try request_context.client.read_request(Request.Open, request_context.allocator);
     defer req.deinit();
     std.log.info("Dri3Open request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -95,7 +95,7 @@ fn open(request_context: phx.RequestContext) !void {
     if (!validate_drm_auth(card_fd, render_fd))
         return error.DrmAuthFailed;
 
-    var open_reply = Reply.Dri3Open{
+    var open_reply = Reply.Open{
         .sequence_number = request_context.sequence_number,
     };
     try request_context.client.write_reply_with_fds(&open_reply, &.{
@@ -107,7 +107,7 @@ fn open(request_context: phx.RequestContext) !void {
 }
 
 fn pixmap_from_buffer(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.Dri3PixmapFromBuffer, request_context.allocator);
+    var req = try request_context.client.read_request(Request.PixmapFromBuffer, request_context.allocator);
     defer req.deinit();
     std.log.info("DRI3PixmapFromBuffer request: {s}, fd: {d}", .{ x11.stringify_fmt(req.request), request_context.client.get_read_fds() });
 
@@ -159,7 +159,7 @@ fn pixmap_from_buffer(request_context: phx.RequestContext) !void {
 }
 
 fn fence_from_fd(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.Dri3FenceFromFd, request_context.allocator);
+    var req = try request_context.client.read_request(Request.FenceFromFd, request_context.allocator);
     defer req.deinit();
     std.log.info("Dri3FenceFromFd request: {s}, fd: {d}", .{ x11.stringify_fmt(req.request), request_context.client.get_read_fds() });
 
@@ -185,7 +185,7 @@ fn fence_from_fd(request_context: phx.RequestContext) !void {
 }
 
 fn get_supported_modifiers(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.Dri3GetSupportedModifiers, request_context.allocator);
+    var req = try request_context.client.read_request(Request.GetSupportedModifiers, request_context.allocator);
     defer req.deinit();
     std.log.info("Dri3GetSupportedModifiers request: {s}", .{x11.stringify_fmt(req.request)});
 
@@ -203,7 +203,7 @@ fn get_supported_modifiers(request_context: phx.RequestContext) !void {
 
     std.log.info("modifiers: {any}", .{modifiers});
 
-    var rep = Reply.Dri3GetSupportedModifiers{
+    var rep = Reply.GetSupportedModifiers{
         .sequence_number = request_context.sequence_number,
         .num_window_modifiers = @intCast(modifiers.len),
         .num_screen_modifiers = @intCast(modifiers.len),
@@ -214,7 +214,7 @@ fn get_supported_modifiers(request_context: phx.RequestContext) !void {
 }
 
 fn pixmap_from_buffers(request_context: phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.Dri3PixmapFromBuffers, request_context.allocator);
+    var req = try request_context.client.read_request(Request.PixmapFromBuffers, request_context.allocator);
     defer req.deinit();
     std.log.info("Dri3PixmapFromBuffers request: {s}, fd: {d}", .{ x11.stringify_fmt(req.request), request_context.client.get_read_fds() });
 
@@ -307,7 +307,7 @@ pub const Provider = enum(x11.Card32) {
 };
 
 pub const Request = struct {
-    pub const Dri3QueryExtension = struct {
+    pub const QueryExtension = struct {
         major_opcode: phx.opcode.Major = .dri3,
         minor_opcode: MinorOpcode = .query_version,
         length: x11.Card16,
@@ -315,7 +315,7 @@ pub const Request = struct {
         minor_version: x11.Card32,
     };
 
-    pub const Dri3Open = struct {
+    pub const Open = struct {
         major_opcode: phx.opcode.Major = .dri3,
         minor_opcode: MinorOpcode = .open,
         length: x11.Card16,
@@ -323,7 +323,7 @@ pub const Request = struct {
         provider: Provider,
     };
 
-    pub const Dri3PixmapFromBuffer = struct {
+    pub const PixmapFromBuffer = struct {
         major_opcode: phx.opcode.Major = .dri3,
         minor_opcode: MinorOpcode = .pixmap_from_buffer,
         length: x11.Card16,
@@ -339,7 +339,7 @@ pub const Request = struct {
         // buffer: Fd,
     };
 
-    pub const Dri3FenceFromFd = struct {
+    pub const FenceFromFd = struct {
         major_opcode: phx.opcode.Major = .dri3,
         minor_opcode: MinorOpcode = .fence_from_fd,
         length: x11.Card16,
@@ -352,7 +352,7 @@ pub const Request = struct {
         // fence_fd: Fd,
     };
 
-    pub const Dri3GetSupportedModifiers = struct {
+    pub const GetSupportedModifiers = struct {
         major_opcode: phx.opcode.Major = .dri3,
         minor_opcode: MinorOpcode = .get_supported_modifiers,
         length: x11.Card16,
@@ -362,7 +362,7 @@ pub const Request = struct {
         pad1: x11.Card16,
     };
 
-    pub const Dri3PixmapFromBuffers = struct {
+    pub const PixmapFromBuffers = struct {
         major_opcode: phx.opcode.Major = .dri3,
         minor_opcode: MinorOpcode = .pixmap_from_buffers,
         length: x11.Card16,
@@ -391,7 +391,7 @@ pub const Request = struct {
 };
 
 const Reply = struct {
-    pub const Dri3QueryExtension = struct {
+    pub const QueryExtension = struct {
         type: phx.reply.ReplyType = .reply,
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,
@@ -401,7 +401,7 @@ const Reply = struct {
         pad2: [16]x11.Card8 = @splat(0),
     };
 
-    pub const Dri3Open = struct {
+    pub const Open = struct {
         type: phx.reply.ReplyType = .reply,
         nfd: x11.Card8 = 1,
         sequence_number: x11.Card16,
@@ -411,7 +411,7 @@ const Reply = struct {
         // device: Fd,
     };
 
-    pub const Dri3GetSupportedModifiers = struct {
+    pub const GetSupportedModifiers = struct {
         type: phx.reply.ReplyType = .reply,
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,

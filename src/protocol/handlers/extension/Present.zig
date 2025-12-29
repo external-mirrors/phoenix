@@ -5,7 +5,7 @@ const Randr = @import("Randr.zig");
 const x11 = phx.x11;
 
 pub fn handle_request(request_context: phx.RequestContext) !void {
-    std.log.info("Handling  request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
+    std.log.info("Handling present request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
     const minor_opcode = std.meta.intToEnum(MinorOpcode, request_context.header.minor_opcode) catch |err| switch (err) {

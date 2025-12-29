@@ -119,8 +119,8 @@ fn query_pict_formats(request_context: phx.RequestContext) !void {
 
     var rep = Reply.QueryPictFormats{
         .sequence_number = request_context.sequence_number,
-        .num_depths = 2, // Total number of depths the request (in screen depths)
-        .num_visuals = 2, // Total number of visuals the request (in screen depths)
+        .num_depths = 2, // Total number of depths in the request (in screen depths)
+        .num_visuals = 2, // Total number of visuals in the request (in screen depths)
         .formats = .{ .items = &formats },
         .screens = .{ .items = &screens },
         .subpixels = .{ .items = if (supports_subpixels) &subpixels else &.{} },

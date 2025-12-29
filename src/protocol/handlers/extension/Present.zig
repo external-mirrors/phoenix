@@ -295,7 +295,7 @@ const Reply = struct {
 
 const Event = struct {
     pub const CompleteNotify = extern struct {
-        code: phx.event.EventCode = .xge,
+        code: phx.event.EventCode = .generic_event_extension,
         _extension_opcode: phx.opcode.Major = .present,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
@@ -326,7 +326,7 @@ const Event = struct {
     };
 
     pub const IdleNotify = extern struct {
-        code: phx.event.EventCode = .xge,
+        code: phx.event.EventCode = .generic_event_extension,
         _extension_opcode: phx.opcode.Major = phx.opcode.Major.present,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply

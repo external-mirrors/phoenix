@@ -32,8 +32,10 @@ pub const Major = enum(x11.Card8) {
     xkb = 133,
     xwayland = 134,
     render = 135,
+    randr = 136,
+    generic_event_extension = 137,
 };
 
 pub const core_opcode_max: x11.Card8 = 127;
 pub const extension_opcode_min: x11.Card8 = 128;
-pub const extension_opcode_max: x11.Card8 = 135;
+pub const extension_opcode_max: x11.Card8 = 137;

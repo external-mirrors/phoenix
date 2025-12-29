@@ -696,9 +696,15 @@ fn query_extension(request_context: phx.RequestContext) !void {
     } else if (std.mem.eql(u8, req.request.name.items, "RENDER")) {
         rep.present = true;
         rep.major_opcode = @intFromEnum(phx.opcode.Major.render);
+    } else if (std.mem.eql(u8, req.request.name.items, "RANDR")) {
+        rep.present = true;
+        rep.major_opcode = @intFromEnum(phx.opcode.Major.randr);
+    } else if (std.mem.eql(u8, req.request.name.items, "Generic Event Extension")) {
+        rep.present = true;
+        rep.major_opcode = @intFromEnum(phx.opcode.Major.generic_event_extension);
     } else if (std.mem.eql(u8, req.request.name.items, "XWAYLAND")) {
         rep.present = false;
-        rep.major_opcode = @intFromEnum(phx.opcode.Major.render);
+        rep.major_opcode = @intFromEnum(phx.opcode.Major.xwayland);
     } else {
         std.log.err("QueryExtension: unsupported extension: {s}", .{req.request.name.items});
     }

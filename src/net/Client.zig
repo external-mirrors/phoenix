@@ -31,6 +31,8 @@ extension_versions: ExtensionVersions = .{
     // The server ignores the client requested version
     //.xkb = .{ .major = 1, .minor = 0 },
     .render = .{ .major = 0, .minor = 0 },
+    .randr = .{ .major = 0, .minor = 0 },
+    .generic_event = .{ .major = 0, .minor = 0 },
 },
 
 xkb_initialized: bool = false,
@@ -341,4 +343,6 @@ const ExtensionVersions = struct {
     xfixes: phx.Version,
     //xkb: phx.Version,
     render: phx.Version,
+    randr: phx.Version,
+    generic_event: phx.Version,
 };

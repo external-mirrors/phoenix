@@ -1,5 +1,6 @@
 const std = @import("std");
 const phx = @import("../../phoenix.zig");
+const x11 = phx.x11;
 
 pub fn handle_request(request_context: phx.RequestContext) !void {
     std.log.info("Handling extension request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
@@ -11,7 +12,10 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .sync => phx.Sync.handle_request(request_context),
         .glx => phx.Glx.handle_request(request_context),
         .xkb => phx.Xkb.handle_request(request_context),
+        .xwayland => phx.Xwayland.handle_request(request_context),
         .render => phx.Render.handle_request(request_context),
+        .randr => phx.Randr.handle_request(request_context),
+        .generic_event_extension => phx.GenericEvent.handle_request(request_context),
         else => unreachable,
     };
 }

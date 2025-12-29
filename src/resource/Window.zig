@@ -261,7 +261,7 @@ inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, eve
         .map_notify => event_mask.structure_notify,
         .configure_notify => event_mask.structure_notify,
         .property_notify => event_mask.property_change,
-        .xge => false, // TODO:
+        .generic_event_extension => false, // TODO:
     };
 }
 
@@ -327,7 +327,7 @@ pub fn write_extension_event_to_event_listeners(self: *const Self, ev: anytype) 
             // TODO: What should be done if this happens? disconnect the client?
             std.log.err(
                 "Failed to write (buffer) extension event {d} to client {d}, error: {s}",
-                .{ @intFromEnum(phx.event.EventCode.xge), event_listener.client.connection.stream.handle, @errorName(err) },
+                .{ @intFromEnum(phx.event.EventCode.generic_event_extension), event_listener.client.connection.stream.handle, @errorName(err) },
             );
             continue;
         };
@@ -336,7 +336,7 @@ pub fn write_extension_event_to_event_listeners(self: *const Self, ev: anytype) 
             // TODO: What should be done if this happens? disconnect the client?
             std.log.err(
                 "Failed to write (flush) extension event {d} to client {d}, error: {s}",
-                .{ @intFromEnum(phx.event.EventCode.xge), event_listener.client.connection.stream.handle, @errorName(err) },
+                .{ @intFromEnum(phx.event.EventCode.generic_event_extension), event_listener.client.connection.stream.handle, @errorName(err) },
             );
             continue;
         };

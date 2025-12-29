@@ -10,9 +10,9 @@ pub const EventCode = enum(x11.Card8) {
     map_notify = 19,
     configure_notify = 22,
     property_notify = 28,
-    // TODO: Clients need support for this (Generic Event Extension), but clients like mesa with opengl graphics except present events
+    // TODO: Clients need support for this (Generic Event Extension), but clients like mesa with opengl graphics expect present events
     // with this even when they dont tell the server it supports this
-    xge = 35,
+    generic_event_extension = 35,
 };
 
 pub const AnyEvent = extern struct {

@@ -32,7 +32,9 @@ pub const Xfixes = @import("protocol/handlers/extension/Xfixes.zig");
 pub const Sync = @import("protocol/handlers/extension/Sync.zig");
 pub const Glx = @import("protocol/handlers/extension/Glx.zig");
 pub const Xkb = @import("protocol/handlers/extension/Xkb.zig");
+pub const Xwayland = @import("protocol/handlers/extension/Xwayland.zig");
 pub const Render = @import("protocol/handlers/extension/Render.zig");
+pub const GenericEvent = @import("protocol/handlers/extension/GenericEvent.zig");
 
 pub const Visual = @import("resource/Visual.zig");
 pub const Colormap = @import("resource/Colormap.zig");

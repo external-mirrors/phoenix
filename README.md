@@ -110,7 +110,7 @@ This software is licensed under GPL-3.0-only, see the LICENSE file for more info
 Despite popular belief, writing a simple X server that works in practice for a wide range of applications is easier to do than it is to write a Wayland compositor (+ related software).\
 Not many people have attempted to write an X server from scratch or have proper understanding of the protocol, but if you do you can see that it's quite simple.
 
-### Why write new X11 server instead of a Wayland compositor?
+### Why write a new X11 server instead of a Wayland compositor?
 To keep it short: my applications can't ever work properly on Wayland, mainly [GPU Screen Recorder UI](https://git.dec05eba.com/gpu-screen-recorder-ui/about/). Many features of [GPU Screen Recorder UI](https://git.dec05eba.com/gpu-screen-recorder-ui/about/) don't work properly on Wayland.\
 If it were to use the Wayland protocol only then it wouldn't work at all (and can't ever work). It has to rely on Xwayland and even in that case it faces many issues and has to rely on undefined behaviors in each Wayland compositor, which may or may not work.\
 Some things are implemented by bypassing the Wayland compositor and interfacing the Linux kernel directly with root access instead.\

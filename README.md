@@ -138,6 +138,8 @@ On X11 you have simple but powerful constructs that can be used for a wide range
 the Wayland compositor developers had in mind (a vendored experience), specifically for their Wayland compositor. No more no less.\
 This is also the reason why it takes far longer time for a decision to be made in the Wayland protocol than the X11 protocol (several years vs 2 months) and the Wayland solution ends up being less flexible and often times up 1000 times more complex for applications to implement.
 
+Almost all of the issues people have had with the Xorg server are not issues in X11 protocol, but the Xorg server. Some others (such as "security") are minor issues that are easily solvable without requiring any changes to the X11 protocol.
+
 There are many more issues with Wayland that are not mentioned here.
 
 ### Doesn't X11 have fundamental issues with tearing/multiple monitors/hdr/security/etc that can't be fixed?

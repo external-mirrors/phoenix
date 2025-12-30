@@ -52,3 +52,4 @@ Replace fifo with the new io interface.
 Maybe move read/write x11 network transfer to another thread.
 Add option for client windows to advertise that they should be in the overlay plane. The server should set a property on the window to indicate which plane it is actually on.
 Create InputX11 and use that when running nested.
+Go through all events defined in the protocol (core and extensions) and check if they are called (called at all and with the right arguments).

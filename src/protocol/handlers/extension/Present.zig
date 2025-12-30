@@ -46,18 +46,18 @@ fn present_pixmap(request_context: phx.RequestContext) !void {
 
     for (req.request.notifies.items) |notify| {
         _ = request_context.server.get_window(notify.window) orelse {
-            std.log.err("Received invalid notify window {d} in Pixmap request", .{notify.window});
+            std.log.err("Received invalid notify window {d} in PresentPixmap request", .{notify.window});
             return request_context.client.write_error(request_context, .window, @intFromEnum(notify.window));
         };
     }
 
     const window = request_context.server.get_window(req.request.window) orelse {
-        std.log.err("Received invalid window {d} in Pixmap request", .{req.request.window});
+        std.log.err("Received invalid window {d} in PresentPixmap request", .{req.request.window});
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
 
     const pixmap = request_context.server.get_pixmap(req.request.pixmap) orelse {
-        std.log.err("Received invalid pixmap {d} in Pixmap request", .{req.request.pixmap});
+        std.log.err("Received invalid pixmap {d} in PresentPixmap request", .{req.request.pixmap});
         return request_context.client.write_error(request_context, .pixmap, @intFromEnum(req.request.pixmap));
     };
 
@@ -125,14 +125,14 @@ fn select_input(request_context: phx.RequestContext) !void {
 
         if (req.request.event_mask.is_empty()) {
             request_context.client.remove_resource(event_id);
-            resource.event_context.window.remove_extension_event_listener(event_id);
+            resource.event_context.window.remove_extension_event_listener(request_context.client, event_id, .present);
             return;
         }
 
-        resource.event_context.window.modify_extension_event_listener(event_id, @bitCast(req.request.event_mask));
+        resource.event_context.window.modify_extension_event_listener(request_context.client, event_id, .present, @bitCast(req.request.event_mask));
     } else {
         const window = request_context.server.get_window(req.request.window) orelse {
-            std.log.err("Received invalid window {d} in SelectInput request", .{req.request.window});
+            std.log.err("Received invalid window {d} in PresentSelectInput request", .{req.request.window});
             return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
         };
 
@@ -143,11 +143,11 @@ fn select_input(request_context: phx.RequestContext) !void {
 
         request_context.client.add_event_context(event_context) catch |err| switch (err) {
             error.ResourceNotOwnedByClient => {
-                std.log.err("Received event id {d} in SelectInput request which doesn't belong to the client", .{req.request.event_id});
+                std.log.err("Received event id {d} in PresentSelectInput request which doesn't belong to the client", .{req.request.event_id});
                 return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.event_id));
             },
             error.ResourceAlreadyExists => {
-                std.log.err("Received event id {d} in SelectInput request which already exists", .{req.request.event_id});
+                std.log.err("Received event id {d} in PresentSelectInput request which already exists", .{req.request.event_id});
                 return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.event_id));
             },
             error.OutOfMemory => {

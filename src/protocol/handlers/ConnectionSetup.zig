@@ -49,6 +49,11 @@ pub fn handle_client_connect(server: *phx.Server, client: *phx.Client, root_wind
 
     var pixmap_formats = [_]PixmapFormat{
         .{
+            .depth = 24,
+            .bits_per_pixel = 32,
+            .scanline_pad = 32,
+        },
+        .{
             .depth = 32,
             .bits_per_pixel = 32,
             .scanline_pad = 32,
@@ -75,7 +80,7 @@ pub fn handle_client_connect(server: *phx.Server, client: *phx.Client, root_wind
         .{
             .depth = 32,
             .visual_types = .{ .items = &visual_types },
-        }
+        },
     };
 
     var screens = [_]Screen{

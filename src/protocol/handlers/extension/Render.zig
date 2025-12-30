@@ -115,7 +115,9 @@ fn query_pict_formats(request_context: phx.RequestContext) !void {
     var subpixels = [_]SubPixel{
         .unknown,
     };
-    const supports_subpixels = request_context.client.extension_versions.render.to_int() >= (phx.Version{ .major = 0, .minor = 6 }).to_int();
+
+    const version_0_6 = (phx.Version{ .major = 0, .minor = 6 }).to_int();
+    const supports_subpixels = request_context.client.extension_versions.render.to_int() >= version_0_6;
 
     var rep = Reply.QueryPictFormats{
         .sequence_number = request_context.sequence_number,

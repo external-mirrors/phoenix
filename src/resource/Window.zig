@@ -265,12 +265,12 @@ inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, eve
     };
 }
 
-/// It's invalid to add multiple event listeners with the same event id.
+/// It's invalid to add multiple event listeners with the same event id, except if the event id is 0 in which case the client + extension major opcode combination has to be unique
 pub fn add_extension_event_listener(self: *Self, client: *phx.Client, event_id: x11.ResourceId, extension_major_opcode: phx.opcode.Major, event_mask: u32) !void {
     if (event_mask == 0)
         return;
 
-    std.debug.assert(self.get_extension_event_listener_index(event_id) == null);
+    std.debug.assert(self.get_extension_event_listener_index(client, event_id, extension_major_opcode) == null);
 
     try self.extension_event_listeners.append(.{
         .client = client,
@@ -283,20 +283,28 @@ pub fn add_extension_event_listener(self: *Self, client: *phx.Client, event_id: 
     try client.register_as_window_listener(self);
 }
 
-pub fn modify_extension_event_listener(self: *Self, event_id: x11.ResourceId, event_mask: u32) void {
-    if (self.get_extension_event_listener_index(event_id)) |index|
+pub fn modify_extension_event_listener(self: *Self, client: *const phx.Client, event_id: x11.ResourceId, extension_major_opcode: phx.opcode.Major, event_mask: u32) void {
+    if (self.get_extension_event_listener_index(client, event_id, extension_major_opcode)) |index|
         self.extension_event_listeners.items[index].event_mask = event_mask;
 }
 
-pub fn remove_extension_event_listener(self: *Self, event_id: x11.ResourceId) void {
-    if (self.get_extension_event_listener_index(event_id)) |index|
+pub fn remove_extension_event_listener(self: *Self, client: *const phx.Client, event_id: x11.ResourceId, extension_major_opcode: phx.opcode.Major) void {
+    if (self.get_extension_event_listener_index(client, event_id, extension_major_opcode)) |index|
         _ = self.extension_event_listeners.orderedRemove(index);
 }
 
-fn get_extension_event_listener_index(self: *Self, event_id: x11.ResourceId) ?usize {
-    for (self.extension_event_listeners.items, 0..) |*event_listener, i| {
-        if (event_listener.event_id == event_id)
-            return i;
+pub fn get_extension_event_listener_index(self: *Self, client: *const phx.Client, event_id: x11.ResourceId, extension_major_opcode: phx.opcode.Major) ?usize {
+    const event_id_none: x11.ResourceId = @enumFromInt(0);
+    if (event_id == event_id_none) {
+        for (self.extension_event_listeners.items, 0..) |*event_listener, i| {
+            if (event_listener.event_id == event_id_none and event_listener.client == client and event_listener.extension_major_opcode == extension_major_opcode)
+                return i;
+        }
+    } else {
+        for (self.extension_event_listeners.items, 0..) |*event_listener, i| {
+            if (event_listener.event_id == event_id)
+                return i;
+        }
     }
     return null;
 }

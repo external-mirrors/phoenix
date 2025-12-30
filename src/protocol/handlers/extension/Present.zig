@@ -147,7 +147,7 @@ fn select_input(request_context: phx.RequestContext) !void {
                 return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.event_id));
             },
             error.ResourceAlreadyExists => {
-                std.log.err("Received event id {d} in CreateWindow request which already exists", .{req.request.event_id});
+                std.log.err("Received event id {d} in SelectInput request which already exists", .{req.request.event_id});
                 return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.event_id));
             },
             error.OutOfMemory => {

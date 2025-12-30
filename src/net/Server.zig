@@ -16,6 +16,8 @@ const screen_true_color_colormap = phx.Colormap{
     .visual = &screen_true_color_visual,
 };
 
+const unix_domain_socket_path = "/tmp/.X11-unix/X1";
+
 screen: x11.ScreenId = @enumFromInt(0),
 
 allocator: std.mem.Allocator,
@@ -39,7 +41,6 @@ started_time_seconds: f64,
 pub fn init(allocator: std.mem.Allocator) !Self {
     const started_time_seconds = clock_get_monotonic_seconds();
 
-    const unix_domain_socket_path = "/tmp/.X11-unix/X1";
     const address = try std.net.Address.initUnix(unix_domain_socket_path);
     std.posix.unlink(unix_domain_socket_path) catch {}; // TODO: Dont just remove the file? what if it's used by something else. I guess they will have a reference to it so it wont get deleted?
     const server = try address.listen(.{ .force_nonblocking = true });
@@ -204,6 +205,8 @@ fn create_root_window(root_client: *phx.Client, allocator: std.mem.Allocator) !*
 }
 
 pub fn run(self: *Self) void {
+    std.log.defaultLog(.info, .default, "Phoenix is now running at {s}. You can connect to it by setting the DISPLAY environment variable to :1, for example \"DISPLAY=:1 glxgears\"", .{unix_domain_socket_path});
+
     const poll_timeout_ms: u32 = 500;
     var running = true;
 

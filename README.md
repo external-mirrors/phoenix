@@ -123,7 +123,7 @@ My own application [GPU Screen Recorder GTK](https://git.dec05eba.com/gpu-screen
 This is not an issue in X11 as the X11 doesn't have a protocol for "global shortcuts", it instead allows application to freely listen to keyboard inputs and implement it however they want (note that this can be done while preventing keyloggers).\
 X11 works in this case because it's simpler (which is a caused by a difference in philosophy, as explained below). Global shortcuts on Wayland is complex enough that it ended up crashing both Hyprland and Gnome desktop portals when using it.\
 I ended up creating a [pull request](https://github.com/hyprwm/xdg-desktop-portal-hyprland/pull/241) to fix that crash in the Hyprland desktop portal.\
-This is just one issue with Wayland that GPU Screen Recorder UI has. There are many more, which are fundamental issues that are never be fixable.
+This is just one issue with Wayland that GPU Screen Recorder UI has. There are many more, which are fundamental issues that are never fixable.
 
 Every developer that has tried to write applications that try to do anything usual has experienced these problems on Wayland.
 
@@ -137,7 +137,7 @@ are actually KWin (KDE Plasma), Wlroots (Sway, River, etc) or Mutter (Gnome) spe
 The main issue with Wayland is not a technical one but in it's philosophy. X11 is "mechanism over policy" while Wayland is "policy over mechanism".\
 On X11 you have simple but powerful constructs that can be used for a wide range of things while on Wayland each feature is designed specifically to what
 the Wayland compositor developers had in mind (a vendored experience), specifically for their Wayland compositor. No more no less.\
-This is also the reason why it takes far longer time for a decision to be made in the Wayland protocol than in the X11 protocol (several years vs 2 months) and the Wayland solution (or desktop portal solution) ends up being less flexible and often times up 1000 times more complex for applications to implement.
+This is also the reason why it takes far longer time for a decision to be made in the Wayland protocol than in the X11 protocol (several years vs 2 months) and the Wayland solution (or desktop portal solution) ends up being less flexible and often times up 1000 times more complex for applications (and the Wayland compositor) to implement.
 
 Almost all of the issues people have had with the Xorg server are not issues in X11 protocol, but the Xorg server. Some others (such as "security") are minor issues that are easily solvable without requiring any changes to the X11 protocol.
 

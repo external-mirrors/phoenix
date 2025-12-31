@@ -10,7 +10,7 @@ Running Phoenix nested will be the only supported mode until Phoenix has progres
 Be a simpler X server than the Xorg server by only supporting a subset of the X11 protocol, the features that are needed by relatively modern applications (applications written/updated in the last ~20 years).\
 This includes _all_ software that _you_ use, even old gtk2 applications.\
 Only relatively modern hardware (made/updated in the last ~15-20 years) with drivers that implement the Linux DRM and Mesa GBM APIs will be supported. There won't be a server driver interface like in the Xorg server.\
-This is similar to how Wayland compositors work.
+This is similar to how Wayland compositors display graphics.
 
 I may be open to accepting pull requests that add support for older devices that don't support the Linux DRM API later on in the project if users absolutely need it (by adding it as a backend implementation in `src/backend/display`).
 
@@ -65,7 +65,7 @@ GrabServer has no effect in Phoenix.
 ### Endian-swapped client/server
 This can be reconsidered if there is a reason.
 
-### Indirect (remote) GLX.
+### Indirect (remote) GLX
 This is very complex as there are a lot of functions that would need to be implemented. These days remote streaming options are more efficient. Alternatively a proxy for glx could be implemented that does remote rendering.
 
 ## Differences between the X11 protocol and Phoenix
@@ -117,7 +117,7 @@ Not many people have attempted to write an X server from scratch or have a prope
 To keep it short: my applications can't ever work properly on Wayland, mainly [GPU Screen Recorder UI](https://git.dec05eba.com/gpu-screen-recorder-ui/about/). Many features of [GPU Screen Recorder UI](https://git.dec05eba.com/gpu-screen-recorder-ui/about/) don't work properly on Wayland.\
 A large number of non-standard graphical applications can simply never work properly on Wayland.\
 If it were to use the Wayland protocol only then it wouldn't work at all (and can't ever work). It has to rely on Xwayland and even in that case it faces many issues and has to rely on undefined behaviors in each Wayland compositor, which may or may not work.\
-Some things are implemented by bypassing the Wayland compositor and interfacing the Linux kernel directly with root access instead.\
+Some things are implemented by bypassing the Wayland compositor and interfacing the Linux kernel directly with root access instead, which comes with a lot of issues.\
 One of these things where it needs to bypass the Wayland compositor and can't use Xwayland either is global shortcuts. Despite there being a XDG desktop portal protocol for global shortcuts it's mostly useless. It only works (somewhat) on KDE Plasma.\
 The protocol for global shortcuts is vague and it's implemented differently in incompatible ways in every Wayland compositor, and in Hyprland for example it's implemented in way where it's not usable for graphical applications. It's also not implemented at all for a large number of Wayland compositors.\
 Read more about it this old post of mine: [https://dec05eba.com/2024/03/29/wayland-global-hotkeys-shortcut-is-mostly-useless/](https://dec05eba.com/2024/03/29/wayland-global-hotkeys-shortcut-is-mostly-useless/). This is one of the main reasons why you don't see applications supporting global shortcuts on Wayland.\
@@ -128,7 +128,7 @@ X11 works in this case because it's simpler (which is a caused by a difference i
 I ended up creating a [pull request](https://github.com/hyprwm/xdg-desktop-portal-hyprland/pull/241) to fix that crash in the Hyprland desktop portal.\
 This is just one issue with Wayland that GPU Screen Recorder UI has. There are many more, which are fundamental issues that are never fixable.
 
-Every developer that has tried to write applications that try to do anything usual has experienced these problems on Wayland.
+Every developer that has tried to write applications that try to do anything unsual has experienced these problems on Wayland.
 
 Even if I were to make my own Wayland compositor and fix these issues it would need to break the philosophy of Wayland (it would basically require it to work like X11) and that compositor would be the only
 compositor to ever work with my applications.\
@@ -142,7 +142,7 @@ On X11 you have simple but powerful constructs that can be used for a wide range
 the Wayland compositor developers had in mind (a vendored experience), specifically for their Wayland compositor. No more no less.\
 This is also the reason why it takes far longer time for a decision to be made in the Wayland protocol than in the X11 protocol (several years vs 2 months) and the Wayland solution (or desktop portal solution) ends up being less flexible and often times up 1000 times more complex for applications (and the Wayland compositor) to implement.
 
-Almost all of the issues people have had with the Xorg server are not issues in X11 protocol, but the Xorg server. Some others (such as "security") are minor issues that are easily solvable without requiring any changes to the X11 protocol.
+Almost all of the issues people have had with X11 are not issues in X11 protocol, but the Xorg server. Some others (such as "security") are minor issues that are easily solvable without requiring any changes to the X11 protocol.
 
 There are many more issues with Wayland that are not mentioned here.
 

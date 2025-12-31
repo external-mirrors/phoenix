@@ -9,7 +9,8 @@ Running Phoenix nested will be the only supported mode until Phoenix has progres
 ### Simplicity
 Be a simpler X server than the Xorg server by only supporting a subset of the X11 protocol, the features that are needed by relatively modern applications (applications written/updated in the last ~20 years).\
 This includes _all_ software that _you_ use, even old gtk2 applications.\
-Only relatively modern hardware (made/updated in the last ~15-20 years) which support Linux DRM and Mesa GBM will be supported, and no server driver interface like the Xorg server. Just like how Wayland compositors work.
+Only relatively modern hardware (made/updated in the last ~15-20 years) with drivers that implement the Linux DRM and Mesa GBM APIs will be supported. There won't be a server driver interface like in the Xorg server.\
+This is similar to how Wayland compositors work.
 
 I may be open to accepting pull requests that add support for older devices that don't support the Linux DRM API later on in the project if users absolutely need it (by adding it as a backend implementation in `src/backend/display`).
 

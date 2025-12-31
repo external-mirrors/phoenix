@@ -16,11 +16,11 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
     return switch (minor_opcode) {
         .use_extension => use_extension(request_context),
         .get_map => get_map(request_context),
+        .per_client_flags => per_client_flags(request_context),
         .get_device_info => get_device_info(request_context),
     };
 }
 
-// TODO: Better impl
 fn use_extension(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.UseExtension, request_context.allocator);
     defer req.deinit();
@@ -39,7 +39,6 @@ fn use_extension(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-// TODO: implement this
 fn get_map(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetMap, request_context.allocator);
     defer req.deinit();
@@ -48,7 +47,7 @@ fn get_map(request_context: phx.RequestContext) !void {
     std.log.warn("TODO: Implement GetMap properly", .{});
 
     if (!request_context.client.xkb_initialized) {
-        std.log.err("Received XkbGetMap, but the client hasn't called XkbUseExtension, returning access error", .{});
+        std.log.err("Received XkbGetMap, but the client hasn't called UseExtension, returning access error", .{});
         return request_context.client.write_error(request_context, .access, 0);
     }
 
@@ -65,19 +64,88 @@ fn get_map(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&reply);
 }
 
-// TODO: implement this
+fn per_client_flags(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.PerClientFlags, request_context.allocator);
+    defer req.deinit();
+    std.log.info("PerClientFlags request: {s}", .{x11.stringify_fmt(req.request)});
+
+    std.log.err("TODO: Implement XkbPerClientFlags", .{});
+
+    if (!request_context.client.xkb_initialized) {
+        std.log.err("Received XkbPerClientFlags, but the client hasn't called UseExtension, returning access error", .{});
+        return request_context.client.write_error(request_context, .access, 0);
+    }
+
+    // Returning dummy data for now
+    var rep = Reply.PerClientFlags{
+        .device_id = 1,
+        .sequence_number = request_context.sequence_number,
+        .supported = req.request.value,
+        .value = req.request.value,
+        .auto_ctrls = req.request.auto_ctrls,
+        .auto_ctrl_values = req.request.auto_ctrls_values,
+    };
+    try request_context.client.write_reply(&rep);
+}
+
 fn get_device_info(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GetDeviceInfo, request_context.allocator);
+    defer req.deinit();
+    std.log.info("GetDeviceInfo request: {s}", .{x11.stringify_fmt(req.request)});
+
     std.log.err("TODO: Implement XkbGetDeviceInfo", .{});
 
     if (!request_context.client.xkb_initialized) {
-        std.log.err("Received XkbGetDeviceInfo, but the client hasn't called XkbUseExtension, returning access error", .{});
+        std.log.err("Received XkbGetDeviceInfo, but the client hasn't called UseExtension, returning access error", .{});
         return request_context.client.write_error(request_context, .access, 0);
     }
+
+    var device_name_buf: [32]x11.Card8 = undefined;
+    const device_name = std.fmt.bufPrint(&device_name_buf, "{s}", .{"Dummy device"}) catch unreachable;
+
+    // Returning dummy data for now
+    var rep = Reply.GetDeviceInfo{
+        .device_id = 1,
+        .sequence_number = request_context.sequence_number,
+        .present = .{
+            .button_actions = false,
+            .indicator_names = false,
+            .indicator_maps = false,
+            .indicator_state = false,
+        },
+        .supported = .{
+            .keyboards = true,
+            .button_actions = false,
+            .indicator_names = false,
+            .indicator_maps = false,
+            .indicator_state = false,
+        },
+        .unsupported = .{
+            .keyboards = false,
+            .button_actions = false,
+            .indicator_names = false,
+            .indicator_maps = false,
+            .indicator_state = false,
+        },
+        .first_button_wanted = 0,
+        .num_buttons_wanted = 0,
+        .first_button_return = 0,
+        .total_buttons = 0,
+        .has_own_state = false,
+        .default_keyboard_fb = .xkb_default_xi_id,
+        .default_led_fb = .xkb_default_xi_id,
+        .dev_type = @enumFromInt(0),
+        .name = .{ .items = device_name },
+        .button_actions = .{ .items = &.{} },
+        .leds = .{ .items = &.{} },
+    };
+    try request_context.client.write_reply(&rep);
 }
 
 const MinorOpcode = enum(x11.Card8) {
     use_extension = 0,
     get_map = 8,
+    per_client_flags = 21,
     get_device_info = 24,
 };
 
@@ -88,7 +156,7 @@ const DeviceSpec = enum(x11.Card16) {
 };
 
 const DeviceFeatureMask = packed struct(x11.Card16) {
-    _padding1: bool = false,
+    _padding1: u1 = 0,
     button_actions: bool,
     indicator_names: bool,
     indicator_maps: bool,
@@ -115,6 +183,7 @@ const FeatureMask = packed struct(x11.Card16) {
     indicator_names: bool,
     indicator_maps: bool,
     indicator_state: bool,
+    _padding2: u11 = 0,
 };
 
 pub const ModDef = struct {
@@ -387,6 +456,7 @@ const ImGroupsWhich = packed struct(x11.Card8) {
     use_locked: bool,
     use_effective: bool,
     use_compat: bool,
+    _padding: u3 = 0,
 };
 
 const Group = packed struct(x11.Card8) {
@@ -394,6 +464,7 @@ const Group = packed struct(x11.Card8) {
     group2: bool,
     group3: bool,
     group4: bool,
+    _padding: u4 = 0,
 };
 
 const ImModsWhich = packed struct(x11.Card8) {
@@ -402,6 +473,7 @@ const ImModsWhich = packed struct(x11.Card8) {
     use_locked: bool,
     use_effective: bool,
     use_compat: bool,
+    _padding: u3 = 0,
 };
 
 const VirtualModsLow = packed struct(x11.Card8) {
@@ -459,6 +531,7 @@ const BoolCtrl = packed struct(x11.Card32) {
     overlay1_mask: bool,
     overlay2_mask: bool,
     ignore_group_lock_mask: bool,
+    _padding: u19 = 0,
 };
 
 const IndicatorMap = struct {
@@ -475,12 +548,15 @@ const IndicatorMap = struct {
 const DeviceLedInfo = struct {
     led_class: LedClassSpec,
     led_id: IdSpec,
-    names_present: x11.Card32,
-    maps_present: x11.Card32,
+    names_present: x11.Card32 = 0,
+    maps_present: x11.Card32 = 0,
     physical_indicators: x11.Card32,
     state: x11.Card32,
-    names: x11.ListOf(x11.Atom, .{ .length_field = "names_present", .length_field_type = .bitmask }),
-    maps: x11.ListOf(IndicatorMap, .{ .length_field = "maps_present", .length_field_type = .bitmask }),
+    // TODO:
+    //names: x11.ListOf(x11.Atom, .{ .length_field = "names_present", .length_field_type = .bitmask }),
+    //maps: x11.ListOf(IndicatorMap, .{ .length_field = "maps_present", .length_field_type = .bitmask }),
+    names: x11.ListOf(x11.Atom, .{ .length_field = "names_present" }),
+    maps: x11.ListOf(IndicatorMap, .{ .length_field = "maps_present" }),
 };
 
 pub const MapPartMask = packed struct(x11.Card16) {
@@ -585,6 +661,15 @@ pub const KeyActions = struct {
     actions_return: x11.ListOf(KeyAction, .{ .length_field = null }),
 };
 
+const PerClientFlag = packed struct(x11.Card32) {
+    detectable_auto_repeat: bool,
+    grabs_use_xkb_state: bool,
+    auto_reset_controls: bool,
+    lookup_state_when_grabbed: bool,
+    send_event_uses_xkb_state: bool,
+    _padding: u27 = 0,
+};
+
 pub const Request = struct {
     pub const UseExtension = struct {
         major_opcode: phx.opcode.Major = .xkb,
@@ -617,6 +702,19 @@ pub const Request = struct {
         first_virtual_mod_map_key: x11.KeyCode,
         num_virtual_mod_map_keys: x11.Card8,
         pad1: x11.Card16,
+    };
+
+    pub const PerClientFlags = struct {
+        major_opcode: phx.opcode.Major = .xkb,
+        minor_opcode: MinorOpcode = .per_client_flags,
+        length: x11.Card16,
+        device_spec: DeviceSpec,
+        pad1: x11.Card16,
+        change: PerClientFlag,
+        value: PerClientFlag,
+        ctrls_to_change: BoolCtrl,
+        auto_ctrls: BoolCtrl,
+        auto_ctrls_values: BoolCtrl,
     };
 
     pub const GetDeviceInfo = struct {
@@ -720,6 +818,18 @@ pub const Reply = struct {
         },
     };
 
+    pub const PerClientFlags = struct {
+        type: phx.reply.ReplyType = .reply,
+        device_id: x11.Card8,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        supported: PerClientFlag,
+        value: PerClientFlag,
+        auto_ctrls: BoolCtrl,
+        auto_ctrl_values: BoolCtrl,
+        pad1: [8]x11.Card8 = @splat(0),
+    };
+
     pub const GetDeviceInfo = struct {
         type: phx.reply.ReplyType = .reply,
         device_id: x11.Card8,
@@ -728,20 +838,20 @@ pub const Reply = struct {
         present: DeviceFeatureMask,
         supported: FeatureMask,
         unsupported: FeatureMask,
-        num_device_led_fbs: x11.Card16,
+        num_device_led_fbs: x11.Card16 = 0,
         first_button_wanted: x11.Card8,
         num_buttons_wanted: x11.Card8,
         first_button_return: x11.Card8,
-        num_buttons_return: x11.Card8,
+        num_buttons_return: x11.Card8 = 0,
         total_buttons: x11.Card8,
         has_own_state: bool,
         default_keyboard_fb: IdSpec,
         default_led_fb: IdSpec,
-        pad1: x11.Card16,
+        pad1: x11.Card16 = 0,
         dev_type: x11.Atom,
-        name_len: x11.Card16,
+        name_len: x11.Card16 = 0,
         name: x11.ListOf(x11.Card8, .{ .length_field = "name_len" }),
-        pad2: x11.AlignmentPadding,
+        pad2: x11.AlignmentPadding = .{},
         button_actions: x11.ListOf(KeyAction, .{ .length_field = "num_buttons_return" }),
         leds: x11.ListOf(DeviceLedInfo, .{ .length_field = "num_device_led_fbs" }),
     };

@@ -123,11 +123,12 @@ fn generate_docs(install_path: []const u8) !void {
     try generate_protocol_docs(phx.Dri3, &install_path_dir);
     try generate_protocol_docs(phx.Glx, &install_path_dir);
     try generate_protocol_docs(phx.Present, &install_path_dir);
-    //try generate_protocol_docs(phx.Randr, &install_path_dir);
-    //try generate_protocol_docs(phx.Render, &install_path_dir);
+    try generate_protocol_docs(phx.Randr, &install_path_dir);
+    try generate_protocol_docs(phx.Render, &install_path_dir);
     try generate_protocol_docs(phx.Sync, &install_path_dir);
     try generate_protocol_docs(phx.Xfixes, &install_path_dir);
     try generate_protocol_docs(phx.Xkb, &install_path_dir);
+    try generate_protocol_docs(phx.GenericEvent, &install_path_dir);
 }
 
 fn generate_protocol_docs(comptime file_struct: type, install_path_dir: *std.fs.Dir) !void {

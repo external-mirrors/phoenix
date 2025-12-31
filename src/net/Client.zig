@@ -17,6 +17,7 @@ write_buffer_fds: ReplyFdsBuffer,
 
 resource_id_base: u32,
 sequence_number: u16,
+sequence_number_counter: u16,
 resources: phx.ResourceHashMap,
 
 listening_to_windows: std.ArrayList(*phx.Window),
@@ -51,6 +52,7 @@ pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, alloca
 
         .resource_id_base = resource_id_base,
         .sequence_number = 1,
+        .sequence_number_counter = 1,
         .resources = .init(allocator),
 
         .listening_to_windows = .init(allocator),
@@ -253,11 +255,9 @@ pub fn write_event_extension(self: *Self, ev: anytype) !void {
 }
 
 pub fn next_sequence_number(self: *Self) u16 {
-    const sequence = self.sequence_number;
-    self.sequence_number +%= 1;
-    if (self.sequence_number == 0)
-        self.sequence_number = 1;
-    return sequence;
+    self.sequence_number = self.sequence_number_counter;
+    self.sequence_number_counter +%= 1;
+    return self.sequence_number;
 }
 
 fn add_resource(self: *Self, resource_id: x11.ResourceId, resource: phx.Resource) !void {

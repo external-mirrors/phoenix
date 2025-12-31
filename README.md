@@ -9,7 +9,9 @@ Running Phoenix nested will be the only supported mode until Phoenix has progres
 ### Simplicity
 Be a simpler X server than the Xorg server by only supporting a subset of the X11 protocol, the features that are needed by relatively modern applications (applications written/updated in the last ~20 years).\
 This includes _all_ software that _you_ use, even old gtk2 applications.\
-Only relatively modern hardware (made/updated in the last ~15-20 years) which support linux drm and mesa gbm will be supported, and no server driver interface like the Xorg server. Just like how Wayland compositors work.
+Only relatively modern hardware (made/updated in the last ~15-20 years) which support Linux DRM and Mesa GBM will be supported, and no server driver interface like the Xorg server. Just like how Wayland compositors work.
+
+I may be open to accepting pull requests that add support for older devices that don't support the Linux DRM API later on in the project if users absolutely need it (by adding it as a backend implementation in `src/backend/display`).
 
 ### Security
 Be safer than the Xorg server by parsing protocol messages automatically. As it's written in Zig, it also automatically catches illegal behaviors (such as index out of array bounds) when building with the `ReleaseSafe` option.
@@ -145,4 +147,4 @@ There are many more issues with Wayland that are not mentioned here.
 
 ### Doesn't X11 have fundamental issues with tearing/multiple monitors/hdr/security/etc that can't be fixed?
 No, most information about how X11 works online is wrong. Some of this misinformation has even been spread by Wayland compositor developers. These issues are related to the X.org server, not the X11 protocol.\
-When 10-bit color mode is enabled in the X.org server it can break some applications such as steam which fails to start, but all of these issues can be solved without affecting client applications, even without introducing a new X11 protocol extension.
+When 10-bit color mode is enabled in the Xorg server it can break some applications such as steam which fails to start, but all of these issues can be solved without affecting client applications, even without introducing a new X11 protocol extension.

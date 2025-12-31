@@ -329,7 +329,8 @@ pub fn write_extension_event_to_event_listeners(self: *const Self, ev: anytype) 
             continue;
         }
 
-        @field(ev, "event_id") = @enumFromInt(event_listener.event_id.to_int());
+        ev.event_id = @enumFromInt(event_listener.event_id.to_int());
+        ev.sequence_number = event_listener.client.sequence_number;
 
         event_listener.client.write_event_extension(ev) catch |err| {
             // TODO: What should be done if this happens? disconnect the client?

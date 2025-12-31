@@ -294,7 +294,7 @@ fn get_fb_configs(request_context: phx.RequestContext) !void {
                         properties.append(.{ .type = .fbconfig_id, .value = fbconfig_id }) catch unreachable;
                     }
 
-                    properties.append(.{ .type = .rgba, .value = @intFromBool(true) }) catch unreachable;
+                    properties.append(.{ .type = .rgba, .value = @intFromBool(alpha_size > 0) }) catch unreachable;
                     properties.append(.{ .type = .red_size, .value = screen_visual.bits_per_color_component }) catch unreachable;
                     properties.append(.{ .type = .green_size, .value = screen_visual.bits_per_color_component }) catch unreachable;
                     properties.append(.{ .type = .blue_size, .value = screen_visual.bits_per_color_component }) catch unreachable;

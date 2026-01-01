@@ -26,6 +26,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .get_property => get_property(request_context),
         .grab_server => grab_server(request_context),
         .ungrab_server => ungrab_server(request_context),
+        .query_pointer => query_pointer(request_context),
         .get_input_focus => get_input_focus(request_context),
         .create_pixmap => create_pixmap(request_context),
         .free_pixmap => free_pixmap(request_context),
@@ -399,9 +400,8 @@ fn query_tree(request_context: phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
 
-    var children = std.ArrayList(x11.WindowId).init(request_context.allocator);
+    var children = try get_window_children_bottom_to_top(window, request_context.allocator);
     defer children.deinit();
-    try get_window_children_bottom_to_top(window, &children);
 
     var rep = Reply.QueryTree{
         .sequence_number = request_context.sequence_number,
@@ -591,13 +591,42 @@ fn ungrab_server(request_context: phx.RequestContext) !void {
     std.log.err("Received UngrabServer request from client {d}, ignoring...", .{request_context.client.connection.stream.handle});
 }
 
+fn query_pointer(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.QueryPointer, request_context.allocator);
+    defer req.deinit();
+
+    std.log.warn("TODO: Implement QueryPointer properly", .{});
+
+    const window = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in QueryPointer request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+
+    var offset_x: i32 = 0;
+    var offset_y: i32 = 0;
+    const child_window_at_cursor_pos = get_child_window_at_position(window, request_context.server.cursor_x, request_context.server.cursor_y, &offset_x, &offset_y);
+
+    var rep = Reply.QueryPointer{
+        .same_screen = true,
+        .sequence_number = request_context.sequence_number,
+        .root = request_context.server.root_window.id,
+        .child = if (child_window_at_cursor_pos) |child_window| child_window.id else window_none,
+        .root_x = @intCast(request_context.server.cursor_x),
+        .root_y = @intCast(request_context.server.cursor_y),
+        .win_x = @intCast(offset_x),
+        .win_y = @intCast(offset_y),
+        // TODO: Set these when input is properly supported
+        .mask = .{},
+    };
+    try request_context.client.write_reply(&rep);
+}
+
 fn get_input_focus(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetInputFocus, request_context.allocator);
     defer req.deinit();
 
     std.log.warn("TODO: Implement GetInputFocus properly", .{});
 
-    // TODO: Implement properly
     var rep = Reply.GetInputFocus{
         .revert_to = .pointer_root,
         .sequence_number = request_context.sequence_number,
@@ -879,6 +908,32 @@ fn depth_is_supported(depth: u8) bool {
     };
 }
 
+fn get_child_window_at_position(window: *const phx.Window, root_x: i32, root_y: i32, offset_x: *i32, offset_y: *i32) ?*const phx.Window {
+    if (window.children.items.len == 0)
+        return null;
+
+    const window_abs_pos = window.get_absolute_position();
+
+    var i: isize = @intCast(window.children.items.len - 1);
+    while (i >= 0) : (i -= 1) {
+        const child_window = window.children.items[@intCast(i)];
+        const width: i32 = @intCast(child_window.attributes.geometry.width);
+        const height: i32 = @intCast(child_window.attributes.geometry.height);
+        // zig fmt: off
+        if(child_window.attributes.mapped
+            and root_x >= window_abs_pos[0] + child_window.attributes.geometry.x and root_x <= window_abs_pos[0] + child_window.attributes.geometry.x + width
+            and root_y >= window_abs_pos[1] + child_window.attributes.geometry.y and root_y <= window_abs_pos[1] + child_window.attributes.geometry.y + height)
+        {
+            offset_x.* = (window_abs_pos[0] + child_window.attributes.geometry.x) - root_x;
+            offset_y.* = (window_abs_pos[1] + child_window.attributes.geometry.y) - root_y;
+            return child_window;
+        }
+        // zig fmt: on
+    }
+
+    return null;
+}
+
 const CreateWindowValueMask = packed struct(x11.Card32) {
     background_pixmap: bool,
     background_pixel: bool,
@@ -925,16 +980,20 @@ const CreateWindowValueMask = packed struct(x11.Card32) {
     }
 };
 
-fn get_window_children_bottom_to_top(window: *const phx.Window, children: *std.ArrayList(x11.WindowId)) !void {
+fn get_window_children_bottom_to_top(window: *const phx.Window, allocator: std.mem.Allocator) !std.ArrayList(x11.WindowId) {
+    var children = std.ArrayList(x11.WindowId).init(allocator);
+    errdefer children.deinit();
+
     if (window.children.items.len == 0)
-        return;
+        return children;
 
     var i: isize = @intCast(window.children.items.len - 1);
     while (i >= 0) : (i -= 1) {
         const child_window = window.children.items[@intCast(i)];
-        try get_window_children_bottom_to_top(child_window, children);
         try children.append(child_window.id);
     }
+
+    return children;
 }
 
 const ConfigureWindowValueMask = packed struct(x11.Card16) {
@@ -978,9 +1037,9 @@ const ConfigureWindowValueMask = packed struct(x11.Card16) {
 const none: x11.Card32 = 0;
 const any_property_type: x11.Atom = @enumFromInt(0);
 const parent_relative: x11.Card32 = 1;
-const window_none: x11.WindowId = 0;
-const pixmap_none: x11.PixmapId = 0;
-const window_pointer_root: x11.WindowId = 1;
+const window_none: x11.WindowId = @enumFromInt(0);
+const pixmap_none: x11.PixmapId = @enumFromInt(0);
+const window_pointer_root: x11.WindowId = @enumFromInt(1);
 const copy_from_parent: x11.Card32 = 0;
 
 pub const BitGravity = enum(x11.Card8) {
@@ -1198,6 +1257,13 @@ pub const Request = struct {
         opcode: phx.opcode.Major = .ungrab_server,
         pad1: x11.Card8,
         length: x11.Card16,
+    };
+
+    pub const QueryPointer = struct {
+        opcode: phx.opcode.Major = .query_pointer,
+        pad1: x11.Card8,
+        length: x11.Card16,
+        window: x11.WindowId,
     };
 
     pub const GetInputFocus = struct {
@@ -1435,6 +1501,21 @@ const Reply = struct {
         height: x11.Card16,
         border_width: x11.Card16,
         pad1: [10]x11.Card8 = @splat(0),
+    };
+
+    pub const QueryPointer = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        same_screen: bool,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        root: x11.WindowId,
+        child: x11.WindowId,
+        root_x: i16,
+        root_y: i16,
+        win_x: i16,
+        win_y: i16,
+        mask: phx.event.KeyButMask,
+        pad1: [6]x11.Card8 = @splat(0),
     };
 
     pub const QueryTree = struct {

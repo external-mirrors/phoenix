@@ -426,8 +426,20 @@ pub fn get_bpp(_: *const Self) u8 {
     return 24;
 }
 
+// TODO: Optimize
+pub fn get_absolute_position(self: *const Self) @Vector(2, i32) {
+    var pos = @Vector(2, i32){ self.attributes.geometry.x, self.attributes.geometry.y };
+    var parent = self.parent;
+    while (parent) |par| {
+        const parent_pos = @Vector(2, i32){ par.attributes.geometry.x, par.attributes.geometry.y };
+        pos += parent_pos;
+        parent = par.parent;
+    }
+    return pos;
+}
+
 pub const Attributes = struct {
-    geometry: phx.Geometry,
+    geometry: phx.Geometry, // Position is relative to parent
     class: x11.Class,
     visual: *const phx.Visual,
     bit_gravity: phx.core.BitGravity,

@@ -39,6 +39,9 @@ started_time_seconds: f64,
 
 screen_resources: phx.ScreenResources,
 
+cursor_x: i32,
+cursor_y: i32,
+
 /// The server will catch sigint and close down (if |run| has been executed)
 pub fn init(allocator: std.mem.Allocator) !Self {
     const started_time_seconds = clock_get_monotonic_seconds();
@@ -114,10 +117,12 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     errdefer installed_colormaps.deinit();
 
     try installed_colormaps.append(screen_true_color_colormap);
-    const root_window = try create_root_window(root_client, allocator);
 
     var screen_resources = try display.get_screen_resources(@enumFromInt(1), allocator);
     errdefer screen_resources.deinit();
+
+    const screen_info = screen_resources.create_screen_info();
+    const root_window = try create_root_window(root_client, &screen_info, allocator);
 
     return .{
         .allocator = allocator,
@@ -135,6 +140,8 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         .installed_colormaps = installed_colormaps,
         .started_time_seconds = started_time_seconds,
         .screen_resources = screen_resources,
+        .cursor_x = @intCast(screen_info.width / 2),
+        .cursor_y = @intCast(screen_info.height / 2),
     };
 }
 
@@ -170,14 +177,14 @@ pub fn get_timestamp_milliseconds(self: *Self) x11.Timestamp {
     return @enumFromInt(timestamp_milliseconds);
 }
 
-fn create_root_window(root_client: *phx.Client, allocator: std.mem.Allocator) !*phx.Window {
+fn create_root_window(root_client: *phx.Client, screen_info: *const phx.ScreenResources.ScreenInfo, allocator: std.mem.Allocator) !*phx.Window {
     const root_window_id: x11.WindowId = @enumFromInt(0x3b2 | root_client.resource_id_base);
     const window_attributes = phx.Window.Attributes{
         .geometry = .{
             .x = 0,
             .y = 0,
-            .width = 3840, // TODO:
-            .height = 2160, // TODO:
+            .width = screen_info.width,
+            .height = screen_info.height,
         },
         .class = .input_output,
         .visual = &screen_true_color_visual,

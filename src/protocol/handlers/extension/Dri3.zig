@@ -148,13 +148,25 @@ fn pixmap_from_buffer(request_context: phx.RequestContext) !void {
         .num_items = 1,
     };
 
-    var pixmap = try phx.Pixmap.create(
+    var pixmap = phx.Pixmap.create(
         req.request.pixmap,
         &import_dmabuf,
         request_context.server,
         request_context.client,
         request_context.allocator,
-    );
+    ) catch |err| switch (err) {
+        error.ResourceNotOwnedByClient => {
+            std.log.err("Received pixmap id {d} in DRI3PixmapFromBuffer request which doesn't belong to the client", .{req.request.pixmap});
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.pixmap));
+        },
+        error.ResourceAlreadyExists => {
+            std.log.err("Received pixmap id {d} in DRI3PixmapFromBuffer request which already exists", .{req.request.pixmap});
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.pixmap));
+        },
+        error.OutOfMemory => {
+            return request_context.client.write_error(request_context, .alloc, 0);
+        },
+    };
     errdefer pixmap.destroy();
 }
 
@@ -269,13 +281,25 @@ fn pixmap_from_buffers(request_context: phx.RequestContext) !void {
         import_dmabuf.modifier[i] = req.request.modifier;
     }
 
-    var pixmap = try phx.Pixmap.create(
+    var pixmap = phx.Pixmap.create(
         req.request.pixmap,
         &import_dmabuf,
         request_context.server,
         request_context.client,
         request_context.allocator,
-    );
+    ) catch |err| switch (err) {
+        error.ResourceNotOwnedByClient => {
+            std.log.err("Received pixmap id {d} in Dri3PixmapFromBuffers request which doesn't belong to the client", .{req.request.pixmap});
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.pixmap));
+        },
+        error.ResourceAlreadyExists => {
+            std.log.err("Received pixmap id {d} in Dri3PixmapFromBuffers request which already exists", .{req.request.pixmap});
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.pixmap));
+        },
+        error.OutOfMemory => {
+            return request_context.client.write_error(request_context, .alloc, 0);
+        },
+    };
     errdefer pixmap.destroy();
 }
 

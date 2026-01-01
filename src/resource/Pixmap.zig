@@ -58,11 +58,15 @@ pub fn destroy(self: *Self) void {
     self.allocator.destroy(self);
 }
 
-pub fn get_geometry(self: *Self) phx.Geometry {
+pub fn get_geometry(self: *const Self) phx.Geometry {
     return .{
         .x = 0,
         .y = 0,
         .width = @intCast(self.dmabuf_data.width),
         .height = @intCast(self.dmabuf_data.height),
     };
+}
+
+pub fn get_bpp(self: *const Self) u8 {
+    return self.dmabuf_data.bpp;
 }

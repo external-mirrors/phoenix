@@ -27,6 +27,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .grab_server => grab_server(request_context),
         .ungrab_server => ungrab_server(request_context),
         .get_input_focus => get_input_focus(request_context),
+        .create_pixmap => create_pixmap(request_context),
         .free_pixmap => free_pixmap(request_context),
         .create_gc => create_gc(request_context),
         .free_gc => free_gc(request_context),
@@ -605,9 +606,54 @@ fn get_input_focus(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn create_pixmap(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.CreatePixmap, request_context.allocator);
+    defer req.deinit();
+
+    if (!depth_is_supported(req.request.depth)) {
+        std.log.err("Received invalid depth {d} in CreatePixmap request", .{req.request.depth});
+        return request_context.client.write_error(request_context, .value, req.request.depth);
+    }
+
+    const drawable = request_context.server.get_drawable(req.request.drawable) orelse {
+        std.log.err("Received invalid drawable {d} in CreatePixmap request", .{req.request.drawable});
+        return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.drawable));
+    };
+
+    var import_dmabuf: phx.Graphics.DmabufImport = undefined;
+    import_dmabuf.width = req.request.width;
+    import_dmabuf.height = req.request.height;
+    import_dmabuf.depth = req.request.depth;
+    import_dmabuf.bpp = drawable.get_bpp();
+    import_dmabuf.num_items = 0;
+
+    var pixmap = phx.Pixmap.create(
+        req.request.pixmap,
+        &import_dmabuf,
+        request_context.server,
+        request_context.client,
+        request_context.allocator,
+    ) catch |err| switch (err) {
+        error.ResourceNotOwnedByClient => {
+            std.log.err("Received pixmap id {d} in CreatePixmap request which doesn't belong to the client", .{req.request.pixmap});
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.pixmap));
+        },
+        error.ResourceAlreadyExists => {
+            std.log.err("Received pixmap id {d} in CreatePixmap request which already exists", .{req.request.pixmap});
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.pixmap));
+        },
+        error.OutOfMemory => {
+            return request_context.client.write_error(request_context, .alloc, 0);
+        },
+    };
+    errdefer pixmap.destroy();
+}
+
 fn free_pixmap(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.FreePixmap, request_context.allocator);
     defer req.deinit();
+
+    std.log.err("TODO: Implement FreePixmap properly, dont free pixmap immediately if there are references to it", .{});
 
     // TODO: Dont free immediately if the pixmap still has references somewhere
     const pixmap = request_context.server.get_pixmap(req.request.pixmap) orelse {
@@ -824,6 +870,13 @@ fn get_modifier_mapping(request_context: phx.RequestContext) !void {
         .keycodes = .{ .items = &keycodes },
     };
     try request_context.client.write_reply(&rep);
+}
+
+fn depth_is_supported(depth: u8) bool {
+    return switch (depth) {
+        1, 4, 8, 16, 24, 30, 32 => true,
+        else => false,
+    };
 }
 
 const CreateWindowValueMask = packed struct(x11.Card32) {
@@ -1151,6 +1204,16 @@ pub const Request = struct {
         opcode: phx.opcode.Major = .get_input_focus,
         pad1: x11.Card8,
         length: x11.Card16,
+    };
+
+    pub const CreatePixmap = struct {
+        opcode: phx.opcode.Major = .create_pixmap,
+        depth: x11.Card8,
+        length: x11.Card16,
+        pixmap: x11.PixmapId,
+        drawable: x11.DrawableId,
+        width: x11.Card16,
+        height: x11.Card16,
     };
 
     pub const FreePixmap = struct {

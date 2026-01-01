@@ -590,6 +590,9 @@ fn import_dmabuf_internal(self: *Self, import: *const DmabufToImport) !void {
 
 fn import_dmabufs_internal(self: *Self) void {
     for (self.dmabufs_to_import.items) |*dmabuf_to_import| {
+        if (dmabuf_to_import.dmabuf_import.num_items == 0)
+            continue;
+
         // TODO: Report success/failure back to x11 protocol handler
         self.import_dmabuf_internal(dmabuf_to_import) catch |err| {
             const dmabuf_fds = dmabuf_to_import.dmabuf_import.fd[0..dmabuf_to_import.dmabuf_import.num_items];

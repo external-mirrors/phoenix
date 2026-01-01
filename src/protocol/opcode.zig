@@ -15,6 +15,7 @@ pub const Major = enum(x11.Card8) {
     grab_server = 36,
     ungrab_server = 37,
     get_input_focus = 43,
+    create_pixmap = 53,
     free_pixmap = 54,
     create_gc = 55,
     free_gc = 60,

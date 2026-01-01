@@ -24,3 +24,9 @@ pub fn get_geometry(self: Self) phx.Geometry {
         inline else => |item| return item.get_geometry(),
     };
 }
+
+pub fn get_bpp(self: Self) u8 {
+    return switch (self.item) {
+        inline else => |item| return item.get_bpp(),
+    };
+}

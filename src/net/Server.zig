@@ -407,7 +407,7 @@ fn handle_client_request(self: *Self, client: *phx.Client) !bool {
             error.InvalidEnumTag => try request_context.client.write_error(request_context, .value, 0), // TODO: Return the correct value
             else => {
                 std.log.err("TODO: phx.extension.handle_request: Handle error better: {s}", .{@errorName(err)});
-                return err;
+                try request_context.client.write_error(request_context, .implementation, 0);
             },
         };
     } else {

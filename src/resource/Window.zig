@@ -421,6 +421,11 @@ pub fn get_map_state(self: *Self) phx.core.MapState {
     return .viewable;
 }
 
+pub fn get_bpp(_: *const Self) u8 {
+    // TODO: Get value from colormap visual?
+    return 24;
+}
+
 pub const Attributes = struct {
     geometry: phx.Geometry,
     class: x11.Class,

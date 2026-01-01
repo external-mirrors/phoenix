@@ -56,3 +56,4 @@ Go through all events defined in the protocol (core and extensions) and check if
 Add an option to disable middle mouse paste (make SetSelectionOwner with atom PRIMARY have no effect).
 Maybe allow global hotkeys as long as the application does a grab. If it does a grab other applications dont receive input so there is no hidden keylogger that silently listens to keys.
 Support multiple monitors in nested mode. This is useful for testing (both phoenix and client applications).
+Make pixmap reference counted.

@@ -118,6 +118,7 @@ fn generate_docs(install_path: []const u8) !void {
         else => return err,
     };
 
+    @setEvalBranchQuota(9000);
     try generate_protocol_docs(phx.ConnectionSetup, &install_path_dir);
     try generate_protocol_docs(phx.core, &install_path_dir);
     try generate_protocol_docs(phx.Dri3, &install_path_dir);

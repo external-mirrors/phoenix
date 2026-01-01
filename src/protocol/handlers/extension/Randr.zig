@@ -18,6 +18,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .select_input => select_input(request_context),
         .get_screen_resources => get_screen_resources(request_context),
         .get_output_info => get_output_info(request_context),
+        .get_crtc_info => get_crtc_info(request_context),
     };
 }
 
@@ -118,11 +119,10 @@ fn get_output_info(request_context: phx.RequestContext) !void {
     const version_1_6 = (phx.Version{ .major = 1, .minor = 6 }).to_int();
     const supports_non_desktop = request_context.client.extension_versions.randr.to_int() >= version_1_6;
 
-    const output = request_context.server.screen_resources.get_output_by_id(req.request.output) orelse {
-        std.log.err("Received invalid output {d} in RandrGetOutputInfo request", .{req.request.output});
-        return request_context.client.write_error(request_context, .randr_output, @intFromEnum(req.request.output));
+    const crtc = request_context.server.screen_resources.get_crtc_by_id(req.request.output.to_crtc_id()) orelse {
+        std.log.err("Received invalid output {d} in RandrGetOutputInfo request", .{req.request.output.to_crtc_id()});
+        return request_context.client.write_error(request_context, .randr_output, @intFromEnum(req.request.output.to_crtc_id()));
     };
-    const crtc = output.get_crtc(request_context.server.screen_resources.crtcs.items);
 
     if (req.request.config_timestamp != request_context.server.screen_resources.config_timestamp) {
         var rep = Reply.GetOutputInfo{
@@ -143,10 +143,11 @@ fn get_output_info(request_context: phx.RequestContext) !void {
         try request_context.client.write_reply(&rep);
     }
 
-    var crtcs = [_]CrtcId{output.crtc_id};
+    var crtcs = [_]CrtcId{crtc.id};
 
-    var clones = try get_clones_of_output_crtc(&request_context.server.screen_resources, output, request_context.allocator);
-    defer clones.deinit();
+    // Xorg server doesn't seem to set these, so we don't really need them either
+    //var clones = try get_clones_of_output_crtc(&request_context.server.screen_resources, output, request_context.allocator);
+    //defer clones.deinit();
 
     const modes = try get_mode_ids(crtc, request_context.allocator);
     defer request_context.allocator.free(modes);
@@ -155,38 +156,112 @@ fn get_output_info(request_context: phx.RequestContext) !void {
         .status = .success,
         .sequence_number = request_context.sequence_number,
         .timestamp = request_context.server.screen_resources.timestamp,
-        .crtc = output.crtc_id,
+        .crtc = crtc.id,
         .width_mm = crtc.width_mm,
         .height_mm = crtc.height_mm,
         .connection = if (supports_non_desktop and crtc.non_desktop) .disconnected else crtc_status_to_connect(crtc.status),
         .subpixel_order = .unknown, // TODO: Support others?
         .num_preferred_modes = 1,
         .crtcs = .{ .items = &crtcs },
-        .modes = .{ .items = modes }, // TODO: Should this be the modes of all crtcs?
-        .clones = .{ .items = clones.items },
+        .modes = .{ .items = modes },
+        .clones = .{ .items = &.{} },
         .name = .{ .items = crtc.name },
     };
     try request_context.client.write_reply(&rep);
 }
 
-fn get_clones_of_output_crtc(screen_resources: *const phx.ScreenResources, src_output: *const phx.Output, allocator: std.mem.Allocator) !std.ArrayList(OutputId) {
-    var clones = std.ArrayList(OutputId).init(allocator);
-    errdefer clones.deinit();
+fn get_crtc_info(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GetCrtcInfo, request_context.allocator);
+    defer req.deinit();
+    std.log.info("RandrGetCrtcInfo request: {s}", .{x11.stringify_fmt(req.request)});
 
-    const src_output_crtc = src_output.get_crtc(screen_resources.crtcs.items);
-    for (screen_resources.outputs.items) |*output| {
-        if (output.id == output.id)
-            continue;
+    const crtc = request_context.server.screen_resources.get_crtc_by_id(req.request.crtc) orelse {
+        std.log.err("Received invalid output {d} in RandrGetCrtcInfo request", .{req.request.crtc});
+        return request_context.client.write_error(request_context, .randr_crtc, @intFromEnum(req.request.crtc));
+    };
+    const active_mode = crtc.get_active_mode();
 
-        const crtc = output.get_crtc(screen_resources.crtcs.items);
-        if (crtc.id != src_output_crtc.id)
-            continue;
-
-        try clones.append(output.id);
+    if (req.request.config_timestamp != request_context.server.screen_resources.config_timestamp) {
+        var rep = Reply.GetCrtcInfo{
+            .status = .invalid_config_time,
+            .sequence_number = request_context.sequence_number,
+            .timestamp = @enumFromInt(0),
+            .x = 0,
+            .y = 0,
+            .width = 0,
+            .height = 0,
+            .mode = @enumFromInt(0),
+            .current_rotation = .{},
+            .possible_rotations = .{},
+            .outputs = .{ .items = &.{} },
+            .possible_outputs = .{ .items = &.{} },
+        };
+        try request_context.client.write_reply(&rep);
     }
 
-    return clones;
+    var outputs = [_]OutputId{crtc.id.to_output_id()};
+
+    var rep = Reply.GetCrtcInfo{
+        .status = .success,
+        .sequence_number = request_context.sequence_number,
+        .timestamp = request_context.server.screen_resources.timestamp,
+        .x = @intCast(crtc.x),
+        .y = @intCast(crtc.y),
+        .width = @intCast(active_mode.width),
+        .height = @intCast(active_mode.height),
+        .mode = active_mode.id,
+        .current_rotation = crtc_get_rotation(crtc),
+        .possible_rotations = .{
+            .rotation_0 = true,
+            .rotation_90 = true,
+            .rotation_180 = true,
+            .rotation_270 = true,
+            .reflect_x = true,
+            .reflect_y = true,
+        },
+        .outputs = .{ .items = if (crtc.status == .connected) &outputs else &.{} },
+        .possible_outputs = .{ .items = &outputs },
+    };
+    try request_context.client.write_reply(&rep);
 }
+
+fn crtc_get_rotation(crtc: *const phx.Crtc) Rotation {
+    var rotation = Rotation{};
+
+    switch (crtc.rotation) {
+        .rotation_0 => rotation.rotation_0 = true,
+        .rotation_90 => rotation.rotation_90 = true,
+        .rotation_180 => rotation.rotation_180 = true,
+        .rotation_270 => rotation.rotation_270 = true,
+    }
+
+    if (crtc.reflection.horizontal)
+        rotation.reflect_x = true;
+
+    if (crtc.reflection.vertical)
+        rotation.reflect_y = true;
+
+    return rotation;
+}
+
+// fn get_clones_of_output_crtc(screen_resources: *const phx.ScreenResources, src_output: *const phx.Output, allocator: std.mem.Allocator) !std.ArrayList(OutputId) {
+//     var clones = std.ArrayList(OutputId).init(allocator);
+//     errdefer clones.deinit();
+
+//     const src_output_crtc = src_output.get_crtc(screen_resources.crtcs.items);
+//     for (screen_resources.outputs.items) |*output| {
+//         if (output.id == output.id)
+//             continue;
+
+//         const crtc = output.get_crtc(screen_resources.crtcs.items);
+//         if (crtc.id != src_output_crtc.id)
+//             continue;
+
+//         try clones.append(output.id);
+//     }
+
+//     return clones;
+// }
 
 fn get_mode_ids(crtc: *const phx.Crtc, allocator: std.mem.Allocator) ![]ModeId {
     var mode_ids = try allocator.alloc(ModeId, crtc.modes.len);
@@ -211,10 +286,10 @@ fn screen_resource_create_crtc_list(screen_resources: *const phx.ScreenResources
 }
 
 fn screen_resource_create_output_list(screen_resources: *const phx.ScreenResources, output_ids: []OutputId) []OutputId {
-    for (screen_resources.outputs.items, 0..) |*output, i| {
-        output_ids[i] = output.id;
+    for (screen_resources.crtcs.items, 0..) |*output, i| {
+        output_ids[i] = output.id.to_output_id();
     }
-    return output_ids[0..screen_resources.outputs.items.len];
+    return output_ids[0..screen_resources.crtcs.items.len];
 }
 
 fn screen_resource_create_mode_infos(screen_resources: *const phx.ScreenResources, allocator: std.mem.Allocator) !ModeInfosWithName {
@@ -250,8 +325,8 @@ fn mode_to_mode_info(mode: *const phx.Crtc.Mode, mode_name: []const u8) ModeInfo
         .mode_flags = .{
             .hsync_positive = true,
             .hsync_negative = false,
-            .vsync_positive = false,
-            .vsync_negative = true,
+            .vsync_positive = true,
+            .vsync_negative = false,
             .interlace = mode.interlace,
             .double_scan = false,
             .csync = false,
@@ -288,14 +363,26 @@ const MinorOpcode = enum(x11.Card8) {
     select_input = 4,
     get_screen_resources = 8,
     get_output_info = 9,
+    get_crtc_info = 20,
 };
 
 pub const CrtcId = enum(x11.Card32) {
     _,
+
+    pub fn to_output_id(self: CrtcId) OutputId {
+        const output_id: x11.Card32 = @intFromEnum(self);
+        return @enumFromInt(output_id);
+    }
 };
 
+// OutputId is an alias for CrtcId in Phoenix
 pub const OutputId = enum(x11.Card32) {
     _,
+
+    pub fn to_crtc_id(self: OutputId) CrtcId {
+        const crtc_id: x11.Card32 = @intFromEnum(self);
+        return @enumFromInt(crtc_id);
+    }
 };
 
 pub const ModeId = enum(x11.Card32) {
@@ -380,13 +467,25 @@ const Connection = enum(x11.Card8) {
     unknown = 2,
 };
 
-pub const SubPixel = enum(x11.Card8) {
+const SubPixel = enum(x11.Card8) {
     unknown = 0,
     horizontal_rgb = 1,
     horizontal_bgr = 2,
     vertical_rgb = 3,
     vertical_bgr = 4,
     none = 5,
+};
+
+// TODO: This isn't x11.Card16 everywhere, for example ScreenChangeNotify which isn't implemented yet
+pub const Rotation = packed struct(x11.Card16) {
+    rotation_0: bool = false,
+    rotation_90: bool = false,
+    rotation_180: bool = false,
+    rotation_270: bool = false,
+    reflect_x: bool = false,
+    reflect_y: bool = false,
+
+    _padding: u10 = 0,
 };
 
 pub const Request = struct {
@@ -419,6 +518,14 @@ pub const Request = struct {
         minor_opcode: MinorOpcode = .get_screen_resources,
         length: x11.Card16,
         output: OutputId,
+        config_timestamp: x11.Timestamp,
+    };
+
+    pub const GetCrtcInfo = struct {
+        major_opcode: phx.opcode.Major = .randr,
+        minor_opcode: MinorOpcode = .get_screen_resources,
+        length: x11.Card16,
+        crtc: CrtcId,
         config_timestamp: x11.Timestamp,
     };
 };
@@ -476,6 +583,25 @@ const Reply = struct {
         clones: x11.ListOf(OutputId, .{ .length_field = "num_clones" }),
         name: x11.ListOf(x11.Card8, .{ .length_field = "name_length" }),
         pad1: x11.AlignmentPadding = .{},
+    };
+
+    pub const GetCrtcInfo = struct {
+        type: phx.reply.ReplyType = .reply,
+        status: ConfigStatus,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        timestamp: x11.Timestamp,
+        x: i16,
+        y: i16,
+        width: x11.Card16,
+        height: x11.Card16,
+        mode: ModeId,
+        current_rotation: Rotation,
+        possible_rotations: Rotation,
+        num_outputs: x11.Card16 = 0,
+        num_possible_outputs: x11.Card16 = 0,
+        outputs: x11.ListOf(OutputId, .{ .length_field = "num_outputs" }),
+        possible_outputs: x11.ListOf(OutputId, .{ .length_field = "num_possible_outputs" }),
     };
 };
 

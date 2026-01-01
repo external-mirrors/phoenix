@@ -389,22 +389,22 @@ pub fn get_screen_resources(_: *Self, timestamp: x11.Timestamp, allocator: std.m
 
     try screen_resources.crtcs.append(.{
         .id = @enumFromInt(1),
+        .x = 0,
+        .y = 0,
         // Since we have a virtual monitor (a window) it doesn't have any physical size, so we set it to whatever
         .width_mm = 500,
         .height_mm = 250,
         .status = .connected,
+        .rotation = .rotation_0,
+        .reflection = .{
+            .horizontal = false,
+            .vertical = false,
+        },
+        .active_mode_index = 0,
         .preferred_mode_index = 0,
         .name = crtc_name,
         .modes = modes,
         .non_desktop = false,
-    });
-
-    try screen_resources.outputs.append(.{
-        .id = @enumFromInt(1),
-        .crtc_id = @enumFromInt(1),
-        .active_mode_index = 0,
-        .x = 0,
-        .y = 0,
     });
 
     return screen_resources;

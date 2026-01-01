@@ -135,11 +135,11 @@ const MinorOpcode = enum(x11.Card8) {
     query_pict_formats = 1,
 };
 
-pub const PictFormatId = enum(x11.Card32) {
+const PictFormatId = enum(x11.Card32) {
     _,
 };
 
-pub const PictType = enum(x11.Card8) {
+const PictType = enum(x11.Card8) {
     indexed = 0,
     direct = 1,
 };
@@ -219,7 +219,7 @@ pub const pict_op_maximum: x11.Card8 = 0x13;
 //pub const pict_op_blend_minimum: x11.Card8 = 0x30;
 //pub const pict_op_blend_maximum: x11.Card8 = 0x3e;
 
-pub const DirectFormat = struct {
+const DirectFormat = struct {
     red_shift: x11.Card16,
     red_mask: x11.Card16,
     green_shift: x11.Card16,
@@ -230,7 +230,7 @@ pub const DirectFormat = struct {
     alpha_mask: x11.Card16,
 };
 
-pub const PictFormInfo = struct {
+const PictFormInfo = struct {
     id: PictFormatId,
     type: PictType,
     depth: x11.Card8,
@@ -239,12 +239,12 @@ pub const PictFormInfo = struct {
     colormap: x11.ColormapId,
 };
 
-pub const PictVisual = struct {
+const PictVisual = struct {
     visual: x11.VisualId,
     format: PictFormatId,
 };
 
-pub const PictDepth = struct {
+const PictDepth = struct {
     depth: x11.Card8,
     pad1: x11.Card8 = 0,
     num_visuals: x11.Card16 = 0,
@@ -252,13 +252,13 @@ pub const PictDepth = struct {
     visuals: x11.ListOf(PictVisual, .{ .length_field = "num_visuals" }),
 };
 
-pub const PictScreen = struct {
+const PictScreen = struct {
     num_depths: x11.Card32 = 0,
     fallback: PictFormatId,
     depths: x11.ListOf(PictDepth, .{ .length_field = "num_depths" }),
 };
 
-pub const SubPixel = enum(x11.Card32) {
+const SubPixel = enum(x11.Card32) {
     unknown = 0,
     horizontal_rgb = 1,
     horizontal_bgr = 2,

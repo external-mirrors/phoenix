@@ -108,6 +108,9 @@ Note that the generated documentation feature is a work-in-progress.
 ## License
 This software is licensed under GPL-3.0-only, see the LICENSE file for more information.
 
+## Reporting bugs, contributing patches, questions or donation
+Development is private until the project has progressed further, so it's too early to report bugs or contribute, but if you have questions or want to donate take a look at [https://git.dec05eba.com/?p=about](https://git.dec05eba.com/?p=about) to see how you can do so.
+
 ## FAQ
 ### Isn't it easier to write a Wayland compositor?
 Despite popular belief, writing a simple X server that works in practice for a wide range of applications is easier to do than it is to write a Wayland compositor (+ related software).\

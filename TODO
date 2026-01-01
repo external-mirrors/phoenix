@@ -1,7 +1,7 @@
 Remove HashMaps usage when the key is an integer. Iterating an array is faster.
 Return Length error if request length header isn't long enough for the message.
 Support BIG-REQUESTS extension.
-Use auth if there is one added in xauthority file for the path (X1 is $USER/unix:1)
+Use auth if there is one added in xauthority file for the path (X1 is \$USER/unix:1)
     and validate client connection against it. Right now we accept all connections.
 Use epoll equivalent on other OS'.
 Move protocol definition and request/reply handling to a separate repository as it can also be used for a zig native x11 client.
@@ -53,3 +53,6 @@ Maybe move read/write x11 network transfer to another thread.
 Add option for client windows to advertise that they should be in the overlay plane. The server should set a property on the window to indicate which plane it is actually on.
 Create InputX11 and use that when running nested.
 Go through all events defined in the protocol (core and extensions) and check if they are called (called at all and with the right arguments).
+Add an option to disable middle mouse paste (make SetSelectionOwner with atom PRIMARY have no effect).
+Maybe allow global hotkeys as long as the application does a grab. If it does a grab other applications dont receive input so there is no hidden keylogger that silently listens to keys.
+Support multiple monitors in nested mode. This is useful for testing (both phoenix and client applications).

@@ -360,6 +360,55 @@ fn get_keyboard_map_key_actions(map: *const c.xcb_xkb_get_map_map_t, num_key_act
 //     }
 // }
 
+pub fn get_screen_resources(_: *Self, timestamp: x11.Timestamp, allocator: std.mem.Allocator) !phx.ScreenResources {
+    var screen_resources = phx.ScreenResources.init(timestamp, timestamp, allocator);
+    errdefer screen_resources.deinit();
+
+    // Since we have a virtual monitor (a window) it doesn't have any name, so we set it to whatever
+    const crtc_name = try allocator.dupe(u8, "DP-1");
+    errdefer allocator.free(crtc_name);
+
+    var modes = try allocator.alloc(phx.Crtc.Mode, 1);
+    errdefer allocator.free(modes);
+
+    // Since we have a virtual monitor (a window) it doesn't have a real clock rate, set it to 1080p 60fps for now
+    modes[0] = .{
+        .id = 1,
+        .width = 1920,
+        .height = 1080,
+        .dot_clock = 1920 * 1080 * 60,
+        .hsync_start = 0,
+        .hsync_end = 0,
+        .htotal = 1920,
+        .hskew = 0,
+        .vsync_start = 0,
+        .vsync_end = 0,
+        .vtotal = 1080,
+        .interlace = false,
+    };
+
+    try screen_resources.crtcs.append(.{
+        .id = @enumFromInt(1),
+        // Since we have a virtual monitor (a window) it doesn't have any physical size, so we set it to whatever
+        .width_mm = 500,
+        .height_mm = 250,
+        .status = .connected,
+        .preferred_mode_index = 0,
+        .name = crtc_name,
+        .modes = modes,
+    });
+
+    try screen_resources.outputs.append(.{
+        .id = @enumFromInt(1),
+        .crtc_id = @enumFromInt(1),
+        .active_mode_index = 0,
+        .x = 0,
+        .y = 0,
+    });
+
+    return screen_resources;
+}
+
 pub fn is_running(self: *Self) bool {
     return self.running;
 }

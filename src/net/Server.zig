@@ -37,6 +37,8 @@ input: phx.Input,
 installed_colormaps: std.ArrayList(phx.Colormap),
 started_time_seconds: f64,
 
+screen_resources: phx.ScreenResources,
+
 /// The server will catch sigint and close down (if |run| has been executed)
 pub fn init(allocator: std.mem.Allocator) !Self {
     const started_time_seconds = clock_get_monotonic_seconds();
@@ -112,8 +114,10 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     errdefer installed_colormaps.deinit();
 
     try installed_colormaps.append(screen_true_color_colormap);
-
     const root_window = try create_root_window(root_client, allocator);
+
+    var screen_resources = try display.get_screen_resources(@enumFromInt(1), allocator);
+    errdefer screen_resources.deinit();
 
     return .{
         .allocator = allocator,
@@ -130,18 +134,21 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         .input = input,
         .installed_colormaps = installed_colormaps,
         .started_time_seconds = started_time_seconds,
+        .screen_resources = screen_resources,
     };
 }
 
 pub fn deinit(self: *Self) void {
+    self.display.destroy();
+    self.input.deinit();
     self.client_manager.deinit();
     self.atom_manager.deinit();
     self.installed_colormaps.deinit();
+    self.screen_resources.deinit();
     std.posix.close(self.epoll_fd);
     std.posix.close(self.signal_fd);
     std.posix.close(self.event_fd);
-    self.display.destroy();
-    self.input.deinit();
+    std.posix.unlink(unix_domain_socket_path) catch {};
 }
 
 fn clock_get_monotonic_seconds() f64 {

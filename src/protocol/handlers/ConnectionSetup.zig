@@ -47,6 +47,8 @@ pub fn handle_client_connect(server: *phx.Server, client: *phx.Client, root_wind
     var vendor_buf: [32]x11.Card8 = undefined;
     const vendor_str = std.fmt.bufPrint(&vendor_buf, "{s}", .{phx.Server.vendor}) catch unreachable;
 
+    const screen_info = server.screen_resources.create_screen_info();
+
     var pixmap_formats = [_]PixmapFormat{
         .{
             .depth = 24,
@@ -90,16 +92,16 @@ pub fn handle_client_connect(server: *phx.Server, client: *phx.Client, root_wind
             .white_pixel = 0x00ffffff,
             .black_pixel = 0x00000000,
             .current_input_masks = 0, // TODO: KeyPressMask, KeyReleaseMask, etc
-            .width_pixels = 3840,
-            .height_pixels = 2160,
-            .width_mm = 1016,
-            .height_mm = 571,
+            .width_pixels = @intCast(screen_info.width),
+            .height_pixels = @intCast(screen_info.height),
+            .width_mm = @intCast(screen_info.width_mm),
+            .height_mm = @intCast(screen_info.height_mm),
             .min_installed_colormaps = 1,
             .max_installed_colormaps = 1,
             .root_visual = screen_visual.id,
             .backing_stores = .when_mapped,
             .save_unders = true,
-            .root_depth = 32,
+            .root_depth = 24,
             .allowed_depths = .{ .items = &depths },
         },
     };

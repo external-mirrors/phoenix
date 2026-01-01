@@ -1,6 +1,7 @@
 const std = @import("std");
 const DisplayX11 = @import("DisplayX11.zig");
 const phx = @import("../../phoenix.zig");
+const x11 = phx.x11;
 
 const Self = @This();
 
@@ -8,17 +9,17 @@ allocator: std.mem.Allocator,
 impl: DisplayImpl,
 
 pub fn create_x11(event_fd: std.posix.fd_t, allocator: std.mem.Allocator) !Self {
-    const x11 = try allocator.create(DisplayX11);
-    errdefer allocator.destroy(x11);
+    const display_x11 = try allocator.create(DisplayX11);
+    errdefer allocator.destroy(display_x11);
 
-    x11.* = try .init(event_fd, allocator);
-    errdefer x11.deinit();
+    display_x11.* = try .init(event_fd, allocator);
+    errdefer display_x11.deinit();
 
-    try x11.run_update_thread();
+    try display_x11.run_update_thread();
 
     return .{
         .allocator = allocator,
-        .impl = .{ .x11 = x11 },
+        .impl = .{ .x11 = display_x11 },
     };
 }
 
@@ -79,6 +80,12 @@ pub fn get_supported_modifiers(self: *Self, window: *phx.Window, depth: u8, bpp:
 pub fn get_keyboard_map(self: *Self, params: *const phx.Xkb.Request.GetMap, arena: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetMap {
     return switch (self.impl) {
         inline else => |item| item.get_keyboard_map(params, arena),
+    };
+}
+
+pub fn get_screen_resources(self: *Self, timestamp: x11.Timestamp, allocator: std.mem.Allocator) !phx.ScreenResources {
+    return switch (self.impl) {
+        inline else => |item| item.get_screen_resources(timestamp, allocator),
     };
 }
 

@@ -75,7 +75,7 @@ However these are not going to be implemented in Phoenix, except for the simple 
 This will not affect applications that users actually use, even if they use old gtk2 applications.
 
 ### Strings
-Strings are in ISO Latin-1 encoding in the X11 protocol unless specified otherwise, however in Phoenix all strings are UTF-8 unless the protocol states that it's not an ISO Latin-1 string.
+Strings are in ISO Latin-1 encoding in the X11 protocol unless specified otherwise, however in Phoenix all strings are UTF-8 (unchecked) unless the protocol states that it's not an ISO Latin-1 string.
 
 ## Installing
 Run:
@@ -150,5 +150,5 @@ Almost all of the issues people have had with X11 are not issues in X11 protocol
 There are many more issues with Wayland that are not mentioned here.
 
 ### Doesn't X11 have fundamental issues with tearing/multiple monitors/hdr/security/etc that can't be fixed?
-No, most information about how X11 works online is wrong. Some of this misinformation has even been spread by Wayland compositor developers. These issues are related to the X.org server, not the X11 protocol.\
+No, most information about how X11 works online is wrong. Some of this misinformation has even been spread by some Wayland compositor developers. These issues are related to the X.org server, not the X11 protocol.\
 When 10-bit color mode is enabled in the Xorg server it can break some applications such as steam which fails to start, but all of these issues can be solved without affecting client applications, even without introducing a new X11 protocol extension.

@@ -28,6 +28,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .ungrab_server => ungrab_server(request_context),
         .query_pointer => query_pointer(request_context),
         .get_input_focus => get_input_focus(request_context),
+        .open_font => open_font(request_context),
         .create_pixmap => create_pixmap(request_context),
         .free_pixmap => free_pixmap(request_context),
         .create_gc => create_gc(request_context),
@@ -633,6 +634,13 @@ fn get_input_focus(request_context: phx.RequestContext) !void {
         .focused_window = request_context.server.root_window.id,
     };
     try request_context.client.write_reply(&rep);
+}
+
+fn open_font(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.OpenFont, request_context.allocator);
+    defer req.deinit();
+
+    std.log.err("TODO: Implement OpenFont", .{});
 }
 
 fn create_pixmap(request_context: phx.RequestContext) !void {
@@ -1329,6 +1337,16 @@ pub const Request = struct {
         opcode: phx.opcode.Major = .get_input_focus,
         pad1: x11.Card8,
         length: x11.Card16,
+    };
+
+    pub const OpenFont = struct {
+        opcode: phx.opcode.Major = .open_font,
+        pad1: x11.Card8,
+        length: x11.Card16,
+        font: x11.FontId,
+        length_of_name: x11.Card16,
+        pad2: x11.Card16,
+        name: x11.ListOf(x11.Card8, .{ .length_field = "length_of_name" }),
     };
 
     pub const CreatePixmap = struct {

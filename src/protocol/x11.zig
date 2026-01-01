@@ -122,6 +122,10 @@ pub const Atom = enum(Card32) {
     _,
 };
 
+pub const FontId = enum(Card32) {
+    _,
+};
+
 pub const KeyCode = enum(Card8) {
     _,
 

@@ -1247,6 +1247,65 @@ pub const Request = struct {
         }
     };
 
+    pub const GetGeometry = struct {
+        opcode: phx.opcode.Major = .get_geometry,
+        pad1: x11.Card8,
+        length: x11.Card16,
+        drawable: x11.DrawableId,
+    };
+
+    pub const QueryTree = struct {
+        opcode: phx.opcode.Major = .query_tree,
+        pad1: x11.Card8,
+        length: x11.Card16,
+        window: x11.WindowId,
+    };
+
+    pub const InternAtom = struct {
+        opcode: phx.opcode.Major = .intern_atom,
+        only_if_exists: bool,
+        length: x11.Card16,
+        length_of_name: x11.Card16,
+        pad1: x11.Card16,
+        name: x11.ListOf(x11.Card8, .{ .length_field = "length_of_name" }),
+        pad2: x11.AlignmentPadding = .{},
+    };
+
+    pub const ChangeProperty = struct {
+        opcode: phx.opcode.Major = .change_property,
+        mode: enum(x11.Card8) {
+            replace = 0,
+            prepend = 1,
+            append = 2,
+        },
+        length: x11.Card16,
+        window: x11.WindowId,
+        property: x11.Atom,
+        type: x11.Atom,
+        format: PropertyFormat,
+        pad1: x11.Card8,
+        pad2: x11.Card16,
+        // In |format| units
+        data_length: x11.Card32,
+        data: x11.UnionList(union(PropertyFormat) {
+            format8: []x11.Card8,
+            format16: []x11.Card16,
+            format32: []x11.Card32,
+        }, .{ .type_field = "format", .length_field = "data_length" }),
+        pad3: x11.AlignmentPadding,
+    };
+
+    pub const GetProperty = struct {
+        opcode: phx.opcode.Major = .get_property,
+        delete: bool,
+        length: x11.Card16,
+        window: x11.WindowId,
+        property: x11.Atom,
+        type: x11.Atom,
+        long_offset: x11.Card32,
+        long_length: x11.Card32,
+    };
+
     pub const GrabServer = struct {
         opcode: phx.opcode.Major = .grab_server,
         pad1: x11.Card8,
@@ -1325,65 +1384,6 @@ pub const Request = struct {
         pad1: x11.Card8,
         length: x11.Card16,
     };
-
-    pub const ChangeProperty = struct {
-        opcode: phx.opcode.Major = .change_property,
-        mode: enum(x11.Card8) {
-            replace = 0,
-            prepend = 1,
-            append = 2,
-        },
-        length: x11.Card16,
-        window: x11.WindowId,
-        property: x11.Atom,
-        type: x11.Atom,
-        format: PropertyFormat,
-        pad1: x11.Card8,
-        pad2: x11.Card16,
-        // In |format| units
-        data_length: x11.Card32,
-        data: x11.UnionList(union(PropertyFormat) {
-            format8: []x11.Card8,
-            format16: []x11.Card16,
-            format32: []x11.Card32,
-        }, .{ .type_field = "format", .length_field = "data_length" }),
-        pad3: x11.AlignmentPadding,
-    };
-
-    pub const GetProperty = struct {
-        opcode: phx.opcode.Major = .get_property,
-        delete: bool,
-        length: x11.Card16,
-        window: x11.WindowId,
-        property: x11.Atom,
-        type: x11.Atom,
-        long_offset: x11.Card32,
-        long_length: x11.Card32,
-    };
-
-    pub const GetGeometry = struct {
-        opcode: phx.opcode.Major = .get_geometry,
-        pad1: x11.Card8,
-        length: x11.Card16,
-        drawable: x11.DrawableId,
-    };
-
-    pub const QueryTree = struct {
-        opcode: phx.opcode.Major = .query_tree,
-        pad1: x11.Card8,
-        length: x11.Card16,
-        window: x11.WindowId,
-    };
-
-    pub const InternAtom = struct {
-        opcode: phx.opcode.Major = .intern_atom,
-        only_if_exists: bool,
-        length: x11.Card16,
-        length_of_name: x11.Card16,
-        pad1: x11.Card16,
-        name: x11.ListOf(x11.Card8, .{ .length_field = "length_of_name" }),
-        pad2: x11.AlignmentPadding = .{},
-    };
 };
 
 const Reply = struct {
@@ -1409,43 +1409,39 @@ const Reply = struct {
         pad1: x11.Card16 = 0,
     };
 
-    pub const GetInputFocus = struct {
+    pub const GetGeometry = struct {
         reply_type: phx.reply.ReplyType = .reply,
-        revert_to: RevertTo,
+        depth: x11.Card8,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        focused_window: x11.WindowId,
-        pad1: [20]x11.Card8 = @splat(0),
+        root: x11.WindowId,
+        x: i16,
+        y: i16,
+        width: x11.Card16,
+        height: x11.Card16,
+        border_width: x11.Card16,
+        pad1: [10]x11.Card8 = @splat(0),
     };
 
-    pub const QueryExtension = struct {
+    pub const QueryTree = struct {
         reply_type: phx.reply.ReplyType = .reply,
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        present: bool,
-        major_opcode: x11.Card8,
-        first_event: x11.Card8,
-        first_error: x11.Card8,
+        root: x11.WindowId,
+        parent: x11.WindowId, // Or none(0) if the window is the root window
+        num_children: x11.Card16 = 0,
+        pad2: [14]x11.Card8 = @splat(0),
+        children: x11.ListOf(x11.WindowId, .{ .length_field = "num_children" }),
+    };
+
+    pub const InternAtom = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        atom: x11.Atom,
         pad2: [20]x11.Card8 = @splat(0),
-    };
-
-    pub const GetKeyboardMapping = struct {
-        reply_type: phx.reply.ReplyType = .reply,
-        keysyms_per_keycode: x11.Card8,
-        sequence_number: x11.Card16,
-        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        pad2: [24]x11.Card8 = @splat(0),
-        keysyms: x11.ListOf(x11.KeySym, .{ .length_field = "length" }),
-    };
-
-    pub const GetModifierMapping = struct {
-        reply_type: phx.reply.ReplyType = .reply,
-        keycodes_per_modifier: x11.Card8,
-        sequence_number: x11.Card16,
-        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        pad2: [24]x11.Card8 = @splat(0),
-        keycodes: x11.ListOf(x11.KeyCode, .{ .length_field = "length" }),
     };
 
     pub fn GetProperty(comptime DataType: type) type {
@@ -1489,20 +1485,6 @@ const Reply = struct {
         pad1: [12]x11.Card8 = @splat(0),
     };
 
-    pub const GetGeometry = struct {
-        reply_type: phx.reply.ReplyType = .reply,
-        depth: x11.Card8,
-        sequence_number: x11.Card16,
-        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        root: x11.WindowId,
-        x: i16,
-        y: i16,
-        width: x11.Card16,
-        height: x11.Card16,
-        border_width: x11.Card16,
-        pad1: [10]x11.Card8 = @splat(0),
-    };
-
     pub const QueryPointer = struct {
         reply_type: phx.reply.ReplyType = .reply,
         same_screen: bool,
@@ -1518,34 +1500,52 @@ const Reply = struct {
         pad1: [6]x11.Card8 = @splat(0),
     };
 
-    pub const QueryTree = struct {
+    pub const GetInputFocus = struct {
         reply_type: phx.reply.ReplyType = .reply,
-        pad1: x11.Card8 = 0,
+        revert_to: RevertTo,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        root: x11.WindowId,
-        parent: x11.WindowId, // Or none(0) if the window is the root window
-        num_children: x11.Card16 = 0,
-        pad2: [14]x11.Card8 = @splat(0),
-        children: x11.ListOf(x11.WindowId, .{ .length_field = "num_children" }),
+        focused_window: x11.WindowId,
+        pad1: [20]x11.Card8 = @splat(0),
     };
 
-    pub const InternAtom = struct {
+    pub const QueryExtension = struct {
         reply_type: phx.reply.ReplyType = .reply,
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        atom: x11.Atom,
+        present: bool,
+        major_opcode: x11.Card8,
+        first_event: x11.Card8,
+        first_error: x11.Card8,
         pad2: [20]x11.Card8 = @splat(0),
     };
 
-    pub const ListExtensions = struct {
+    pub const GetKeyboardMapping = struct {
         reply_type: phx.reply.ReplyType = .reply,
-        num_strs: x11.Card8,
+        keysyms_per_keycode: x11.Card8,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        pad1: [24]x11.Card8 = @splat(0),
-        names: x11.ListOf(String8WithLength, .{ .length_field = "num_strs" }),
-        pad2: x11.AlignmentPadding = .{},
+        pad2: [24]x11.Card8 = @splat(0),
+        keysyms: x11.ListOf(x11.KeySym, .{ .length_field = "length" }),
     };
+
+    pub const GetModifierMapping = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        keycodes_per_modifier: x11.Card8,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        pad2: [24]x11.Card8 = @splat(0),
+        keycodes: x11.ListOf(x11.KeyCode, .{ .length_field = "length" }),
+    };
+
+    // pub const ListExtensions = struct {
+    //     reply_type: phx.reply.ReplyType = .reply,
+    //     num_strs: x11.Card8,
+    //     sequence_number: x11.Card16,
+    //     length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+    //     pad1: [24]x11.Card8 = @splat(0),
+    //     names: x11.ListOf(String8WithLength, .{ .length_field = "num_strs" }),
+    //     pad2: x11.AlignmentPadding = .{},
+    // };
 };

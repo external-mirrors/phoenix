@@ -373,7 +373,7 @@ pub fn get_screen_resources(_: *Self, timestamp: x11.Timestamp, allocator: std.m
 
     // Since we have a virtual monitor (a window) it doesn't have a real clock rate, set it to 1080p 60fps for now
     modes[0] = .{
-        .id = 1,
+        .id = @enumFromInt(1),
         .width = 1920,
         .height = 1080,
         .dot_clock = 1920 * 1080 * 60,
@@ -396,6 +396,7 @@ pub fn get_screen_resources(_: *Self, timestamp: x11.Timestamp, allocator: std.m
         .preferred_mode_index = 0,
         .name = crtc_name,
         .modes = modes,
+        .non_desktop = false,
     });
 
     try screen_resources.outputs.append(.{

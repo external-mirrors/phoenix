@@ -70,6 +70,14 @@ pub fn create_screen_info(self: *const Self) ScreenInfo {
     };
 }
 
+pub fn get_output_by_id(self: *Self, output_id: phx.Randr.OutputId) ?*phx.Output {
+    for (self.outputs.items) |*output| {
+        if (output.id == output_id)
+            return output;
+    }
+    return null;
+}
+
 pub const ScreenInfo = struct {
     width: u32,
     height: u32,

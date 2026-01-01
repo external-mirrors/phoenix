@@ -85,7 +85,7 @@ fn destroy_context(request_context: phx.RequestContext) !void {
 
     var glx_context = request_context.server.get_glx_context(req.request.context) orelse {
         std.log.err("Received invalid glx context {d} in GlxDestroyContext request", .{req.request.context});
-        return request_context.client.write_error(request_context, phx.err.glx_error_bad_context, @intFromEnum(req.request.context));
+        return request_context.client.write_error(request_context, .glx_context, @intFromEnum(req.request.context));
     };
     glx_context.client_owner.remove_resource(glx_context.id.to_id());
 }
@@ -97,7 +97,7 @@ fn is_direct(request_context: phx.RequestContext) !void {
 
     const glx_context = request_context.server.get_glx_context(req.request.context) orelse {
         std.log.err("Received invalid glx context {d} in GlxIsDirect request", .{req.request.context});
-        return request_context.client.write_error(request_context, phx.err.glx_error_bad_context, @intFromEnum(req.request.context));
+        return request_context.client.write_error(request_context, .glx_context, @intFromEnum(req.request.context));
     };
 
     var rep = Reply.IsDirect{
@@ -335,7 +335,7 @@ fn get_drawable_attributes(request_context: phx.RequestContext) !void {
 
     const glx_drawable = request_context.server.get_glx_drawable(req.request.drawable) orelse {
         std.log.err("Received invalid glx drawable {d} in GlxGetDrawableAttributes request", .{req.request.drawable});
-        return request_context.client.write_error(request_context, phx.err.glx_error_bad_drawable, @intFromEnum(req.request.drawable));
+        return request_context.client.write_error(request_context, .glx_drawable, @intFromEnum(req.request.drawable));
     };
     const geometry = glx_drawable.get_geometry();
 

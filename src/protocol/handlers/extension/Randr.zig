@@ -17,6 +17,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .query_version => query_version(request_context),
         .select_input => select_input(request_context),
         .get_screen_resources => get_screen_resources(request_context),
+        .get_output_info => get_output_info(request_context),
     };
 }
 
@@ -83,13 +84,18 @@ fn get_screen_resources(request_context: phx.RequestContext) !void {
     defer req.deinit();
     std.log.info("RandrGetScreenResources request: {s}", .{x11.stringify_fmt(req.request)});
 
+    _ = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in RandrGetScreenResources request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+
     var mode_infos_with_name = try screen_resource_create_mode_infos(&request_context.server.screen_resources, request_context.allocator);
     defer mode_infos_with_name.deinit();
 
-    var crtc_ids_buf: [phx.ScreenResources.max_crtcs]Crtc = undefined;
+    var crtc_ids_buf: [phx.ScreenResources.max_crtcs]CrtcId = undefined;
     const crtc_ids = screen_resource_create_crtc_list(&request_context.server.screen_resources, &crtc_ids_buf);
 
-    var output_ids_buf: [phx.ScreenResources.max_outputs]Output = undefined;
+    var output_ids_buf: [phx.ScreenResources.max_outputs]OutputId = undefined;
     const output_ids = screen_resource_create_output_list(&request_context.server.screen_resources, &output_ids_buf);
 
     var rep = Reply.GetScreenResources{
@@ -104,14 +110,107 @@ fn get_screen_resources(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn screen_resource_create_crtc_list(screen_resources: *const phx.ScreenResources, crtc_ids: []Crtc) []Crtc {
+fn get_output_info(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GetOutputInfo, request_context.allocator);
+    defer req.deinit();
+    std.log.info("RandrGetOutputInfo request: {s}", .{x11.stringify_fmt(req.request)});
+
+    const version_1_6 = (phx.Version{ .major = 1, .minor = 6 }).to_int();
+    const supports_non_desktop = request_context.client.extension_versions.randr.to_int() >= version_1_6;
+
+    const output = request_context.server.screen_resources.get_output_by_id(req.request.output) orelse {
+        std.log.err("Received invalid output {d} in RandrGetOutputInfo request", .{req.request.output});
+        return request_context.client.write_error(request_context, .randr_output, @intFromEnum(req.request.output));
+    };
+    const crtc = output.get_crtc(request_context.server.screen_resources.crtcs.items);
+
+    if (req.request.config_timestamp != request_context.server.screen_resources.config_timestamp) {
+        var rep = Reply.GetOutputInfo{
+            .status = .invalid_config_time,
+            .sequence_number = request_context.sequence_number,
+            .timestamp = @enumFromInt(0),
+            .crtc = @enumFromInt(0),
+            .width_mm = 0,
+            .height_mm = 0,
+            .connection = .unknown,
+            .subpixel_order = .unknown,
+            .num_preferred_modes = 0,
+            .crtcs = .{ .items = &.{} },
+            .modes = .{ .items = &.{} },
+            .clones = .{ .items = &.{} },
+            .name = .{ .items = &.{} },
+        };
+        try request_context.client.write_reply(&rep);
+    }
+
+    var crtcs = [_]CrtcId{output.crtc_id};
+
+    var clones = try get_clones_of_output_crtc(&request_context.server.screen_resources, output, request_context.allocator);
+    defer clones.deinit();
+
+    const modes = try get_mode_ids(crtc, request_context.allocator);
+    defer request_context.allocator.free(modes);
+
+    var rep = Reply.GetOutputInfo{
+        .status = .success,
+        .sequence_number = request_context.sequence_number,
+        .timestamp = request_context.server.screen_resources.timestamp,
+        .crtc = output.crtc_id,
+        .width_mm = crtc.width_mm,
+        .height_mm = crtc.height_mm,
+        .connection = if (supports_non_desktop and crtc.non_desktop) .disconnected else crtc_status_to_connect(crtc.status),
+        .subpixel_order = .unknown, // TODO: Support others?
+        .num_preferred_modes = 1,
+        .crtcs = .{ .items = &crtcs },
+        .modes = .{ .items = modes }, // TODO: Should this be the modes of all crtcs?
+        .clones = .{ .items = clones.items },
+        .name = .{ .items = crtc.name },
+    };
+    try request_context.client.write_reply(&rep);
+}
+
+fn get_clones_of_output_crtc(screen_resources: *const phx.ScreenResources, src_output: *const phx.Output, allocator: std.mem.Allocator) !std.ArrayList(OutputId) {
+    var clones = std.ArrayList(OutputId).init(allocator);
+    errdefer clones.deinit();
+
+    const src_output_crtc = src_output.get_crtc(screen_resources.crtcs.items);
+    for (screen_resources.outputs.items) |*output| {
+        if (output.id == output.id)
+            continue;
+
+        const crtc = output.get_crtc(screen_resources.crtcs.items);
+        if (crtc.id != src_output_crtc.id)
+            continue;
+
+        try clones.append(output.id);
+    }
+
+    return clones;
+}
+
+fn get_mode_ids(crtc: *const phx.Crtc, allocator: std.mem.Allocator) ![]ModeId {
+    var mode_ids = try allocator.alloc(ModeId, crtc.modes.len);
+    for (crtc.modes, 0..) |*mode, i| {
+        mode_ids[i] = mode.id;
+    }
+    return mode_ids;
+}
+
+fn crtc_status_to_connect(crtc_status: phx.Crtc.Status) Connection {
+    return switch (crtc_status) {
+        .connected => .connected,
+        .disconnected => .disconnected,
+    };
+}
+
+fn screen_resource_create_crtc_list(screen_resources: *const phx.ScreenResources, crtc_ids: []CrtcId) []CrtcId {
     for (screen_resources.crtcs.items, 0..) |*crtc, i| {
         crtc_ids[i] = crtc.id;
     }
     return crtc_ids[0..screen_resources.crtcs.items.len];
 }
 
-fn screen_resource_create_output_list(screen_resources: *const phx.ScreenResources, output_ids: []Output) []Output {
+fn screen_resource_create_output_list(screen_resources: *const phx.ScreenResources, output_ids: []OutputId) []OutputId {
     for (screen_resources.outputs.items, 0..) |*output, i| {
         output_ids[i] = output.id;
     }
@@ -188,13 +287,18 @@ const MinorOpcode = enum(x11.Card8) {
     query_version = 0,
     select_input = 4,
     get_screen_resources = 8,
+    get_output_info = 9,
 };
 
-pub const Crtc = enum(x11.Card32) {
+pub const CrtcId = enum(x11.Card32) {
     _,
 };
 
-pub const Output = enum(x11.Card32) {
+pub const OutputId = enum(x11.Card32) {
+    _,
+};
+
+pub const ModeId = enum(x11.Card32) {
     _,
 };
 
@@ -248,7 +352,7 @@ const ModeFlag = packed struct(x11.Card32) {
 };
 
 const ModeInfo = struct {
-    id: x11.Card32,
+    id: ModeId,
     width: x11.Card16,
     height: x11.Card16,
     dot_clock: x11.Card32,
@@ -261,6 +365,28 @@ const ModeInfo = struct {
     vtotal: x11.Card16,
     name_len: x11.Card16,
     mode_flags: ModeFlag,
+};
+
+const ConfigStatus = enum(x11.Card8) {
+    success = 0,
+    invalid_config_time = 1,
+    invalid_time = 2,
+    failed = 3,
+};
+
+const Connection = enum(x11.Card8) {
+    connected = 0,
+    disconnected = 1,
+    unknown = 2,
+};
+
+pub const SubPixel = enum(x11.Card8) {
+    unknown = 0,
+    horizontal_rgb = 1,
+    horizontal_bgr = 2,
+    vertical_rgb = 3,
+    vertical_bgr = 4,
+    none = 5,
 };
 
 pub const Request = struct {
@@ -287,6 +413,14 @@ pub const Request = struct {
         length: x11.Card16,
         window: x11.WindowId,
     };
+
+    pub const GetOutputInfo = struct {
+        major_opcode: phx.opcode.Major = .randr,
+        minor_opcode: MinorOpcode = .get_screen_resources,
+        length: x11.Card16,
+        output: OutputId,
+        config_timestamp: x11.Timestamp,
+    };
 };
 
 const Reply = struct {
@@ -312,13 +446,36 @@ const Reply = struct {
         num_mode_infos: x11.Card16 = 0,
         mode_names_length: x11.Card16 = 0,
         pad2: [8]x11.Card8 = @splat(0),
-        crtcs: x11.ListOf(Crtc, .{ .length_field = "num_crtcs" }),
-        outputs: x11.ListOf(Output, .{ .length_field = "num_outputs" }),
+        crtcs: x11.ListOf(CrtcId, .{ .length_field = "num_crtcs" }),
+        outputs: x11.ListOf(OutputId, .{ .length_field = "num_outputs" }),
         mode_infos: x11.ListOf(ModeInfo, .{ .length_field = "num_mode_infos" }),
         // All mode info names combined (not NUL terminated). The length of each name is in mode_infos.name_len.
         // Need to traverse each ModeInfo to find the name at a particular index.
         mode_names: x11.ListOf(x11.Card8, .{ .length_field = "mode_names_length" }),
         pad3: x11.AlignmentPadding = .{},
+    };
+
+    pub const GetOutputInfo = struct {
+        type: phx.reply.ReplyType = .reply,
+        status: ConfigStatus,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        timestamp: x11.Timestamp,
+        crtc: CrtcId,
+        width_mm: x11.Card32,
+        height_mm: x11.Card32,
+        connection: Connection,
+        subpixel_order: SubPixel,
+        num_crtcs: x11.Card16 = 0,
+        num_modes: x11.Card16 = 0,
+        num_preferred_modes: x11.Card16,
+        num_clones: x11.Card16 = 0,
+        name_length: x11.Card16 = 0,
+        crtcs: x11.ListOf(CrtcId, .{ .length_field = "num_crtcs" }),
+        modes: x11.ListOf(ModeId, .{ .length_field = "num_modes" }),
+        clones: x11.ListOf(OutputId, .{ .length_field = "num_clones" }),
+        name: x11.ListOf(x11.Card8, .{ .length_field = "name_length" }),
+        pad1: x11.AlignmentPadding = .{},
     };
 };
 

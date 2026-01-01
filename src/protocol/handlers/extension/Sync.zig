@@ -43,7 +43,7 @@ fn destroy_fence(request_context: phx.RequestContext) !void {
 
     var fence = request_context.server.get_fence(req.request.fence) orelse {
         std.log.err("Received invalid fence {d} in SyncDestroyFence request", .{req.request.fence});
-        return request_context.client.write_error(request_context, phx.err.sync_error_fence, req.request.fence.to_id().to_int());
+        return request_context.client.write_error(request_context, .sync_fence, req.request.fence.to_id().to_int());
     };
     fence.destroy();
 }

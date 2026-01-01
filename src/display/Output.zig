@@ -4,14 +4,14 @@ const x11 = phx.x11;
 
 const Self = @This();
 
-id: phx.Randr.Output,
-crtc_id: phx.Randr.Crtc,
+id: phx.Randr.OutputId,
+crtc_id: phx.Randr.CrtcId,
 active_mode_index: usize,
 x: i32,
 y: i32,
 
 // TODO: Optimize this
-pub fn get_crtc(self: *Self, crtcs: []phx.Crtc) *phx.Crtc {
+pub fn get_crtc(self: *const Self, crtcs: []phx.Crtc) *const phx.Crtc {
     for (crtcs) |*crtc| {
         if (crtc.id == self.crtc_id)
             return crtc;
@@ -19,7 +19,7 @@ pub fn get_crtc(self: *Self, crtcs: []phx.Crtc) *phx.Crtc {
     unreachable;
 }
 
-pub fn get_active_mode(self: *Self, crtcs: []phx.Crtc) *phx.Crtc.Mode {
-    var crtc = self.get_crtc(crtcs);
+pub fn get_active_mode(self: *const Self, crtcs: []phx.Crtc) *const phx.Crtc.Mode {
+    const crtc = self.get_crtc(crtcs);
     return &crtc.modes[self.active_mode_index];
 }

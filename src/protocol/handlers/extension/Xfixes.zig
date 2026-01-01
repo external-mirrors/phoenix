@@ -46,7 +46,7 @@ const MinorOpcode = enum(x11.Card8) {
     create_region = 5,
 };
 
-pub const Region = enum(x11.Card32) {
+pub const RegionId = enum(x11.Card32) {
     _,
 };
 

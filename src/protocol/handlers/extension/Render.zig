@@ -42,8 +42,8 @@ fn query_pict_formats(request_context: phx.RequestContext) !void {
     std.log.info("RenderQueryPictFormats request: {s}", .{x11.stringify_fmt(req.request)});
 
     const screen_visual = request_context.server.get_visual_by_id(phx.Server.screen_true_color_visual_id) orelse unreachable;
-    const pict_format24: PictFormat = @enumFromInt(35);
-    const pict_format32: PictFormat = @enumFromInt(36);
+    const pict_format24: PictFormatId = @enumFromInt(35);
+    const pict_format32: PictFormatId = @enumFromInt(36);
 
     var formats = [_]PictFormInfo{
         .{
@@ -113,7 +113,7 @@ fn query_pict_formats(request_context: phx.RequestContext) !void {
     };
 
     var subpixels = [_]SubPixel{
-        .unknown,
+        .unknown, // TODO: Support others?
     };
 
     const version_0_6 = (phx.Version{ .major = 0, .minor = 6 }).to_int();
@@ -135,7 +135,7 @@ const MinorOpcode = enum(x11.Card8) {
     query_pict_formats = 1,
 };
 
-pub const PictFormat = enum(x11.Card32) {
+pub const PictFormatId = enum(x11.Card32) {
     _,
 };
 
@@ -231,7 +231,7 @@ pub const DirectFormat = struct {
 };
 
 pub const PictFormInfo = struct {
-    id: PictFormat,
+    id: PictFormatId,
     type: PictType,
     depth: x11.Card8,
     pad1: x11.Card16 = 0,
@@ -241,7 +241,7 @@ pub const PictFormInfo = struct {
 
 pub const PictVisual = struct {
     visual: x11.VisualId,
-    format: PictFormat,
+    format: PictFormatId,
 };
 
 pub const PictDepth = struct {
@@ -254,7 +254,7 @@ pub const PictDepth = struct {
 
 pub const PictScreen = struct {
     num_depths: x11.Card32 = 0,
-    fallback: PictFormat,
+    fallback: PictFormatId,
     depths: x11.ListOf(PictDepth, .{ .length_field = "num_depths" }),
 };
 

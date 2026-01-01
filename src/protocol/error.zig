@@ -19,15 +19,22 @@ pub const ErrorType = enum(x11.Card8) {
     name = 15,
     length = 16,
     implementation = 17,
-    _,
+
+    sync_fence = sync_first_error + 2,
+
+    glx_context = glx_first_error + 0,
+    glx_drawable = glx_first_error + 2,
+
+    randr_output = randr_first_error + 0,
+    randr_crtc = randr_first_error + 1,
+    randr_mode = randr_first_error + 2,
+    randr_provider = randr_first_error + 3,
 };
 
+// The X11 protocol doesn't define the value for these, the X11 server does and returns them in core.QueryExtension
 pub const sync_first_error: x11.Card8 = 20;
-pub const sync_error_fence: ErrorType = @enumFromInt(sync_first_error + 2);
-
 pub const glx_first_error: x11.Card8 = 30;
-pub const glx_error_bad_context: ErrorType = @enumFromInt(glx_first_error + 0);
-pub const glx_error_bad_drawable: ErrorType = @enumFromInt(glx_first_error + 2);
+pub const randr_first_error: x11.Card8 = 40;
 
 pub const Error = extern struct {
     type: x11.Card8 = 0, // 0 = error

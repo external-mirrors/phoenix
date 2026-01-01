@@ -4,13 +4,14 @@ const x11 = phx.x11;
 
 const Self = @This();
 
-id: phx.Randr.Crtc,
+id: phx.Randr.CrtcId,
 width_mm: u32,
 height_mm: u32,
 status: Status,
 preferred_mode_index: usize,
 name: []u8,
 modes: []Mode,
+non_desktop: bool,
 
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     allocator.free(self.name);
@@ -22,7 +23,7 @@ pub fn get_preferred_mode(self: *Self) *Mode {
 }
 
 pub const Mode = struct {
-    id: u32,
+    id: phx.Randr.ModeId,
     width: u32,
     height: u32,
     dot_clock: u32,

@@ -302,7 +302,7 @@ const MinorOpcode = enum(x11.Card8) {
     pixmap_from_buffers = 7,
 };
 
-pub const Provider = enum(x11.Card32) {
+pub const ProviderId = enum(x11.Card32) {
     _,
 };
 
@@ -320,7 +320,7 @@ pub const Request = struct {
         minor_opcode: MinorOpcode = .open,
         length: x11.Card16,
         drawable: x11.DrawableId,
-        provider: Provider,
+        provider: ProviderId,
     };
 
     pub const PixmapFromBuffer = struct {

@@ -15,7 +15,6 @@ Instead of creating and destroying opengl textures for each window/pixmap each t
     This is more efficient and leads to lower memory usage (nvidia leaks memory on texture create/destroy, on purpose).
 Draw windows in tree order (the grandchildren of root, then children then root).
 Client might set any of the top resource id bits to 1. What do?
-Eglgears_x11 crashes after a few seconds because there is an x11 error in the reply to getInputFocus (not the first one) and it happens near the end of the second sequence_number wrap.
 Replace all std.meta.intToEnum with a more efficient variant that does a direct cast if the value is in range, without iterating all enum values (if the enum has ordered values).
 glxGetVisualConfigs and glxGetFbConfigs doesn't seem to return the correct amount of data? glxinfo shows less data than we return.
 If writing data to client buffer fails partially (is that possible?) then discard the bytes written so we dont send partial data to client.
@@ -57,3 +56,4 @@ Add an option to disable middle mouse paste (make SetSelectionOwner with atom PR
 Maybe allow global hotkeys as long as the application does a grab. If it does a grab other applications dont receive input so there is no hidden keylogger that silently listens to keys.
 Support multiple monitors in nested mode. This is useful for testing (both phoenix and client applications).
 Make pixmap reference counted.
+Move src/backend code to a separate process, especially the part that does linux drm and graphics rendering. Then we can use process restriction functions for increased security.

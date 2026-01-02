@@ -126,6 +126,10 @@ pub const FontId = enum(Card32) {
     _,
 };
 
+pub const GContextId = enum(Card32) {
+    _,
+};
+
 pub const KeyCode = enum(Card8) {
     _,
 

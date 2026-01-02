@@ -401,14 +401,14 @@ fn query_tree(request_context: phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
 
-    var children = try get_window_children_bottom_to_top(window, request_context.allocator);
-    defer children.deinit();
+    const children = try get_window_children_reverse(window, request_context.allocator);
+    defer request_context.allocator.free(children);
 
     var rep = Reply.QueryTree{
         .sequence_number = request_context.sequence_number,
         .root = request_context.server.root_window.id,
         .parent = if (window.parent) |parent| parent.id else @enumFromInt(none),
-        .children = .{ .items = children.items },
+        .children = .{ .items = children },
     };
     try request_context.client.write_reply(&rep);
 }
@@ -700,11 +700,19 @@ fn free_pixmap(request_context: phx.RequestContext) !void {
     pixmap.destroy();
 }
 
-fn create_gc(_: phx.RequestContext) !void {
+fn create_gc(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.CreateGC, request_context.allocator);
+    defer req.deinit();
+    std.log.info("CreateGC request: {s}", .{x11.stringify_fmt(req.request)});
+
     std.log.err("TODO: Implement CreateGC", .{});
 }
 
-fn free_gc(_: phx.RequestContext) !void {
+fn free_gc(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.FreeGC, request_context.allocator);
+    defer req.deinit();
+    std.log.info("FreeGC request: {s}", .{x11.stringify_fmt(req.request)});
+
     std.log.err("TODO: Implement FreeGC", .{});
 }
 
@@ -988,17 +996,66 @@ const CreateWindowValueMask = packed struct(x11.Card32) {
     }
 };
 
-fn get_window_children_bottom_to_top(window: *const phx.Window, allocator: std.mem.Allocator) !std.ArrayList(x11.WindowId) {
-    var children = std.ArrayList(x11.WindowId).init(allocator);
-    errdefer children.deinit();
+const CreateGCValueMask = packed struct(x11.Card32) {
+    function: bool,
+    plane_mask: bool,
+    foreground: bool,
+    background: bool,
+    line_width: bool,
+    line_style: bool,
+    cap_style: bool,
+    join_style: bool,
+    fill_style: bool,
+    fill_rule: bool,
+    tile: bool,
+    stipple: bool,
+    tile_stipple_x_origin: bool,
+    tile_stipple_y_origin: bool,
+    font: bool,
+    subwindow_mode: bool,
+    graphics_exposures: bool,
+    clip_x_origin: bool,
+    clip_y_origin: bool,
+    clip_mask: bool,
+    dash_offset: bool,
+    dashes: bool,
+    arc_mode: bool,
 
-    if (window.children.items.len == 0)
-        return children;
+    _padding: u9 = 0,
 
-    var i: isize = @intCast(window.children.items.len - 1);
-    while (i >= 0) : (i -= 1) {
-        const child_window = window.children.items[@intCast(i)];
-        try children.append(child_window.id);
+    // TODO: Maybe instead of this just iterate each field and set all non-bool fields to 0, since they should be ignored
+    pub fn sanitize(self: CreateGCValueMask) CreateGCValueMask {
+        var result = self;
+        result._padding = 0;
+        return result;
+    }
+
+    // In the protocol the size of the |value_list| array depends on how many bits are set in the ValueMask
+    // and the index to the value that matches the bit depends on how many bits are set before that bit
+    pub fn get_value_index_by_field(self: CreateGCValueMask, comptime field_name: []const u8) ?usize {
+        if (!@field(self, field_name))
+            return null;
+
+        const index_count_mask: u32 = (1 << @bitOffsetOf(CreateGCValueMask, field_name)) - 1;
+        return @popCount(self.to_int() & index_count_mask);
+    }
+
+    pub fn to_int(self: CreateGCValueMask) x11.Card32 {
+        return @bitCast(self);
+    }
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == @sizeOf(x11.Card32));
+        std.debug.assert(@bitSizeOf(@This()) == @bitSizeOf(x11.Card32));
+    }
+};
+
+fn get_window_children_reverse(window: *const phx.Window, allocator: std.mem.Allocator) ![]x11.WindowId {
+    var children = try allocator.alloc(x11.WindowId, window.children.items.len);
+    errdefer allocator.free(children);
+
+    for (0..window.children.items.len) |i| {
+        children[i] = window.children.items[window.children.items.len - i - 1].id;
     }
 
     return children;
@@ -1364,6 +1421,33 @@ pub const Request = struct {
         pad1: x11.Card8,
         length: x11.Card16,
         pixmap: x11.PixmapId,
+    };
+
+    pub const CreateGC = struct {
+        opcode: phx.opcode.Major = .create_gc,
+        pad1: x11.Card8,
+        length: x11.Card16,
+        gc: x11.GContextId,
+        drawable: x11.DrawableId,
+        value_mask: CreateGCValueMask,
+        value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
+
+        pub fn get_value(self: *const CreateGC, comptime T: type, comptime value_mask_field: []const u8) ?T {
+            if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
+                // The protocol specifies that all uninteresting bits are undefined, so we need to set them to 0
+                comptime std.debug.assert(@bitSizeOf(T) % 8 == 0);
+                return @intCast(self.value_list.items[index] & ((1 << @bitSizeOf(T)) - 1));
+            } else {
+                return null;
+            }
+        }
+    };
+
+    pub const FreeGC = struct {
+        opcode: phx.opcode.Major = .free_gc,
+        pad1: x11.Card8,
+        length: x11.Card16,
+        gc: x11.GContextId,
     };
 
     pub const CreateColormap = struct {

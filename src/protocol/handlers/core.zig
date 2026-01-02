@@ -207,7 +207,7 @@ fn create_window(request_context: phx.RequestContext) !void {
         };
     }
 
-    const create_notify_event = phx.event.Event{
+    var create_notify_event = phx.event.Event{
         .create_notify = .{
             .sequence_number = request_context.sequence_number,
             .parent = req.request.parent,
@@ -292,7 +292,7 @@ fn map_window(request_context: phx.RequestContext) !void {
     window.attributes.mapped = true;
 
     // TODO: Dont always do this, check protocol spec
-    const map_notify_event = phx.event.Event{
+    var map_notify_event = phx.event.Event{
         .map_notify = .{
             .sequence_number = request_context.sequence_number,
             .event = @enumFromInt(0), // TODO: ?
@@ -347,7 +347,7 @@ fn configure_window(request_context: phx.RequestContext) !void {
     }
 
     if (modified) {
-        const configure_notify_event = phx.event.Event{
+        var configure_notify_event = phx.event.Event{
             .configure_notify = .{
                 .sequence_number = request_context.sequence_number,
                 .event = @enumFromInt(0), // TODO: ?
@@ -466,7 +466,7 @@ fn change_property(request_context: phx.RequestContext) !void {
         },
     }
 
-    const property_notify_event = phx.event.Event{
+    var property_notify_event = phx.event.Event{
         .property_notify = .{
             .sequence_number = request_context.sequence_number,
             .window = req.request.window,
@@ -567,7 +567,7 @@ fn get_property(request_context: phx.RequestContext) !void {
 
     if (req.request.delete) {
         _ = window.delete_property(req.request.property);
-        const property_notify_event = phx.event.Event{
+        var property_notify_event = phx.event.Event{
             .property_notify = .{
                 .sequence_number = request_context.sequence_number,
                 .window = req.request.window,

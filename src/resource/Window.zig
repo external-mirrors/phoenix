@@ -226,10 +226,12 @@ fn get_core_event_listener_index(self: *Self, client: *const phx.Client) ?usize 
 // TODO: parents should be checked for clients with redirect event mask, to only send the event to that client.
 // TODO: Is redirect/button press mask recursive to parents? should only one client be allowed to use that, even if it's set on a parent?
 // TODO: If window has override-redirect set then map and configure requests on the window should override a SubstructureRedirect on parents.
-pub fn write_core_event_to_event_listeners(self: *const Self, event: *const phx.event.Event) void {
+pub fn write_core_event_to_event_listeners(self: *const Self, event: *phx.event.Event) void {
     for (self.core_event_listeners.items) |*event_listener| {
         if (!core_event_mask_matches_event_code(event_listener.event_mask, event.any.code))
             continue;
+
+        event.any.sequence_number = event_listener.client.sequence_number;
 
         event_listener.client.write_event(event) catch |err| {
             // TODO: What should be done if this happens? disconnect the client?

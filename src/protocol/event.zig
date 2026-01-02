@@ -17,6 +17,8 @@ pub const EventCode = enum(x11.Card8) {
 
 pub const AnyEvent = extern struct {
     code: EventCode,
+    pad1: x11.Card8,
+    sequence_number: x11.Card16,
 };
 
 pub const ModMask = packed struct(x11.Card8) {

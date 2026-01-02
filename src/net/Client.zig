@@ -241,7 +241,8 @@ pub fn write_error(self: *Self, request_context: phx.RequestContext, error_type:
     return self.write_buffer.write(std.mem.asBytes(&err_reply));
 }
 
-pub fn write_event(self: *Self, ev: *const phx.event.Event) !void {
+pub fn write_event(self: *Self, ev: *phx.event.Event) !void {
+    ev.any.sequence_number = self.sequence_number;
     std.log.info("Replying with event: {d}", .{@intFromEnum(ev.any.code)});
     return self.write_buffer.write(std.mem.asBytes(ev));
 }
@@ -250,6 +251,7 @@ pub fn write_event_extension(self: *Self, ev: anytype) !void {
     if (@typeInfo(@TypeOf(ev)) != .pointer)
         @compileError("Expected event data to be a pointer");
 
+    ev.sequence_number = self.sequence_number;
     std.log.info("Replying with event: {s}", .{x11.stringify_fmt(ev)});
     return self.write_reply(ev);
 }

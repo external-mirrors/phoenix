@@ -102,7 +102,7 @@ fn ButtonEvent(comptime code: EventCode) type {
     return extern struct {
         code: EventCode = code,
         button: x11.Button,
-        sequence_number: x11.Card16,
+        sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
         time: x11.Timestamp,
         root: x11.WindowId,
         event: x11.WindowId,
@@ -127,7 +127,7 @@ pub const ButtonReleaseEvent = ButtonEvent(.button_release);
 pub const CreateNotifyEvent = extern struct {
     code: EventCode = .create_notify,
     pad1: x11.Card8 = 0,
-    sequence_number: x11.Card16,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
     parent: x11.WindowId,
     window: x11.WindowId,
     x: i16,
@@ -146,7 +146,7 @@ pub const CreateNotifyEvent = extern struct {
 pub const MapNotifyEvent = extern struct {
     code: EventCode = .map_notify,
     pad1: x11.Card8 = 0,
-    sequence_number: x11.Card16,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
     event: x11.WindowId,
     window: x11.WindowId,
     override_redirect: bool,
@@ -160,7 +160,7 @@ pub const MapNotifyEvent = extern struct {
 pub const ConfigureNotifyEvent = extern struct {
     code: EventCode = .configure_notify,
     pad1: x11.Card8 = 0,
-    sequence_number: x11.Card16,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
     event: x11.WindowId,
     window: x11.WindowId,
     above_sibling: x11.WindowId, // Or none(0)
@@ -180,7 +180,7 @@ pub const ConfigureNotifyEvent = extern struct {
 pub const PropertyNotifyEvent = extern struct {
     code: EventCode = .property_notify,
     pad1: x11.Card8 = 0,
-    sequence_number: x11.Card16,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
     window: x11.WindowId,
     atom: x11.Atom,
     time: x11.Timestamp,

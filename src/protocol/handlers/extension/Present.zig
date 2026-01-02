@@ -76,7 +76,6 @@ fn present_pixmap(request_context: phx.RequestContext) !void {
     //std.log.err("present pixmap: {s}", .{x11.stringify_fmt(req.request)});
 
     var idle_notify_event = Event.IdleNotify{
-        .sequence_number = request_context.sequence_number,
         .window = req.request.window,
         .serial = req.request.serial,
         .pixmap = req.request.pixmap,
@@ -87,7 +86,6 @@ fn present_pixmap(request_context: phx.RequestContext) !void {
     for (req.request.notifies.items) |notify| {
         const notify_window = request_context.server.get_window(notify.window) orelse unreachable;
         var complete_event_notify = Event.CompleteNotify{
-            .sequence_number = request_context.sequence_number,
             .kind = .pixmap,
             .mode = .suboptimal_copy,
             .window = notify.window,
@@ -99,7 +97,6 @@ fn present_pixmap(request_context: phx.RequestContext) !void {
     }
 
     var complete_event = Event.CompleteNotify{
-        .sequence_number = request_context.sequence_number,
         .kind = .pixmap,
         .mode = .suboptimal_copy,
         .window = req.request.window,
@@ -297,7 +294,7 @@ const Event = struct {
     pub const CompleteNotify = extern struct {
         code: phx.event.EventCode = .generic_event_extension,
         _extension_opcode: phx.opcode.Major = .present,
-        sequence_number: x11.Card16,
+        sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event_extension
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         _event_code: EventCode = .complete_notify,
         kind: CompleteKind,
@@ -328,7 +325,7 @@ const Event = struct {
     pub const IdleNotify = extern struct {
         code: phx.event.EventCode = .generic_event_extension,
         _extension_opcode: phx.opcode.Major = phx.opcode.Major.present,
-        sequence_number: x11.Card16,
+        sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event_extension
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         _event_code: EventCode = .idle_notify,
         pad1: x11.Card16 = 0,

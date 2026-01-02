@@ -209,7 +209,6 @@ fn create_window(request_context: phx.RequestContext) !void {
 
     var create_notify_event = phx.event.Event{
         .create_notify = .{
-            .sequence_number = request_context.sequence_number,
             .parent = req.request.parent,
             .window = req.request.window,
             .x = req.request.x,
@@ -294,7 +293,6 @@ fn map_window(request_context: phx.RequestContext) !void {
     // TODO: Dont always do this, check protocol spec
     var map_notify_event = phx.event.Event{
         .map_notify = .{
-            .sequence_number = request_context.sequence_number,
             .event = @enumFromInt(0), // TODO: ?
             .window = req.request.window,
             .override_redirect = window.attributes.override_redirect,
@@ -349,7 +347,6 @@ fn configure_window(request_context: phx.RequestContext) !void {
     if (modified) {
         var configure_notify_event = phx.event.Event{
             .configure_notify = .{
-                .sequence_number = request_context.sequence_number,
                 .event = @enumFromInt(0), // TODO: ?
                 .window = req.request.window,
                 .x = @intCast(window.attributes.geometry.x),
@@ -468,7 +465,6 @@ fn change_property(request_context: phx.RequestContext) !void {
 
     var property_notify_event = phx.event.Event{
         .property_notify = .{
-            .sequence_number = request_context.sequence_number,
             .window = req.request.window,
             .atom = req.request.property,
             .time = request_context.server.get_timestamp_milliseconds(),
@@ -569,7 +565,6 @@ fn get_property(request_context: phx.RequestContext) !void {
         _ = window.delete_property(req.request.property);
         var property_notify_event = phx.event.Event{
             .property_notify = .{
-                .sequence_number = request_context.sequence_number,
                 .window = req.request.window,
                 .atom = req.request.property,
                 .time = request_context.server.get_timestamp_milliseconds(),

@@ -2,7 +2,7 @@
 Phoenix is a new X server, written from scratch in Zig (not a fork of Xorg server). This X server is designed to be a modern alternative to the Xorg server.
 
 ## Current state
-Phoenix is not ready to be used yet. At the moment it can render simple applications that do GLX, EGL or Vulkan graphics (fully hardware accelerated) nested in an existing X server.
+Phoenix is not ready to be used yet. At the moment it can render simple applications that use GLX, EGL or Vulkan for graphics (fully hardware accelerated) nested in an existing X server.
 Running Phoenix nested will be the only supported mode until Phoenix has progressed more and can run real-world applications.
 
 ## Goals
@@ -12,7 +12,7 @@ This includes _all_ software that _you_ use, even old gtk2 applications.\
 Only relatively modern hardware (made/updated in the last ~15-20 years) with drivers that implement the Linux DRM and Mesa GBM APIs will be supported. There won't be a server driver interface like in the Xorg server.\
 This is similar to how Wayland compositors display graphics.
 
-I may be open to accepting pull requests that add support for older devices that don't support the Linux DRM API later on in the project if users absolutely need it (by adding it as a backend implementation in `src/backend/display`).
+I may be open to accepting pull requests that add support for older devices that don't implement the Linux DRM API or Mesa GBM later on in the project if users absolutely need it (by adding it as a backend implementation in `src/backend/display`).
 
 ### Security
 Be safer than the Xorg server by parsing protocol messages automatically. As it's written in Zig, it also automatically catches illegal behaviors (such as index out of array bounds) when building with the `ReleaseSafe` option.

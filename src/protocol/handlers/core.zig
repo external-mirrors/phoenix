@@ -1404,6 +1404,7 @@ pub const Request = struct {
         length_of_name: x11.Card16,
         pad2: x11.Card16,
         name: x11.ListOf(x11.Card8, .{ .length_field = "length_of_name" }),
+        pad3: x11.AlignmentPadding = .{},
     };
 
     pub const CreatePixmap = struct {

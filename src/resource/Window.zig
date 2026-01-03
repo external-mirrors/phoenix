@@ -220,7 +220,6 @@ fn get_core_event_listener_index(self: *Self, client: *const phx.Client) ?usize 
     return null;
 }
 
-// TODO: Handle events that propagate to parent windows.
 // TODO: parents should be checked for clients with redirect event mask, to only send the event to that client.
 // TODO: Is redirect/button press mask recursive to parents? should only one client be allowed to use that, even if it's set on a parent?
 // TODO: If window has override-redirect set then map and configure requests on the window should override a SubstructureRedirect on parents.
@@ -247,6 +246,39 @@ pub fn write_core_event_to_event_listeners(self: *const Self, event: *phx.event.
             continue;
         };
     }
+
+    if (self.parent) |parent| {
+        if (core_event_should_propagate_to_parent_substructure(event.any.code))
+            parent.write_core_event_to_substructure_notify_listeners(event);
+    }
+}
+
+fn write_core_event_to_substructure_notify_listeners(self: *const Self, event: *phx.event.Event) void {
+    for (self.core_event_listeners.items) |*event_listener| {
+        if (!event_listener.event_mask.substructure_notify)
+            continue;
+
+        event_listener.client.write_event(event) catch |err| {
+            // TODO: What should be done if this happens? disconnect the client?
+            std.log.err(
+                "Failed to write (buffer) core event of type \"{s}\" to client {d}, error: {s}",
+                .{ @tagName(event.any.code), event_listener.client.connection.stream.handle, @errorName(err) },
+            );
+            continue;
+        };
+
+        event_listener.client.flush_write_buffer() catch |err| {
+            // TODO: What should be done if this happens? disconnect the client?
+            std.log.err(
+                "Failed to write (flush) core event of type \"{s}\" to client {d}, error: {s}",
+                .{ @tagName(event.any.code), event_listener.client.connection.stream.handle, @errorName(err) },
+            );
+            continue;
+        };
+    }
+
+    if (self.parent) |parent|
+        parent.write_core_event_to_substructure_notify_listeners(event);
 }
 
 inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, event_code: phx.event.EventCode) bool {
@@ -259,6 +291,20 @@ inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, eve
         .map_notify => event_mask.structure_notify,
         .configure_notify => event_mask.structure_notify,
         .property_notify => event_mask.property_change,
+        .generic_event_extension => false, // TODO:
+    };
+}
+
+inline fn core_event_should_propagate_to_parent_substructure(event_code: phx.event.EventCode) bool {
+    return switch (event_code) {
+        .key_press => false,
+        .key_release => false,
+        .button_press => false,
+        .button_release => false,
+        .create_notify => true,
+        .map_notify => true,
+        .configure_notify => true,
+        .property_notify => false,
         .generic_event_extension => false, // TODO:
     };
 }

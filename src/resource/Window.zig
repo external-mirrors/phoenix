@@ -504,9 +504,9 @@ pub fn map(self: *Self) void {
     self.map_internal(self, substructure_redirect_parent_window);
 }
 
-fn map_internal(self: *Self, mapped_root_window: *const phx.Window, substructure_redirect_parent_window: ?*const phx.Window) void {
+fn map_internal(self: *Self, map_target_window: *const phx.Window, substructure_redirect_parent_window: ?*const phx.Window) void {
     for (self.children.items) |child_window| {
-        child_window.map_internal(mapped_root_window, substructure_redirect_parent_window);
+        child_window.map_internal(map_target_window, substructure_redirect_parent_window);
     }
 
     if (self.attributes.mapped)
@@ -526,7 +526,7 @@ fn map_internal(self: *Self, mapped_root_window: *const phx.Window, substructure
 
         var map_notify_event = phx.event.Event{
             .map_notify = .{
-                .event = mapped_root_window.id,
+                .event = map_target_window.id,
                 .window = self.id,
                 .override_redirect = self.attributes.override_redirect, // TODO: Is this correct? should it be event_window instead?
             },

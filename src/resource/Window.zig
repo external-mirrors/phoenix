@@ -221,7 +221,6 @@ fn get_core_event_listener_index(self: *Self, client: *const phx.Client) ?usize 
 }
 
 // TODO: parents should be checked for clients with redirect event mask, to only send the event to that client.
-// TODO: Is redirect/button press mask recursive to parents? should only one client be allowed to use that, even if it's set on a parent?
 // TODO: If window has override-redirect set then map and configure requests on the window should override a SubstructureRedirect on parents.
 pub fn write_core_event_to_event_listeners(self: *const Self, event: *phx.event.Event) void {
     for (self.core_event_listeners.items) |*event_listener| {
@@ -248,7 +247,7 @@ pub fn write_core_event_to_event_listeners(self: *const Self, event: *phx.event.
     }
 
     if (self.parent) |parent| {
-        if (core_event_should_propagate_to_parent_substructure(event.any.code))
+        if (core_event_should_propagate_to_parent_substructure_notify(event.any.code))
             parent.write_core_event_to_substructure_notify_listeners(event);
     }
 }
@@ -281,6 +280,18 @@ fn write_core_event_to_substructure_notify_listeners(self: *const Self, event: *
         parent.write_core_event_to_substructure_notify_listeners(event);
 }
 
+pub fn get_substructure_redirect_listener_parent_window(self: *const Self) ?*const phx.Window {
+    for (self.core_event_listeners.items) |*event_listener| {
+        if (event_listener.event_mask.substructure_redirect)
+            return self;
+    }
+
+    if (self.parent) |parent|
+        return parent.get_substructure_redirect_listener_parent_window();
+
+    return null;
+}
+
 inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, event_code: phx.event.EventCode) bool {
     return switch (event_code) {
         .key_press => event_mask.key_press,
@@ -289,13 +300,14 @@ inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, eve
         .button_release => event_mask.button_release,
         .create_notify => false, // This only applies to parents
         .map_notify => event_mask.structure_notify,
+        .map_request => false, // This only applies to parents
         .configure_notify => event_mask.structure_notify,
         .property_notify => event_mask.property_change,
         .generic_event_extension => false, // TODO:
     };
 }
 
-inline fn core_event_should_propagate_to_parent_substructure(event_code: phx.event.EventCode) bool {
+inline fn core_event_should_propagate_to_parent_substructure_notify(event_code: phx.event.EventCode) bool {
     return switch (event_code) {
         .key_press => false,
         .key_release => false,
@@ -303,6 +315,7 @@ inline fn core_event_should_propagate_to_parent_substructure(event_code: phx.eve
         .button_release => false,
         .create_notify => true,
         .map_notify => true,
+        .map_request => false,
         .configure_notify => true,
         .property_notify => false,
         .generic_event_extension => false, // TODO:
@@ -479,6 +492,47 @@ pub fn get_absolute_position(self: *const Self) @Vector(2, i32) {
         parent = par.parent;
     }
     return pos;
+}
+
+pub fn map(self: *Self) void {
+    const substructure_redirect_parent_window =
+        if (self.parent) |parent|
+            parent.get_substructure_redirect_listener_parent_window()
+        else
+            null;
+
+    self.map_internal(self, substructure_redirect_parent_window);
+}
+
+fn map_internal(self: *Self, mapped_root_window: *const phx.Window, substructure_redirect_parent_window: ?*const phx.Window) void {
+    for (self.children.items) |child_window| {
+        child_window.map_internal(mapped_root_window, substructure_redirect_parent_window);
+    }
+
+    if (self.attributes.mapped)
+        return;
+
+    if (!self.attributes.override_redirect and substructure_redirect_parent_window != null) {
+        var map_notify_event = phx.event.Event{
+            .map_request = .{
+                .parent = substructure_redirect_parent_window.?.id,
+                .window = self.id,
+            },
+        };
+        self.write_core_event_to_event_listeners(&map_notify_event);
+    } else {
+        self.attributes.mapped = true;
+        self.graphics_window.mapped = true; // Technically a race condition, but who cares
+
+        var map_notify_event = phx.event.Event{
+            .map_notify = .{
+                .event = mapped_root_window.id,
+                .window = self.id,
+                .override_redirect = self.attributes.override_redirect, // TODO: Is this correct? should it be event_window instead?
+            },
+        };
+        self.write_core_event_to_event_listeners(&map_notify_event);
+    }
 }
 
 pub const Attributes = struct {

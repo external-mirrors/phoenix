@@ -280,23 +280,8 @@ fn map_window(request_context: phx.RequestContext) !void {
         std.log.err("Received invalid window {d} in MapWindow request", .{req.request.window});
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
-    if (window.attributes.mapped) {
-        std.log.err("MapWindow: window already mapped: {d}", .{req.request.window});
-        return;
-    }
 
-    window.attributes.mapped = true;
-    window.graphics_window.mapped = true; // Technically a race condition, but who cares
-
-    // TODO: Dont always do this, check protocol spec
-    var map_notify_event = phx.event.Event{
-        .map_notify = .{
-            .event = @enumFromInt(0), // TODO: ?
-            .window = req.request.window,
-            .override_redirect = window.attributes.override_redirect,
-        },
-    };
-    window.write_core_event_to_event_listeners(&map_notify_event);
+    window.map();
 }
 
 // TODO: Implement properly
@@ -312,6 +297,9 @@ fn configure_window(request_context: phx.RequestContext) !void {
     };
 
     var modified: bool = false;
+
+    // TODO: Check other attributes as well
+    // TODO: Use sibling and stack-mode
 
     if (req.request.get_value(i16, "x")) |x| {
         if (x != window.attributes.geometry.x) {
@@ -342,9 +330,11 @@ fn configure_window(request_context: phx.RequestContext) !void {
     }
 
     if (modified) {
+        // TODO: Handle this correctly according to the protocol when it comes to SubstructureRedirect and ResizeRedirect:
+        // https://www.x.org/releases/X11R7.7/doc/xproto/x11protocol.html#requests:ConfigureWindow
         var configure_notify_event = phx.event.Event{
             .configure_notify = .{
-                .event = @enumFromInt(0), // TODO: ?
+                .event = req.request.window,
                 .window = req.request.window,
                 .x = @intCast(window.attributes.geometry.x),
                 .y = @intCast(window.attributes.geometry.y),
@@ -357,8 +347,6 @@ fn configure_window(request_context: phx.RequestContext) !void {
         };
         window.write_core_event_to_event_listeners(&configure_notify_event);
     }
-
-    // TODO: Use sibling and stack-mode
 }
 
 fn get_geometry(request_context: phx.RequestContext) !void {

@@ -8,6 +8,7 @@ pub const EventCode = enum(x11.Card8) {
     button_release = 5,
     create_notify = 16,
     map_notify = 19,
+    map_request = 20,
     configure_notify = 22,
     property_notify = 28,
     // TODO: Clients need support for this (Generic Event Extension), but clients like mesa with opengl graphics expect present events
@@ -157,6 +158,19 @@ pub const MapNotifyEvent = extern struct {
     }
 };
 
+pub const MapRequestEvent = extern struct {
+    code: EventCode = .map_request,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+    parent: x11.WindowId,
+    window: x11.WindowId,
+    pad2: [20]x11.Card8 = @splat(0),
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
+
 pub const ConfigureNotifyEvent = extern struct {
     code: EventCode = .configure_notify,
     pad1: x11.Card8 = 0,
@@ -203,6 +217,7 @@ pub const Event = extern union {
     button_release: ButtonReleaseEvent,
     create_notify: CreateNotifyEvent,
     map_notify: MapNotifyEvent,
+    map_request: MapRequestEvent,
     configure_notify: ConfigureNotifyEvent,
     property_notify: PropertyNotifyEvent,
 

@@ -1239,7 +1239,7 @@ const PropertyFormat = enum(x11.Card8) {
 };
 
 // There has to be a better way to do this. Just let me cast integer types directly zig goddamnit!
-fn cast_integer(comptime T: type, value: anytype) T {
+fn downcast_integer(comptime T: type, value: anytype) T {
     comptime std.debug.assert(@bitSizeOf(T) % 8 == 0);
     const UnsignedType = @Type(.{
         .int = .{
@@ -1270,7 +1270,7 @@ pub const Request = struct {
         pub fn get_value(self: *const CreateWindow, comptime T: type, comptime value_mask_field: []const u8) ?T {
             if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
                 // The protocol specifies that all uninteresting bits are undefined, so we need to set them to 0
-                return cast_integer(T, self.value_list.items[index] & ((1 << @bitSizeOf(T)) - 1));
+                return downcast_integer(T, self.value_list.items[index]);
             } else {
                 return null;
             }
@@ -1310,7 +1310,7 @@ pub const Request = struct {
         pub fn get_value(self: *const ConfigureWindow, comptime T: type, comptime value_mask_field: []const u8) ?T {
             if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
                 // The protocol specifies that all uninteresting bits are undefined, so we need to set them to 0
-                return cast_integer(T, self.value_list.items[index] & ((1 << @bitSizeOf(T)) - 1));
+                return downcast_integer(T, self.value_list.items[index]);
             } else {
                 return null;
             }
@@ -1441,7 +1441,7 @@ pub const Request = struct {
         pub fn get_value(self: *const CreateGC, comptime T: type, comptime value_mask_field: []const u8) ?T {
             if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
                 // The protocol specifies that all uninteresting bits are undefined, so we need to set them to 0
-                return cast_integer(T, self.value_list.items[index] & ((1 << @bitSizeOf(T)) - 1));
+                return downcast_integer(T, self.value_list.items[index]);
             } else {
                 return null;
             }

@@ -7,7 +7,7 @@ const Self = @This();
 allocator: std.mem.Allocator,
 parent: ?*Self,
 children: std.ArrayList(*Self),
-server: ?*phx.Server,
+server: *phx.Server,
 client_owner: *phx.Client,
 deleting_self: bool,
 
@@ -16,13 +16,13 @@ attributes: Attributes,
 properties: x11.PropertyHashMap,
 core_event_listeners: std.ArrayList(CoreEventListener),
 extension_event_listeners: std.ArrayList(ExtensionEventListener),
-graphics_backend_id: u32,
+graphics_window: *phx.Graphics.GraphicsWindow,
 
 pub fn create(
     parent: ?*Self,
     id: x11.WindowId,
     attributes: *const Attributes,
-    server: ?*phx.Server,
+    server: *phx.Server,
     client_owner: *phx.Client,
     allocator: std.mem.Allocator,
 ) !*Self {
@@ -42,11 +42,10 @@ pub fn create(
         .properties = .init(allocator),
         .core_event_listeners = .init(allocator),
         .extension_event_listeners = .init(allocator),
-        .graphics_backend_id = 0,
+        .graphics_window = undefined,
     };
 
-    if (server) |serv|
-        window.graphics_backend_id = try serv.display.create_window(window);
+    window.graphics_window = try server.display.create_window(window);
 
     try window.client_owner.add_window(window);
 
@@ -59,8 +58,7 @@ pub fn create(
 pub fn destroy(self: *Self) void {
     self.deleting_self = true;
 
-    if (self.server) |server|
-        server.display.destroy_window(self);
+    self.server.display.destroy_window(self);
 
     if (self.parent) |parent|
         parent.remove_child(self);

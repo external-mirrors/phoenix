@@ -13,11 +13,11 @@ pub fn main() !void {
 
         var server = try phx.Server.init(gpa.allocator());
         defer server.deinit();
-        server.run();
+        try server.run();
     } else {
         var server = try phx.Server.init(std.heap.smp_allocator);
         defer server.deinit();
-        server.run();
+        try server.run();
     }
 }
 

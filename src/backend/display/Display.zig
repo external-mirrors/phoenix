@@ -39,14 +39,13 @@ pub fn get_drm_card_fd(self: *Self) std.posix.fd_t {
     }
 }
 
-/// Returns a graphics window id. This will never return 0
-pub fn create_window(self: *Self, window: *const phx.Window) !u32 {
+pub fn create_window(self: *Self, window: *const phx.Window) !*phx.Graphics.GraphicsWindow {
     switch (self.impl) {
         inline else => |item| return item.create_window(window),
     }
 }
 
-pub fn destroy_window(self: *Self, window: *const phx.Window) void {
+pub fn destroy_window(self: *Self, window: *phx.Window) void {
     switch (self.impl) {
         inline else => |item| return item.destroy_window(window),
     }

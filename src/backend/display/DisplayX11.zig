@@ -61,7 +61,7 @@ pub fn init(event_fd: std.posix.fd_t, allocator: std.mem.Allocator) !Self {
         return error.FailedToCreateRootWindow;
     }
 
-    var graphics = try phx.Graphics.create_egl(c.EGL_PLATFORM_XCB_EXT, c.EGL_PLATFORM_XCB_SCREEN_EXT, connection, window_id, gl_debug, allocator);
+    var graphics = try phx.Graphics.create_egl(width, height, c.EGL_PLATFORM_XCB_EXT, c.EGL_PLATFORM_XCB_SCREEN_EXT, connection, window_id, gl_debug, allocator);
     errdefer graphics.destroy();
 
     const map_cookie = c.xcb_map_window_checked(connection, window_id);
@@ -121,12 +121,11 @@ pub fn get_drm_card_fd(self: *Self) std.posix.fd_t {
     return self.graphics.get_dri_card_fd();
 }
 
-/// Returns a graphics window id. This will never return 0
-pub fn create_window(self: *Self, window: *const phx.Window) !u32 {
+pub fn create_window(self: *Self, window: *const phx.Window) !*phx.Graphics.GraphicsWindow {
     return self.graphics.create_window(window);
 }
 
-pub fn destroy_window(self: *Self, window: *const phx.Window) void {
+pub fn destroy_window(self: *Self, window: *phx.Window) void {
     self.graphics.destroy_window(window);
 }
 
@@ -451,6 +450,7 @@ fn update_thread(self: *Self) !void {
         if (self.size_updated) {
             self.size_updated = false;
             self.graphics.resize(self.width, self.height);
+            // TODO: Set root window size to self.width, self.height and trigger randr resize event
         }
 
         self.graphics.render() catch |err| {
@@ -459,6 +459,11 @@ fn update_thread(self: *Self) !void {
             continue;
         };
     }
+
+    self.graphics.make_current_thread_unactive() catch |err| {
+        std.log.err("Failed to make current thread unactive for graphics!, error: {s}", .{@errorName(err)});
+        return;
+    };
 }
 
 fn signal_event_fd(self: *Self) void {

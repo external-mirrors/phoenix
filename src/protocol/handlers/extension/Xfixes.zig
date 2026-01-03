@@ -22,7 +22,6 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 fn query_version(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryVersion, request_context.allocator);
     defer req.deinit();
-    std.log.info("XfixesQueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
     const server_version = phx.Version{ .major = 6, .minor = 1 };
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };

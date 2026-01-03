@@ -27,7 +27,6 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 fn query_version(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryExtension, request_context.allocator);
     defer req.deinit();
-    std.log.info("DRI3QueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
     const server_version = phx.Version{ .major = 1, .minor = 4 };
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
@@ -76,7 +75,6 @@ fn validate_drm_auth(card_fd: std.posix.fd_t, render_fd: std.posix.fd_t) bool {
 fn open(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.Open, request_context.allocator);
     defer req.deinit();
-    std.log.info("Dri3Open request: {s}", .{x11.stringify_fmt(req.request)});
 
     // TODO: Use the request data (drawable, which should be the root window of the screen)
     // and provider.
@@ -199,7 +197,6 @@ fn fence_from_fd(request_context: phx.RequestContext) !void {
 fn get_supported_modifiers(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetSupportedModifiers, request_context.allocator);
     defer req.deinit();
-    std.log.info("Dri3GetSupportedModifiers request: {s}", .{x11.stringify_fmt(req.request)});
 
     const window = request_context.server.get_window(req.request.window) orelse {
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));

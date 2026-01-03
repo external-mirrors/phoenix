@@ -24,7 +24,6 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 fn use_extension(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.UseExtension, request_context.allocator);
     defer req.deinit();
-    std.log.info("UseExtension request: {s}", .{x11.stringify_fmt(req.request)});
 
     const server_version = phx.Version{ .major = 1, .minor = 0 };
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
@@ -42,7 +41,6 @@ fn use_extension(request_context: phx.RequestContext) !void {
 fn get_map(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetMap, request_context.allocator);
     defer req.deinit();
-    std.log.info("GetMap request: {s}", .{x11.stringify_fmt(req.request)});
 
     std.log.warn("TODO: Implement GetMap properly", .{});
 
@@ -67,7 +65,6 @@ fn get_map(request_context: phx.RequestContext) !void {
 fn per_client_flags(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.PerClientFlags, request_context.allocator);
     defer req.deinit();
-    std.log.info("PerClientFlags request: {s}", .{x11.stringify_fmt(req.request)});
 
     std.log.err("TODO: Implement XkbPerClientFlags", .{});
 
@@ -91,7 +88,6 @@ fn per_client_flags(request_context: phx.RequestContext) !void {
 fn get_device_info(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetDeviceInfo, request_context.allocator);
     defer req.deinit();
-    std.log.info("GetDeviceInfo request: {s}", .{x11.stringify_fmt(req.request)});
 
     std.log.err("TODO: Implement XkbGetDeviceInfo", .{});
 

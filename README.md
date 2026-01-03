@@ -22,7 +22,10 @@ such as with screen recorders, where it will only be allowed to record the windo
 or by explicitly giving the application permission before launched (such as a window manager or external compositor).\
 This will not break existing clients as clients wont receive errors when they try to access more than they need, they will instead receive dummy data.\
 Applications that rely on global hotkeys should work, as long as a modifier key is pressed (keys such as ctrl, shift, alt and super).\
-If an application needs global hotkeys without pressing a modifier key then it needs to be given permissions to do so (perhaps by adding a command to run a program with more X11 permissions).\
+If an application needs global hotkeys without pressing a modifier key then it needs to be given permissions to do so (perhaps by adding a command to run a program with more X11 permissions).
+
+Clipboard should be made more secure to only allow focused applications (clients) to read the clipboard or only read the clipboard when focused and Ctrl + V is pressed, which would make it more secure than Wayland compositors as well.
+
 There will be an option to disable this to make the X server behave like the Xorg server.
 
 ### Improvements for modern technology

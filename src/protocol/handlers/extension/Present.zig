@@ -25,7 +25,6 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 fn query_version(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryVersion, request_context.allocator);
     defer req.deinit();
-    std.log.info("PresentQueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
     const server_version = phx.Version{ .major = 1, .minor = 4 };
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
@@ -42,7 +41,6 @@ fn query_version(request_context: phx.RequestContext) !void {
 fn present_pixmap(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.Pixmap, request_context.allocator);
     defer req.deinit();
-    std.log.info("PresentPixmap request: {s}", .{x11.stringify_fmt(req.request)});
 
     for (req.request.notifies.items) |notify| {
         _ = request_context.server.get_window(notify.window) orelse {
@@ -110,7 +108,6 @@ fn present_pixmap(request_context: phx.RequestContext) !void {
 fn select_input(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.SelectInput, request_context.allocator);
     defer req.deinit();
-    std.log.info("PresentSelectInput request: {s}", .{x11.stringify_fmt(req.request)});
 
     const event_id = req.request.event_id.to_id();
     if (request_context.client.get_resource(event_id)) |resource| {

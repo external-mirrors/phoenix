@@ -62,7 +62,6 @@ fn window_class_validate_attributes(class: x11.Class, req: *const Request.Create
 fn create_window(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateWindow, request_context.allocator);
     defer req.deinit();
-    std.log.info("CreateWindow request: {s}", .{x11.stringify_fmt(req.request)});
 
     const parent_window = request_context.server.get_window(req.request.parent) orelse {
         std.log.err("Received invalid parent window {d} in CreateWindow request", .{req.request.parent});
@@ -225,7 +224,6 @@ fn create_window(request_context: phx.RequestContext) !void {
 fn get_window_attributes(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetWindowAttributes, request_context.allocator);
     defer req.deinit();
-    std.log.info("GetWindowAttributes request: {s}", .{x11.stringify_fmt(req.request)});
 
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in GetWindowAttributes request", .{req.request.window});
@@ -256,7 +254,6 @@ fn get_window_attributes(request_context: phx.RequestContext) !void {
 fn destroy_window(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.DestroyWindow, request_context.allocator);
     defer req.deinit();
-    std.log.info("DestroyWindow request: {s}", .{x11.stringify_fmt(req.request)});
 
     var window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in DestroyWindow request", .{req.request.window});
@@ -275,7 +272,6 @@ fn destroy_window(request_context: phx.RequestContext) !void {
 fn map_window(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.MapWindow, request_context.allocator);
     defer req.deinit();
-    std.log.info("MapWindow request: {s}", .{x11.stringify_fmt(req.request)});
 
     std.log.warn("TODO: Implement MapWindow properly", .{});
 
@@ -289,6 +285,7 @@ fn map_window(request_context: phx.RequestContext) !void {
     }
 
     window.attributes.mapped = true;
+    window.graphics_window.mapped = true; // Technically a race condition, but who cares
 
     // TODO: Dont always do this, check protocol spec
     var map_notify_event = phx.event.Event{
@@ -305,7 +302,6 @@ fn map_window(request_context: phx.RequestContext) !void {
 fn configure_window(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.ConfigureWindow, request_context.allocator);
     defer req.deinit();
-    std.log.info("ConfigureWindow request: {s}", .{x11.stringify_fmt(req.request)});
 
     std.log.warn("TODO: Implement ConfigureWindow properly", .{});
 
@@ -367,7 +363,6 @@ fn configure_window(request_context: phx.RequestContext) !void {
 fn get_geometry(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetGeometry, request_context.allocator);
     defer req.deinit();
-    std.log.info("GetGeometry request: {s}", .{x11.stringify_fmt(req.request)});
 
     const drawable = request_context.server.get_drawable(req.request.drawable) orelse {
         std.log.err("Received invalid drawable {d} in GetGeometry request", .{req.request.drawable});
@@ -391,7 +386,6 @@ fn get_geometry(request_context: phx.RequestContext) !void {
 fn query_tree(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryTree, request_context.allocator);
     defer req.deinit();
-    std.log.info("QueryTree request: {s}", .{x11.stringify_fmt(req.request)});
 
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in QueryTree request", .{req.request.window});
@@ -413,7 +407,6 @@ fn query_tree(request_context: phx.RequestContext) !void {
 fn intern_atom(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.InternAtom, request_context.allocator);
     defer req.deinit();
-    std.log.info("InternAtom request: {s}", .{x11.stringify_fmt(req.request)});
 
     var atom: x11.Atom = undefined;
     if (req.request.only_if_exists) {
@@ -435,7 +428,6 @@ fn intern_atom(request_context: phx.RequestContext) !void {
 fn change_property(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.ChangeProperty, request_context.allocator);
     defer req.deinit();
-    std.log.info("ChangeProperty request: {s}", .{x11.stringify_fmt(req.request)});
 
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in ChangeProperty request", .{req.request.window});
@@ -477,7 +469,6 @@ fn change_property(request_context: phx.RequestContext) !void {
 fn get_property(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetProperty, request_context.allocator);
     defer req.deinit();
-    std.log.info("GetProperty request: {s}", .{x11.stringify_fmt(req.request)});
 
     // TODO: Error if running in security mode and the window is not owned by the client
     const window = request_context.server.get_window(req.request.window) orelse {
@@ -698,7 +689,6 @@ fn free_pixmap(request_context: phx.RequestContext) !void {
 fn create_gc(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateGC, request_context.allocator);
     defer req.deinit();
-    std.log.info("CreateGC request: {s}", .{x11.stringify_fmt(req.request)});
 
     std.log.err("TODO: Implement CreateGC", .{});
 }
@@ -706,7 +696,6 @@ fn create_gc(request_context: phx.RequestContext) !void {
 fn free_gc(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.FreeGC, request_context.allocator);
     defer req.deinit();
-    std.log.info("FreeGC request: {s}", .{x11.stringify_fmt(req.request)});
 
     std.log.err("TODO: Implement FreeGC", .{});
 }
@@ -714,7 +703,6 @@ fn free_gc(request_context: phx.RequestContext) !void {
 fn create_colormap(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateColormap, request_context.allocator);
     defer req.deinit();
-    std.log.info("CreateColormap request: {s}", .{x11.stringify_fmt(req.request)});
 
     // TODO: Do something with req.request.alloc.
 
@@ -749,7 +737,6 @@ fn create_colormap(request_context: phx.RequestContext) !void {
 fn query_extension(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryExtension, request_context.allocator);
     defer req.deinit();
-    std.log.info("QueryExtension request: {s}", .{x11.stringify_fmt(req.request)});
 
     var rep = Reply.QueryExtension{
         .sequence_number = request_context.sequence_number,
@@ -802,7 +789,6 @@ fn query_extension(request_context: phx.RequestContext) !void {
 fn get_keyboard_mapping(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetKeyboardMapping, request_context.allocator);
     defer req.deinit();
-    std.log.info("GetKeyboardMapping request: {s}", .{x11.stringify_fmt(req.request)});
 
     std.log.warn("TODO: Implement GetKeyboardMapping properly for different keyboard layouts", .{});
 
@@ -858,7 +844,6 @@ fn get_keyboard_mapping(request_context: phx.RequestContext) !void {
 fn get_modifier_mapping(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetModifierMapping, request_context.allocator);
     defer req.deinit();
-    std.log.info("GetModifierMapping request: {s}", .{x11.stringify_fmt(req.request)});
 
     std.log.warn("TODO: Implement GetModifierMapping properly for different keyboard layouts", .{});
 

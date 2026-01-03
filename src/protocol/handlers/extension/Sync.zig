@@ -22,7 +22,6 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 fn initialize(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.Initialize, request_context.allocator);
     defer req.deinit();
-    std.log.info("SyncInitialize request: {s}", .{x11.stringify_fmt(req.request)});
 
     const server_version = phx.Version{ .major = 3, .minor = 1 };
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
@@ -39,7 +38,6 @@ fn initialize(request_context: phx.RequestContext) !void {
 fn destroy_fence(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.DestroyFence, request_context.allocator);
     defer req.deinit();
-    std.log.info("SyncDestroyFence request: {s}", .{x11.stringify_fmt(req.request)});
 
     var fence = request_context.server.get_fence(req.request.fence) orelse {
         std.log.err("Received invalid fence {d} in SyncDestroyFence request", .{req.request.fence});

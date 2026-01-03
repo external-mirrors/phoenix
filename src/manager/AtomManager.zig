@@ -113,7 +113,7 @@ pub fn get_atom_name_by_id(self: *Self, atom_id: x11.Atom) ?[]const u8 {
 
 pub fn get_atom_by_name(self: *Self, name: []const u8) ?x11.Atom {
     // TODO: Use hash map?
-    for (self.atoms.items, 0..) |atom_name, atom_id| {
+    for (self.atoms.items, 1..) |atom_name, atom_id| {
         if (std.mem.eql(u8, name, atom_name))
             return @enumFromInt(atom_id);
     }
@@ -143,4 +143,5 @@ test "get atom" {
     try std.testing.expect(atom_manager.get_atom_name_by_id(@enumFromInt(0)) == null);
     try std.testing.expectEqualSlices(u8, "PRIMARY", atom_manager.get_atom_name_by_id(Predefined.primary).?);
     try std.testing.expectEqualSlices(u8, "WM_TRANSIENT_FOR", atom_manager.get_atom_name_by_id(Predefined.wm_transient_for).?);
+    try std.testing.expectEqual(Predefined.bitmap, atom_manager.get_atom_by_name("BITMAP"));
 }

@@ -37,7 +37,6 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 fn create_context(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateContext, request_context.allocator);
     defer req.deinit();
-    std.log.info("GlxCreateContext request: {s}", .{x11.stringify_fmt(req.request)});
 
     // TODO: Maybe force direct? does that work? the client does glXIsDirect afterwards
     // so maybe it works
@@ -81,7 +80,6 @@ fn create_context(request_context: phx.RequestContext) !void {
 fn destroy_context(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.DestroyContext, request_context.allocator);
     defer req.deinit();
-    std.log.info("GlxDestroyContext request: {s}", .{x11.stringify_fmt(req.request)});
 
     var glx_context = request_context.server.get_glx_context(req.request.context) orelse {
         std.log.err("Received invalid glx context {d} in GlxDestroyContext request", .{req.request.context});
@@ -93,7 +91,6 @@ fn destroy_context(request_context: phx.RequestContext) !void {
 fn is_direct(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.IsDirect, request_context.allocator);
     defer req.deinit();
-    std.log.info("GlxIsDirect request: {s}", .{x11.stringify_fmt(req.request)});
 
     const glx_context = request_context.server.get_glx_context(req.request.context) orelse {
         std.log.err("Received invalid glx context {d} in GlxIsDirect request", .{req.request.context});
@@ -110,7 +107,6 @@ fn is_direct(request_context: phx.RequestContext) !void {
 fn query_version(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryVersion, request_context.allocator);
     defer req.deinit();
-    std.log.info("GlxQueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
     const server_version = phx.Version{ .major = 1, .minor = 4 };
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
@@ -127,7 +123,6 @@ fn query_version(request_context: phx.RequestContext) !void {
 fn get_visual_configs(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetVisualConfigs, request_context.allocator);
     defer req.deinit();
-    std.log.info("GlxGetVisualConfigs request: {s}", .{x11.stringify_fmt(req.request)});
 
     if (req.request.screen != request_context.server.screen) {
         std.log.err("Received invalid screen {d} in GlxGetVisualConfigs request", .{req.request.screen});
@@ -201,7 +196,6 @@ fn get_visual_configs(request_context: phx.RequestContext) !void {
 fn query_server_string(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryServerString, request_context.allocator);
     defer req.deinit();
-    std.log.info("GlxQueryServerString request: {s}", .{x11.stringify_fmt(req.request)});
 
     if (req.request.screen != request_context.server.screen) {
         std.log.err("Received invalid screen {d} in GlxQueryServerString request", .{req.request.screen});
@@ -237,7 +231,6 @@ fn query_server_string(request_context: phx.RequestContext) !void {
 fn get_fb_configs(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetFbConfigs, request_context.allocator);
     defer req.deinit();
-    std.log.info("GlxGetFbConfigs request: {s}", .{x11.stringify_fmt(req.request)});
 
     if (req.request.screen != request_context.server.screen) {
         std.log.err("Received invalid screen {d} in GlxGetFbConfigs request", .{req.request.screen});
@@ -331,7 +324,6 @@ fn get_fb_configs(request_context: phx.RequestContext) !void {
 fn get_drawable_attributes(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetDrawableAttributes, request_context.allocator);
     defer req.deinit();
-    std.log.info("GlxGetDrawableAttributes request: {s}", .{x11.stringify_fmt(req.request)});
 
     const glx_drawable = request_context.server.get_glx_drawable(req.request.drawable) orelse {
         std.log.err("Received invalid glx drawable {d} in GlxGetDrawableAttributes request", .{req.request.drawable});
@@ -365,7 +357,6 @@ fn get_drawable_attributes(request_context: phx.RequestContext) !void {
 fn set_client_info_arb(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.SetClientInfoArb, request_context.allocator);
     defer req.deinit();
-    std.log.info("GlxSetClientInfoArb request: {s}", .{x11.stringify_fmt(req.request)});
 
     const server_version = phx.Version{ .major = 1, .minor = 4 };
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
@@ -376,7 +367,6 @@ fn set_client_info_arb(request_context: phx.RequestContext) !void {
 fn set_client_info2_arb(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.SetClientInfo2Arb, request_context.allocator);
     defer req.deinit();
-    std.log.info("GlxSetClientInfo2Arb request: {s}", .{x11.stringify_fmt(req.request)});
 
     const server_version = phx.Version{ .major = 1, .minor = 4 };
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };

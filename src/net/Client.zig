@@ -203,6 +203,7 @@ pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator)
     if (fsr.num_bytes_read != request_length)
         return error.InvalidRequestLength;
 
+    std.log.info("{s} request: {s}", .{ @typeName(T), x11.stringify_fmt(req_data) });
     return phx.message.Request(T).init(&req_data, &arena);
 }
 
@@ -224,6 +225,7 @@ pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const phx.m
     if (@typeInfo(@TypeOf(reply_data)) != .pointer)
         @compileError("Expected reply data to be a pointer");
 
+    std.log.info("{s} reply: {s}", .{ @typeName(@TypeOf(reply_data.*)), x11.stringify_fmt(reply_data.*) });
     try phx.reply.write_reply(@TypeOf(reply_data.*), reply_data, self.write_buffer.writer());
     // TODO: If this fails but not the above then we need to discard data from the write end, how?
     try self.write_buffer_fds.write(fds);

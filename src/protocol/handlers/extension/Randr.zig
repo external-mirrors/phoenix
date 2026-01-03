@@ -25,7 +25,6 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 fn query_version(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryVersion, request_context.allocator);
     defer req.deinit();
-    std.log.info("RandrQueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
     const server_version = phx.Version{ .major = 1, .minor = 6 };
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
@@ -42,7 +41,6 @@ fn query_version(request_context: phx.RequestContext) !void {
 fn select_input(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.SelectInput, request_context.allocator);
     defer req.deinit();
-    std.log.info("RandrSelectInput request: {s}", .{x11.stringify_fmt(req.request)});
 
     const client_version = request_context.client.extension_versions.randr.to_int();
     const version_1_2 = (phx.Version{ .major = 1, .minor = 2 }).to_int();
@@ -83,7 +81,6 @@ fn select_input(request_context: phx.RequestContext) !void {
 fn get_screen_resources(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetScreenResources, request_context.allocator);
     defer req.deinit();
-    std.log.info("RandrGetScreenResources request: {s}", .{x11.stringify_fmt(req.request)});
 
     _ = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in RandrGetScreenResources request", .{req.request.window});
@@ -114,7 +111,6 @@ fn get_screen_resources(request_context: phx.RequestContext) !void {
 fn get_output_info(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetOutputInfo, request_context.allocator);
     defer req.deinit();
-    std.log.info("RandrGetOutputInfo request: {s}", .{x11.stringify_fmt(req.request)});
 
     const version_1_6 = (phx.Version{ .major = 1, .minor = 6 }).to_int();
     const supports_non_desktop = request_context.client.extension_versions.randr.to_int() >= version_1_6;
@@ -173,7 +169,6 @@ fn get_output_info(request_context: phx.RequestContext) !void {
 fn get_crtc_info(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetCrtcInfo, request_context.allocator);
     defer req.deinit();
-    std.log.info("RandrGetCrtcInfo request: {s}", .{x11.stringify_fmt(req.request)});
 
     const crtc = request_context.server.screen_resources.get_crtc_by_id(req.request.crtc) orelse {
         std.log.err("Received invalid output {d} in RandrGetCrtcInfo request", .{req.request.crtc});

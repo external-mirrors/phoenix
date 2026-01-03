@@ -121,13 +121,10 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     var screen_resources = try display.get_screen_resources(@enumFromInt(1), allocator);
     errdefer screen_resources.deinit();
 
-    const screen_info = screen_resources.create_screen_info();
-    const root_window = try create_root_window(root_client, &screen_info, allocator);
-
     return .{
         .allocator = allocator,
         .root_client = root_client,
-        .root_window = root_window,
+        .root_window = undefined,
         .server_net = server,
         .epoll_fd = epoll_fd,
         .signal_fd = signal_fd,
@@ -140,18 +137,18 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         .installed_colormaps = installed_colormaps,
         .started_time_seconds = started_time_seconds,
         .screen_resources = screen_resources,
-        .cursor_x = @intCast(screen_info.width / 2),
-        .cursor_y = @intCast(screen_info.height / 2),
+        .cursor_x = 0,
+        .cursor_y = 0,
     };
 }
 
 pub fn deinit(self: *Self) void {
-    self.display.destroy();
-    self.input.deinit();
     self.client_manager.deinit();
     self.atom_manager.deinit();
     self.installed_colormaps.deinit();
     self.screen_resources.deinit();
+    self.display.destroy();
+    self.input.deinit();
     std.posix.close(self.epoll_fd);
     std.posix.close(self.signal_fd);
     std.posix.close(self.event_fd);
@@ -177,8 +174,9 @@ pub fn get_timestamp_milliseconds(self: *Self) x11.Timestamp {
     return @enumFromInt(timestamp_milliseconds);
 }
 
-fn create_root_window(root_client: *phx.Client, screen_info: *const phx.ScreenResources.ScreenInfo, allocator: std.mem.Allocator) !*phx.Window {
-    const root_window_id: x11.WindowId = @enumFromInt(0x3b2 | root_client.resource_id_base);
+fn create_root_window(self: *Self) !*phx.Window {
+    const screen_info = self.screen_resources.create_screen_info();
+    const root_window_id: x11.WindowId = @enumFromInt(0x3b2 | self.root_client.resource_id_base);
     const window_attributes = phx.Window.Attributes{
         .geometry = .{
             .x = 0,
@@ -205,7 +203,7 @@ fn create_root_window(root_client: *phx.Client, screen_info: *const phx.ScreenRe
         .override_redirect = false,
     };
 
-    var root_window = try phx.Window.create(null, root_window_id, &window_attributes, null, root_client, allocator);
+    var root_window = try phx.Window.create(null, root_window_id, &window_attributes, self, self.root_client, self.allocator);
     errdefer root_window.destroy();
 
     try root_window.replace_property(
@@ -218,7 +216,8 @@ fn create_root_window(root_client: *phx.Client, screen_info: *const phx.ScreenRe
     return root_window;
 }
 
-pub fn run(self: *Self) void {
+pub fn run(self: *Self) !void {
+    self.root_window = try self.create_root_window();
     std.log.defaultLog(.info, .default, "Phoenix is now running at {s}. You can connect to it by setting the DISPLAY environment variable to :1, for example \"DISPLAY=:1 glxgears\"", .{unix_domain_socket_path});
 
     const poll_timeout_ms: u32 = 500;

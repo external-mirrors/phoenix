@@ -22,7 +22,6 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 fn query_version(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryVersion, request_context.allocator);
     defer req.deinit();
-    std.log.info("RenderQueryVersion request: {s}", .{x11.stringify_fmt(req.request)});
 
     const server_version = phx.Version{ .major = 0, .minor = 11 };
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
@@ -39,7 +38,6 @@ fn query_version(request_context: phx.RequestContext) !void {
 fn query_pict_formats(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryPictFormats, request_context.allocator);
     defer req.deinit();
-    std.log.info("RenderQueryPictFormats request: {s}", .{x11.stringify_fmt(req.request)});
 
     const screen_visual = request_context.server.get_visual_by_id(phx.Server.screen_true_color_visual_id) orelse unreachable;
     const pict_format24: PictFormatId = @enumFromInt(35);

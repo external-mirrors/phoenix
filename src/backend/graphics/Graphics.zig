@@ -9,6 +9,8 @@ allocator: std.mem.Allocator,
 impl: GraphicsImpl,
 
 pub fn create_egl(
+    width: u32,
+    height: u32,
     platform: c_uint,
     screen_type: c_int,
     connection: c.EGLNativeDisplayType,
@@ -18,7 +20,7 @@ pub fn create_egl(
 ) !Self {
     const egl = try allocator.create(GraphicsEgl);
     errdefer allocator.destroy(egl);
-    egl.* = try .init(platform, screen_type, connection, window_id, debug, allocator);
+    egl.* = try .init(width, height, platform, screen_type, connection, window_id, debug, allocator);
     return .{
         .allocator = allocator,
         .impl = .{ .egl = egl },
@@ -46,6 +48,12 @@ pub fn make_current_thread_active(self: *Self) !void {
     };
 }
 
+pub fn make_current_thread_unactive(self: *Self) !void {
+    return switch (self.impl) {
+        inline else => |item| item.make_current_thread_unactive(),
+    };
+}
+
 pub fn render(self: *Self) !void {
     return switch (self.impl) {
         inline else => |item| item.render(),
@@ -58,14 +66,13 @@ pub fn resize(self: *Self, width: u32, height: u32) void {
     }
 }
 
-/// Returns a graphics window id. This will never return 0
-pub fn create_window(self: *Self, window: *const phx.Window) !u32 {
+pub fn create_window(self: *Self, window: *const phx.Window) !*phx.Graphics.GraphicsWindow {
     return switch (self.impl) {
         inline else => |item| item.create_window(window),
     };
 }
 
-pub fn destroy_window(self: *Self, window: *const phx.Window) void {
+pub fn destroy_window(self: *Self, window: *phx.Window) void {
     return switch (self.impl) {
         inline else => |item| item.destroy_window(window),
     };
@@ -111,6 +118,33 @@ pub const DmabufImport = struct {
     depth: u8,
     bpp: u8,
     num_items: u32,
+};
+
+pub const PixmapTexture = struct {
+    id: u32,
+    texture_id: u32,
+    width: u32,
+    height: u32,
+    delete: bool = false,
+};
+
+pub const GraphicsWindow = struct {
+    parent_window: ?*GraphicsWindow,
+    texture_id: u32,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    background_color: @Vector(4, f32),
+    mapped: bool,
+    delete: bool = false,
+    children: std.ArrayList(*GraphicsWindow),
+};
+
+pub const PresentPixmapOperation = struct {
+    pixmap_texture_id: u32,
+    window: *GraphicsWindow,
+    target_msc: u64,
 };
 
 // pub const GraphicsAsync = struct {

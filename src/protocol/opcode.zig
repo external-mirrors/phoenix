@@ -10,6 +10,7 @@ pub const Major = enum(x11.Card8) {
     get_geometry = 14,
     query_tree = 15,
     intern_atom = 16,
+    get_atom_name = 17,
     change_property = 18,
     get_property = 20,
     grab_server = 36,

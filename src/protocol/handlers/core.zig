@@ -22,6 +22,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .get_geometry => get_geometry(request_context),
         .query_tree => query_tree(request_context),
         .intern_atom => intern_atom(request_context),
+        .get_atom_name => get_atom_name(request_context),
         .change_property => change_property(request_context),
         .get_property => get_property(request_context),
         .grab_server => grab_server(request_context),
@@ -421,6 +422,22 @@ fn intern_atom(request_context: phx.RequestContext) !void {
     var rep = Reply.InternAtom{
         .sequence_number = request_context.sequence_number,
         .atom = atom,
+    };
+    try request_context.client.write_reply(&rep);
+}
+
+fn get_atom_name(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GetAtomName, request_context.allocator);
+    defer req.deinit();
+
+    const atom_name = request_context.server.atom_manager.get_atom_name_by_id(req.request.atom) orelse {
+        std.log.err("Received invalid property atom {d} in GetAtomName request", .{req.request.atom});
+        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.atom));
+    };
+
+    var rep = Reply.GetAtomName{
+        .sequence_number = request_context.sequence_number,
+        .name = .{ .items = @constCast(atom_name) },
     };
     try request_context.client.write_reply(&rep);
 }
@@ -1326,6 +1343,13 @@ pub const Request = struct {
         pad2: x11.AlignmentPadding = .{},
     };
 
+    pub const GetAtomName = struct {
+        opcode: phx.opcode.Major = .get_atom_name,
+        pad: x11.Card8,
+        length: x11.Card16,
+        atom: x11.Atom,
+    };
+
     pub const ChangeProperty = struct {
         opcode: phx.opcode.Major = .change_property,
         mode: enum(x11.Card8) {
@@ -1534,6 +1558,17 @@ const Reply = struct {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         atom: x11.Atom,
         pad2: [20]x11.Card8 = @splat(0),
+    };
+
+    pub const GetAtomName = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        length_of_name: x11.Card16 = 0,
+        pad2: [22]x11.Card8 = @splat(0),
+        name: x11.ListOf(x11.Card8, .{ .length_field = "length_of_name" }),
+        pad3: x11.AlignmentPadding = .{},
     };
 
     pub fn GetProperty(comptime DataType: type) type {

@@ -143,7 +143,7 @@ It would be no different than making a new X11 server, except with a new X11 ser
 In general you can't just write software that works with every Wayland compositor, you instead target specific Wayland compositors. A lot of software that claim to be Wayland software
 are actually KWin (KDE Plasma), Wlroots (Sway, River, etc) or Mutter (Gnome) specific software.
 
-The main issue with Wayland is not a technical one but in it's philosophy. X11 is "mechanism over policy" while Wayland is "policy over mechanism".\
+The main issue with Wayland is not a technical one but in its philosophy. X11 is "mechanism over policy" while Wayland is "policy over mechanism".\
 On X11 you have simple but powerful constructs that can be used for a wide range of things while on Wayland each feature is designed specifically to what
 the Wayland compositor developers had in mind (a vendored experience), specifically for their Wayland compositor. No more no less.\
 This is also the reason why it takes far longer time for a decision to be made in the Wayland protocol than in the X11 protocol (several years vs 2 months) and the Wayland solution (or desktop portal solution) ends up being less flexible and often times up 1000 times more complex for applications (and the Wayland compositor) to implement.

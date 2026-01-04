@@ -19,6 +19,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .get_screen_resources => get_screen_resources(request_context),
         .get_output_info => get_output_info(request_context),
         .get_crtc_info => get_crtc_info(request_context),
+        .get_output_primary => get_output_primary(request_context),
     };
 }
 
@@ -220,6 +221,24 @@ fn get_crtc_info(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn get_output_primary(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GetOutputPrimary, request_context.allocator);
+    defer req.deinit();
+
+    _ = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in RandrGetOutputPrimary request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+
+    const crtc = request_context.server.screen_resources.get_primary_crtc();
+
+    var rep = Reply.GetOutputPrimary{
+        .sequence_number = request_context.sequence_number,
+        .output = crtc.id.to_output_id(),
+    };
+    try request_context.client.write_reply(&rep);
+}
+
 fn crtc_get_rotation(crtc: *const phx.Crtc) Rotation {
     var rotation = Rotation{};
 
@@ -359,6 +378,7 @@ const MinorOpcode = enum(x11.Card8) {
     get_screen_resources = 8,
     get_output_info = 9,
     get_crtc_info = 20,
+    get_output_primary = 31,
 };
 
 pub const CrtcId = enum(x11.Card32) {
@@ -510,7 +530,7 @@ pub const Request = struct {
 
     pub const GetOutputInfo = struct {
         major_opcode: phx.opcode.Major = .randr,
-        minor_opcode: MinorOpcode = .get_screen_resources,
+        minor_opcode: MinorOpcode = .get_output_info,
         length: x11.Card16,
         output: OutputId,
         config_timestamp: x11.Timestamp,
@@ -518,10 +538,17 @@ pub const Request = struct {
 
     pub const GetCrtcInfo = struct {
         major_opcode: phx.opcode.Major = .randr,
-        minor_opcode: MinorOpcode = .get_screen_resources,
+        minor_opcode: MinorOpcode = .get_crtc_info,
         length: x11.Card16,
         crtc: CrtcId,
         config_timestamp: x11.Timestamp,
+    };
+
+    pub const GetOutputPrimary = struct {
+        major_opcode: phx.opcode.Major = .randr,
+        minor_opcode: MinorOpcode = .get_output_primary,
+        length: x11.Card16,
+        window: x11.WindowId,
     };
 };
 
@@ -597,6 +624,15 @@ const Reply = struct {
         num_possible_outputs: x11.Card16 = 0,
         outputs: x11.ListOf(OutputId, .{ .length_field = "num_outputs" }),
         possible_outputs: x11.ListOf(OutputId, .{ .length_field = "num_possible_outputs" }),
+    };
+
+    pub const GetOutputPrimary = struct {
+        type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        output: OutputId,
+        pad2: [20]x11.Card8 = @splat(0),
     };
 };
 

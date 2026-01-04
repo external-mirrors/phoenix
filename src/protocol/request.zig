@@ -111,6 +111,7 @@ fn read_request_array(comptime ElementType: type, list_length: usize, ReaderType
     for (0..items.len) |i| {
         switch (@typeInfo(ElementType)) {
             .int => |int| {
+                // TODO: Read entire slice at once after switching to the new Io interface
                 const int_type = @Type(.{ .int = int });
                 items[i] = try reader_context.reader.readInt(int_type, x11.native_endian);
             },

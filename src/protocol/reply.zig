@@ -48,6 +48,7 @@ fn write_reply_field(comptime FieldType: type, value: *FieldType, writer: anytyp
         .array => |*arr| {
             switch (@typeInfo(arr.child)) {
                 .int => |i| {
+                    // TODO: Write entire slice at once after switching to the new Io interface
                     for (value) |element| {
                         try writer.writeInt(@Type(.{ .int = i }), element, x11.native_endian);
                     }

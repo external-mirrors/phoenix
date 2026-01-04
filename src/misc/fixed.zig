@@ -13,7 +13,7 @@ pub fn from_float(value: f64) !phx.Render.Fixed {
     return phx.Render.Fixed.from_int(@intFromFloat(shifted_value));
 }
 
-pub fn from_comp_float(value: comptime_float) phx.Render.Fixed {
+pub fn from_comp_float(comptime value: f64) phx.Render.Fixed {
     return from_float(value) catch unreachable;
 }
 

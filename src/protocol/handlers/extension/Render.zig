@@ -142,6 +142,18 @@ const PictType = enum(x11.Card8) {
     direct = 1,
 };
 
+pub const Fixed = enum(i32) {
+    _,
+
+    pub fn from_int(value: i32) Fixed {
+        return @enumFromInt(value);
+    }
+
+    pub fn to_int(self: Fixed) i32 {
+        return @intFromEnum(self);
+    }
+};
+
 // The values are not defined in the protocol, wtf?
 // The values are defined in this header file:
 // https://gitlab.freedesktop.org/xorg/proto/xorgproto/-/blob/master/include/X11/extensions/render.h?ref_type=heads

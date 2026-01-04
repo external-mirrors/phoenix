@@ -18,9 +18,31 @@ name: []u8,
 modes: []Mode,
 non_desktop: bool,
 
+pending_filter: phx.Randr.Filter = .bilinear,
+pending_transform: phx.Randr.Transform = .{
+    // zig fmt: off
+    .p11 = phx.fixed.from_comp_float(1.0), .p12 = phx.fixed.from_comp_float(0.0), .p13 = phx.fixed.from_comp_float(0.0),
+    .p21 = phx.fixed.from_comp_float(0.0), .p22 = phx.fixed.from_comp_float(1.0), .p23 = phx.fixed.from_comp_float(0.0),
+    .p31 = phx.fixed.from_comp_float(0.0), .p32 = phx.fixed.from_comp_float(0.0), .p33 = phx.fixed.from_comp_float(1.0),
+    // zig fmt: on
+},
+pending_filter_params: std.ArrayListUnmanaged(phx.Render.Fixed) = .empty,
+
+current_filter: phx.Randr.Filter = .bilinear,
+current_transform: phx.Randr.Transform = .{
+    // zig fmt: off
+    .p11 = phx.fixed.from_comp_float(1.0), .p12 = phx.fixed.from_comp_float(0.0), .p13 = phx.fixed.from_comp_float(0.0),
+    .p21 = phx.fixed.from_comp_float(0.0), .p22 = phx.fixed.from_comp_float(1.0), .p23 = phx.fixed.from_comp_float(0.0),
+    .p31 = phx.fixed.from_comp_float(0.0), .p32 = phx.fixed.from_comp_float(0.0), .p33 = phx.fixed.from_comp_float(1.0),
+    // zig fmt: on
+},
+current_filter_params: std.ArrayListUnmanaged(phx.Render.Fixed) = .empty,
+
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     allocator.free(self.name);
     allocator.free(self.modes);
+    self.pending_filter_params.deinit(allocator);
+    self.current_filter_params.deinit(allocator);
 }
 
 pub fn get_active_mode(self: *const Self) *const Mode {

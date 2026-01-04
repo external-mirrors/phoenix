@@ -52,6 +52,7 @@ pub const ResourceHashMap = resource.ResourceHashMap;
 
 pub const Geometry = @import("misc/Geometry.zig");
 pub const Version = @import("misc/Version.zig");
+pub const fixed = @import("misc/fixed.zig");
 
 pub const keysym = @import("keyboard/keysym.zig");
 pub const KeySym = keysym.KeySym;

@@ -20,6 +20,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .get_output_info => get_output_info(request_context),
         .get_crtc_info => get_crtc_info(request_context),
         .get_screen_resources_current => get_screen_resources(Request.GetScreenResourcesCurrent, Reply.GetScreenResourcesCurrent, request_context),
+        .get_crtc_transform => get_crtc_transform(request_context),
         .get_output_primary => get_output_primary(request_context),
     };
 }
@@ -118,8 +119,8 @@ fn get_output_info(request_context: phx.RequestContext) !void {
     const supports_non_desktop = request_context.client.extension_versions.randr.to_int() >= version_1_6;
 
     const crtc = request_context.server.screen_resources.get_crtc_by_id(req.request.output.to_crtc_id()) orelse {
-        std.log.err("Received invalid output {d} in RandrGetOutputInfo request", .{req.request.output.to_crtc_id()});
-        return request_context.client.write_error(request_context, .randr_output, @intFromEnum(req.request.output.to_crtc_id()));
+        std.log.err("Received invalid output {d} in RandrGetOutputInfo request", .{req.request.output});
+        return request_context.client.write_error(request_context, .randr_output, @intFromEnum(req.request.output));
     };
 
     if (req.request.config_timestamp != request_context.server.screen_resources.config_timestamp) {
@@ -218,6 +219,28 @@ fn get_crtc_info(request_context: phx.RequestContext) !void {
         },
         .outputs = .{ .items = if (crtc.status == .connected) &outputs else &.{} },
         .possible_outputs = .{ .items = &outputs },
+    };
+    try request_context.client.write_reply(&rep);
+}
+
+fn get_crtc_transform(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GetCrtcTransform, request_context.allocator);
+    defer req.deinit();
+
+    const crtc = request_context.server.screen_resources.get_crtc_by_id(req.request.crtc) orelse {
+        std.log.err("Received invalid output {d} in RandrGetCrtcTransform request", .{req.request.crtc});
+        return request_context.client.write_error(request_context, .randr_crtc, @intFromEnum(req.request.crtc));
+    };
+
+    var rep = Reply.GetCrtcTransform{
+        .sequence_number = request_context.sequence_number,
+        .pending_transform = crtc.pending_transform,
+        .has_transforms = true,
+        .current_transform = crtc.current_transform,
+        .pending_filter_name = .{ .items = @constCast(crtc.pending_filter.to_string()) },
+        .pending_filter_params = .{ .items = crtc.pending_filter_params.items },
+        .current_filter_name = .{ .items = @constCast(crtc.current_filter.to_string()) },
+        .current_filter_params = .{ .items = crtc.current_filter_params.items },
     };
     try request_context.client.write_reply(&rep);
 }
@@ -380,6 +403,7 @@ const MinorOpcode = enum(x11.Card8) {
     get_output_info = 9,
     get_crtc_info = 20,
     get_screen_resources_current = 25,
+    get_crtc_transform = 27,
     get_output_primary = 31,
 };
 
@@ -505,6 +529,34 @@ pub const Rotation = packed struct(x11.Card16) {
     _padding: u10 = 0,
 };
 
+pub const Transform = struct {
+    // zig fmt: off
+    p11: phx.Render.Fixed, p12: phx.Render.Fixed, p13: phx.Render.Fixed,
+    p21: phx.Render.Fixed, p22: phx.Render.Fixed, p23: phx.Render.Fixed,
+    p31: phx.Render.Fixed, p32: phx.Render.Fixed, p33: phx.Render.Fixed,
+    // zig fmt: on
+};
+
+pub const Filter = enum {
+    nearest,
+    bilinear,
+
+    pub fn from_string(str: []const u8) ?Filter {
+        // TODO: Do we want "best" to be a better option than bilinear?
+        // TODO: There are other filters available but they are optional: convolution, gaussian and binomial
+        return if (std.mem.eql(u8, str, "nearest") or std.mem.eql(u8, str, "fast"))
+            .nearest
+        else if (std.mem.eql(u8, str, "bilinear") or std.mem.eql(u8, str, "good") or std.mem.eql(u8, str, "best"))
+            .bilinear
+        else
+            return null;
+    }
+
+    pub fn to_string(self: Filter) []const u8 {
+        return @tagName(self);
+    }
+};
+
 pub const Request = struct {
     pub const QueryVersion = struct {
         major_opcode: phx.opcode.Major = .randr,
@@ -551,6 +603,13 @@ pub const Request = struct {
         minor_opcode: MinorOpcode = .get_screen_resources_current,
         length: x11.Card16,
         window: x11.WindowId,
+    };
+
+    pub const GetCrtcTransform = struct {
+        major_opcode: phx.opcode.Major = .randr,
+        minor_opcode: MinorOpcode = .get_crtc_transform,
+        length: x11.Card16,
+        crtc: CrtcId,
     };
 
     pub const GetOutputPrimary = struct {
@@ -654,6 +713,28 @@ const Reply = struct {
         // Need to traverse each ModeInfo to find the name at a particular index.
         mode_names: x11.ListOf(x11.Card8, .{ .length_field = "mode_names_length" }),
         pad3: x11.AlignmentPadding = .{},
+    };
+
+    pub const GetCrtcTransform = struct {
+        type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        pending_transform: Transform,
+        has_transforms: bool,
+        pad2: [3]x11.Card8 = @splat(0),
+        current_transform: Transform,
+        pad3: x11.Card32 = 0,
+        pending_filter_name_length: x11.Card16 = 0,
+        pending_filter_num_params: x11.Card16 = 0,
+        current_filter_name_length: x11.Card16 = 0,
+        current_filter_num_params: x11.Card16 = 0,
+        pending_filter_name: x11.ListOf(x11.Card8, .{ .length_field = "pending_filter_name_length" }),
+        pad4: x11.AlignmentPadding = .{},
+        pending_filter_params: x11.ListOf(phx.Render.Fixed, .{ .length_field = "pending_filter_num_params" }),
+        current_filter_name: x11.ListOf(x11.Card8, .{ .length_field = "current_filter_name_length" }),
+        pad5: x11.AlignmentPadding = .{},
+        current_filter_params: x11.ListOf(phx.Render.Fixed, .{ .length_field = "current_filter_num_params" }),
     };
 
     pub const GetOutputPrimary = struct {

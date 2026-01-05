@@ -96,15 +96,15 @@ sudo rm /usr/local/bin/phoenix
 ## Building (for development)
 Run `zig build`, which builds Phoenix in debug mode. The compiled binary will be available at `./zig-out/bin/phoenix`. You can alternatively build and run with one command: `zig build run`.
 
-### Generate x11 protocol documentation
-Run `zig build -Dgenerate-docs=true`. This will generate `.txt` files in `./zig-out/protocol/`. This generates x11 protocol documentation in the style of the official protocol documentation. The documentation is automatically generated from the protocol struct code.
+### Generate X11 protocol documentation
+Run `zig build -Dgenerate-docs=true`. This will generate `.txt` files in `./zig-out/protocol/`. This generates X11 protocol documentation in the style of the official protocol documentation. The documentation is automatically generated from the protocol struct code.
 Note that the generated documentation feature is a work-in-progress.
 
 ## Dependencies
 * [Zig 0.14.1](https://ziglang.org/download/)
 * libxkbcommon
-* x11 (`xcb`) - for nested mode under X11, when building Phoenix with `-Dbackends=x11`
-* wayland (`wayland-client`, `wayland-egl`) - for nested mode under Wayland, when building Phoenix with `-Dbackends=wayland` (not currently supported)
+* X11 (`libxcb`) - for nested mode under X11, when building Phoenix with `-Dbackends=x11`
+* Wayland (`wayland-client`, `wayland-egl`) - for nested mode under Wayland, when building Phoenix with `-Dbackends=wayland` (not currently supported)
 * drm (`libdrm`, `gbm`) - for running Phoenix as a standalone X11 server, when building Phoenix with `-Dbackends=drm` (not currently supported)
 * OpenGL (`libglvnd` which provides both `gl` and `egl`)
 

@@ -403,7 +403,6 @@ pub fn get_screen_resources(_: *Self, timestamp: x11.Timestamp, allocator: std.m
         .preferred_mode_index = 0,
         .name = crtc_name,
         .modes = modes,
-        .non_desktop = false,
     });
 
     return screen_resources;

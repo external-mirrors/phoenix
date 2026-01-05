@@ -144,6 +144,8 @@ fn get_output_info(request_context: phx.RequestContext) !void {
 
     var crtcs = [_]CrtcId{crtc.id};
 
+    const is_non_desktop = if (crtc.get_property_single_value(x11.Card32, .@"non-desktop")) |value| value == 1 else false;
+
     // Xorg server doesn't seem to set these, so we don't really need them either
     //var clones = try get_clones_of_output_crtc(&request_context.server.screen_resources, output, request_context.allocator);
     //defer clones.deinit();
@@ -158,7 +160,7 @@ fn get_output_info(request_context: phx.RequestContext) !void {
         .crtc = crtc.id,
         .width_mm = crtc.width_mm,
         .height_mm = crtc.height_mm,
-        .connection = if (supports_non_desktop and crtc.non_desktop) .disconnected else crtc_status_to_connect(crtc.status),
+        .connection = if (supports_non_desktop and is_non_desktop) .disconnected else crtc_status_to_connect(crtc.status),
         .subpixel_order = .unknown, // TODO: Support others?
         .num_preferred_modes = 1,
         .crtcs = .{ .items = &crtcs },
@@ -254,11 +256,11 @@ fn get_output_primary(request_context: phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
 
-    const crtc = request_context.server.screen_resources.get_primary_crtc();
+    const primary_crtc_id = if (request_context.server.screen_resources.get_primary_crtc()) |primary_crtc| primary_crtc.id else .none;
 
     var rep = Reply.GetOutputPrimary{
         .sequence_number = request_context.sequence_number,
-        .output = crtc.id.to_output_id(),
+        .output = primary_crtc_id.to_output_id(),
     };
     try request_context.client.write_reply(&rep);
 }
@@ -408,6 +410,7 @@ const MinorOpcode = enum(x11.Card8) {
 };
 
 pub const CrtcId = enum(x11.Card32) {
+    none = 0,
     _,
 
     pub fn to_output_id(self: CrtcId) OutputId {

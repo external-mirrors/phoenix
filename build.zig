@@ -14,7 +14,7 @@ pub fn build(b: *std.Build) !void {
         return error.MissingBackendOption;
     }
 
-    const generate_docs_option = b.option(bool, "generate-docs", "Generate x11 protocol documentation") orelse false;
+    const generate_docs_option = b.option(bool, "generate-docs", "Generate X11 protocol documentation") orelse false;
     if (generate_docs_option) {
         try generate_docs(b.install_path);
         return;

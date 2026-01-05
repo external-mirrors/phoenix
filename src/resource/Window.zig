@@ -39,7 +39,7 @@ pub fn create(
 
         .id = id,
         .attributes = attributes.*,
-        .properties = .init(allocator),
+        .properties = .empty,
         .core_event_listeners = .init(allocator),
         .extension_event_listeners = .init(allocator),
         .graphics_window = undefined,
@@ -79,7 +79,7 @@ pub fn destroy(self: *Self) void {
 
     self.core_event_listeners.deinit();
     self.extension_event_listeners.deinit();
-    self.properties.deinit();
+    self.properties.deinit(self.allocator);
     self.children.deinit();
     self.allocator.destroy(self);
 }
@@ -113,7 +113,7 @@ pub fn replace_property(
     errdefer array_list.deinit();
     array_list.appendSliceAssumeCapacity(value);
 
-    var result = try self.properties.getOrPut(property_name);
+    var result = try self.properties.getOrPut(self.allocator, property_name);
     if (result.found_existing)
         result.value_ptr.deinit();
 
@@ -151,7 +151,7 @@ fn property_add(
             .type = property_type,
             .item = @unionInit(x11.PropertyValueData, union_field_name, array_list),
         };
-        return self.properties.put(property_name, property);
+        return self.properties.put(self.allocator, property_name, property);
     }
 }
 

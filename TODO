@@ -55,3 +55,4 @@ Add an option to disable middle mouse paste (make SetSelectionOwner with atom PR
 Maybe allow global hotkeys as long as the application does a grab. If it does a grab other applications dont receive input so there is no hidden keylogger that silently listens to keys.
 Support multiple monitors in nested mode. This is useful for testing (both phoenix and client applications).
 Make pixmap reference counted. This is needed for PresentPixmap as it shouldn't get deleted immediately even if FreePixmap is called, it should instead be deleted after it has been rendered.
+ConnectorType and SignalFormat Randr properties are declared as mandatory in the Randr protocol but they aren't always set by the Xorg server. Are they really mandatory? We don't currently set them in phoenix.

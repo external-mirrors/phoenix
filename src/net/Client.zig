@@ -226,7 +226,10 @@ pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const phx.m
         @compileError("Expected reply data to be a pointer");
 
     std.log.info("{s} reply: {s}", .{ @typeName(@TypeOf(reply_data.*)), x11.stringify_fmt(reply_data.*) });
+    const num_bytes_written_before = self.write_buffer.count;
     try phx.reply.write_reply(@TypeOf(reply_data.*), reply_data, self.write_buffer.writer());
+    // The X11 protocol says that replies have to be at least 32-bytes
+    std.debug.assert(self.write_buffer.count - num_bytes_written_before >= 32);
     // TODO: If this fails but not the above then we need to discard data from the write end, how?
     try self.write_buffer_fds.write(fds);
 }

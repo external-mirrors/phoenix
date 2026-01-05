@@ -8,7 +8,7 @@ pub const max_crtcs: usize = 32;
 pub const max_outputs: usize = 32;
 
 crtcs: std.ArrayList(phx.Crtc),
-primary_crtc_index: u8 = 0,
+primary_crtc_index: ?u8 = null,
 timestamp: x11.Timestamp,
 config_timestamp: x11.Timestamp,
 allocator: std.mem.Allocator,
@@ -76,9 +76,13 @@ pub fn get_crtc_by_id(self: *Self, crtc_id: phx.Randr.CrtcId) ?*phx.Crtc {
     return null;
 }
 
-pub fn get_primary_crtc(self: *Self) *phx.Crtc {
-    std.debug.assert(self.primary_crtc_index < self.crtcs.items.len);
-    return &self.crtcs.items[self.primary_crtc_index];
+pub fn get_primary_crtc(self: *Self) ?*phx.Crtc {
+    if (self.primary_crtc_index) |primary_crtc_index| {
+        std.debug.assert(primary_crtc_index < self.crtcs.items.len);
+        return &self.crtcs.items[primary_crtc_index];
+    } else {
+        return null;
+    }
 }
 
 pub const ScreenInfo = struct {

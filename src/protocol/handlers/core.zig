@@ -602,7 +602,7 @@ fn query_pointer(request_context: phx.RequestContext) !void {
         .same_screen = true,
         .sequence_number = request_context.sequence_number,
         .root = request_context.server.root_window.id,
-        .child = if (child_window_at_cursor_pos) |child_window| child_window.id else window_none,
+        .child = if (child_window_at_cursor_pos) |child_window| child_window.id else .none,
         .root_x = @intCast(request_context.server.cursor_x),
         .root_y = @intCast(request_context.server.cursor_y),
         .win_x = @intCast(offset_x),
@@ -1087,8 +1087,6 @@ const ConfigureWindowValueMask = packed struct(x11.Card16) {
 const none: x11.Card32 = 0;
 const any_property_type: x11.Atom = @enumFromInt(0);
 const parent_relative: x11.Card32 = 1;
-const window_none: x11.WindowId = @enumFromInt(0);
-const pixmap_none: x11.PixmapId = @enumFromInt(0);
 const window_pointer_root: x11.WindowId = @enumFromInt(1);
 const copy_from_parent: x11.Card32 = 0;
 

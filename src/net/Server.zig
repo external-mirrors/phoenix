@@ -162,7 +162,7 @@ fn clock_get_monotonic_seconds() f64 {
     return seconds + nanoseconds * 0.000000001;
 }
 
-/// Following the x11 protocol standard
+/// Following the X11 protocol standard
 pub fn get_timestamp_milliseconds(self: *Self) x11.Timestamp {
     const now = clock_get_monotonic_seconds();
     const elapsed_time_milliseconds: u64 = @intFromFloat((now - self.started_time_seconds) * 1000.0);
@@ -206,12 +206,7 @@ fn create_root_window(self: *Self) !*phx.Window {
     var root_window = try phx.Window.create(null, root_window_id, &window_attributes, self, self.root_client, self.allocator);
     errdefer root_window.destroy();
 
-    try root_window.replace_property(
-        u8,
-        phx.AtomManager.Predefined.resource_manager,
-        phx.AtomManager.Predefined.string,
-        "*background:\t#222222",
-    );
+    try root_window.replace_property(u8, .RESOURCE_MANAGER, .STRING, "*background:\t#222222");
 
     return root_window;
 }

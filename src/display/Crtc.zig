@@ -177,8 +177,8 @@ pub fn delete_property(self: *Self, property_name: x11.Atom, ignore_immutable: b
     return self.properties.remove(property_name);
 }
 
-fn is_property_immutable(atom: x11.Atom) bool {
-    return switch (atom) {
+pub fn is_property_immutable(property_name: x11.Atom) bool {
+    return switch (property_name) {
         .EDID => true,
         .CloneList => true,
         .CompatibilityList => true,

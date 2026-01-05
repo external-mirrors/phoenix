@@ -18,6 +18,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .select_input => select_input(request_context),
         .get_screen_resources => get_screen_resources(Request.GetScreenResources, Reply.GetScreenResources, request_context),
         .get_output_info => get_output_info(request_context),
+        .list_output_properties => list_output_properties(request_context),
         .get_crtc_info => get_crtc_info(request_context),
         .get_screen_resources_current => get_screen_resources(Request.GetScreenResourcesCurrent, Reply.GetScreenResourcesCurrent, request_context),
         .get_crtc_transform => get_crtc_transform(request_context),
@@ -167,6 +168,32 @@ fn get_output_info(request_context: phx.RequestContext) !void {
         .modes = .{ .items = modes },
         .clones = .{ .items = &.{} },
         .name = .{ .items = crtc.name },
+    };
+    try request_context.client.write_reply(&rep);
+}
+
+fn list_output_properties(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.ListOutputProperties, request_context.allocator);
+    defer req.deinit();
+
+    const crtc = request_context.server.screen_resources.get_crtc_by_id(req.request.output.to_crtc_id()) orelse {
+        std.log.err("Received invalid output {d} in RandrListOutputProperties request", .{req.request.output});
+        return request_context.client.write_error(request_context, .randr_output, @intFromEnum(req.request.output));
+    };
+
+    var crtc_property_names = try request_context.allocator.alloc(x11.Atom, crtc.properties.count());
+    defer request_context.allocator.free(crtc_property_names);
+
+    var index: usize = 0;
+    var properties_it = crtc.properties.keyIterator();
+    if (properties_it.next()) |property_key| {
+        crtc_property_names[index] = property_key.*;
+        index += 1;
+    }
+
+    var rep = Reply.ListOutputProperties{
+        .sequence_number = request_context.sequence_number,
+        .atoms = .{ .items = crtc_property_names },
     };
     try request_context.client.write_reply(&rep);
 }
@@ -403,6 +430,7 @@ const MinorOpcode = enum(x11.Card8) {
     select_input = 4,
     get_screen_resources = 8,
     get_output_info = 9,
+    list_output_properties = 10,
     get_crtc_info = 20,
     get_screen_resources_current = 25,
     get_crtc_transform = 27,
@@ -593,6 +621,13 @@ pub const Request = struct {
         config_timestamp: x11.Timestamp,
     };
 
+    pub const ListOutputProperties = struct {
+        major_opcode: phx.opcode.Major = .randr,
+        minor_opcode: MinorOpcode = .list_output_properties,
+        length: x11.Card16,
+        output: OutputId,
+    };
+
     pub const GetCrtcInfo = struct {
         major_opcode: phx.opcode.Major = .randr,
         minor_opcode: MinorOpcode = .get_crtc_info,
@@ -676,6 +711,16 @@ const Reply = struct {
         clones: x11.ListOf(OutputId, .{ .length_field = "num_clones" }),
         name: x11.ListOf(x11.Card8, .{ .length_field = "name_length" }),
         pad1: x11.AlignmentPadding = .{},
+    };
+
+    pub const ListOutputProperties = struct {
+        type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        num_atoms: x11.Card16 = 0,
+        pad2: [22]x11.Card8 = @splat(0),
+        atoms: x11.ListOf(x11.Atom, .{ .length_field = "num_atoms" }),
     };
 
     pub const GetCrtcInfo = struct {

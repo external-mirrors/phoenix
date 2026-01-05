@@ -82,6 +82,8 @@ pub fn destroy(self: *Self) void {
     self.properties.deinit(self.allocator);
     self.children.deinit();
     self.allocator.destroy(self);
+
+    self.server.selection_owner_manager.clear_selections_by_window(self);
 }
 
 pub fn get_geometry(self: *Self) phx.Geometry {
@@ -235,15 +237,6 @@ pub fn write_core_event_to_event_listeners(self: *const Self, event: *phx.event.
             );
             continue;
         };
-
-        event_listener.client.flush_write_buffer() catch |err| {
-            // TODO: What should be done if this happens? disconnect the client?
-            std.log.err(
-                "Failed to write (flush) core event of type \"{s}\" to client {d}, error: {s}",
-                .{ @tagName(event.any.code), event_listener.client.connection.stream.handle, @errorName(err) },
-            );
-            continue;
-        };
     }
 
     if (self.parent) |parent| {
@@ -261,15 +254,6 @@ fn write_core_event_to_substructure_notify_listeners(self: *const Self, event: *
             // TODO: What should be done if this happens? disconnect the client?
             std.log.err(
                 "Failed to write (buffer) core event of type \"{s}\" to client {d}, error: {s}",
-                .{ @tagName(event.any.code), event_listener.client.connection.stream.handle, @errorName(err) },
-            );
-            continue;
-        };
-
-        event_listener.client.flush_write_buffer() catch |err| {
-            // TODO: What should be done if this happens? disconnect the client?
-            std.log.err(
-                "Failed to write (flush) core event of type \"{s}\" to client {d}, error: {s}",
                 .{ @tagName(event.any.code), event_listener.client.connection.stream.handle, @errorName(err) },
             );
             continue;
@@ -303,6 +287,7 @@ inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, eve
         .map_request => false, // This only applies to parents
         .configure_notify => event_mask.structure_notify,
         .property_notify => event_mask.property_change,
+        .selection_clear => false, // Clients cant select to listen to this, they always listen to it and it's only sent to a single client
         .generic_event_extension => false, // TODO:
     };
 }
@@ -318,6 +303,7 @@ inline fn core_event_should_propagate_to_parent_substructure_notify(event_code: 
         .map_request => false,
         .configure_notify => true,
         .property_notify => false,
+        .selection_clear => false,
         .generic_event_extension => false, // TODO:
     };
 }
@@ -392,15 +378,6 @@ pub fn write_extension_event_to_event_listeners(self: *const Self, ev: anytype) 
             // TODO: What should be done if this happens? disconnect the client?
             std.log.err(
                 "Failed to write (buffer) extension event {d} to client {d}, error: {s}",
-                .{ @intFromEnum(phx.event.EventCode.generic_event_extension), event_listener.client.connection.stream.handle, @errorName(err) },
-            );
-            continue;
-        };
-
-        event_listener.client.flush_write_buffer() catch |err| {
-            // TODO: What should be done if this happens? disconnect the client?
-            std.log.err(
-                "Failed to write (flush) extension event {d} to client {d}, error: {s}",
                 .{ @intFromEnum(phx.event.EventCode.generic_event_extension), event_listener.client.connection.stream.handle, @errorName(err) },
             );
             continue;

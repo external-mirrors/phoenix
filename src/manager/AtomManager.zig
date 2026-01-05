@@ -7,6 +7,7 @@ const Self = @This();
 const name_max_length: usize = 255;
 const max_num_atoms: usize = 262144;
 
+// TODO: Optimize with hash map?
 allocator: std.mem.Allocator,
 atoms: std.ArrayList([]const u8),
 
@@ -40,7 +41,6 @@ pub fn get_atom_name_by_id(self: *Self, atom_id: x11.Atom) ?[]const u8 {
 }
 
 pub fn get_atom_by_name(self: *Self, name: []const u8) ?x11.Atom {
-    // TODO: Use hash map?
     for (self.atoms.items, 1..) |atom_name, atom_id| {
         if (std.mem.eql(u8, name, atom_name))
             return @enumFromInt(atom_id);

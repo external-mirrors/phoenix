@@ -11,6 +11,8 @@ pub const EventCode = enum(x11.Card8) {
     map_request = 20,
     configure_notify = 22,
     property_notify = 28,
+    selection_clear = 29,
+    //selection_request = 30,
     // TODO: Clients need support for this (Generic Event Extension), but clients like mesa with opengl graphics expect present events
     // with this even when they dont tell the server it supports this
     generic_event_extension = 35,
@@ -209,6 +211,37 @@ pub const PropertyNotifyEvent = extern struct {
     }
 };
 
+pub const SelectionClearEvent = extern struct {
+    code: EventCode = .selection_clear,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+    time: x11.Timestamp,
+    owner: x11.WindowId,
+    selection: x11.Atom,
+    pad2: [16]x11.Card8 = @splat(0),
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
+
+// pub const SelectionRequestEvent = extern struct {
+//     code: EventCode = .selection_request,
+//     pad1: x11.Card8 = 0,
+//     sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+//     time: x11.Timestamp, // Can be .current_time
+//     owner: x11.WindowId,
+//     requestor: x11.WindowId,
+//     selection: x11.Atom,
+//     target: x11.Atom,
+//     property: x11.Atom, // Can be 0
+//     pad2: x11.Card32 = 0,
+
+//     comptime {
+//         std.debug.assert(@sizeOf(@This()) == 32);
+//     }
+// };
+
 pub const Event = extern union {
     any: AnyEvent,
     key_press: KeyPressEvent,
@@ -220,6 +253,8 @@ pub const Event = extern union {
     map_request: MapRequestEvent,
     configure_notify: ConfigureNotifyEvent,
     property_notify: PropertyNotifyEvent,
+    selection_clear: SelectionClearEvent,
+    //selection_request: SelectionRequestEvent,
 
     comptime {
         std.debug.assert(@sizeOf(@This()) == 32);

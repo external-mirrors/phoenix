@@ -11,7 +11,6 @@ fn reply_with_error(client: *phx.Client, comptime format: []const u8, args: anyt
     };
 
     try client.write_reply(&rep);
-    try client.flush_write_buffer();
 }
 
 /// Returns true if there was enough data from the client to handle the request
@@ -121,7 +120,6 @@ pub fn handle_client_connect(server: *phx.Server, client: *phx.Client, root_wind
     };
 
     try client.write_reply(&rep);
-    try client.flush_write_buffer();
     return true;
 }
 

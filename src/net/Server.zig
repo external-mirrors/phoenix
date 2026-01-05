@@ -31,6 +31,7 @@ event_fd: std.posix.fd_t,
 resource_id_base_manager: phx.ResourceIdBaseManager,
 atom_manager: phx.AtomManager,
 client_manager: phx.ClientManager,
+selection_owner_manager: phx.SelectionOwnerManager,
 display: phx.Display,
 input: phx.Input,
 
@@ -57,6 +58,9 @@ pub fn init(allocator: std.mem.Allocator) !Self {
 
     var client_manager = phx.ClientManager.init(allocator);
     errdefer client_manager.deinit();
+
+    var selection_owner_manager = phx.SelectionOwnerManager.init(allocator);
+    errdefer selection_owner_manager.deinit();
 
     const epoll_fd = try std.posix.epoll_create1(0);
     if (epoll_fd == -1) return error.FailedToCreateEpoll;
@@ -97,22 +101,6 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     var input = phx.Input.create_linux();
     errdefer input.deinit();
 
-    var resource_id_base_manager = phx.ResourceIdBaseManager{};
-
-    const server_connection = std.net.Server.Connection{
-        .stream = server.stream,
-        .address = server.listen_address,
-    };
-
-    var root_client = add_client_internal(epoll_fd, server_connection, &client_manager, &resource_id_base_manager, allocator) catch |err| {
-        std.log.err("Failed to add client: {d}, disconnecting client. Error: {s}", .{ server_connection.stream.handle, @errorName(err) });
-        server_connection.stream.close();
-        return error.FailedToSetupRootClient;
-    };
-
-    // TODO: Is this correct?
-    try root_client.add_colormap(screen_true_color_colormap);
-
     var installed_colormaps = std.ArrayList(phx.Colormap).init(allocator);
     errdefer installed_colormaps.deinit();
 
@@ -123,15 +111,16 @@ pub fn init(allocator: std.mem.Allocator) !Self {
 
     return .{
         .allocator = allocator,
-        .root_client = root_client,
+        .root_client = undefined,
         .root_window = undefined,
         .server_net = server,
         .epoll_fd = epoll_fd,
         .signal_fd = signal_fd,
         .event_fd = event_fd,
-        .resource_id_base_manager = resource_id_base_manager,
+        .resource_id_base_manager = .{},
         .atom_manager = atom_manager,
         .client_manager = client_manager,
+        .selection_owner_manager = selection_owner_manager,
         .display = display,
         .input = input,
         .installed_colormaps = installed_colormaps,
@@ -145,6 +134,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
 pub fn deinit(self: *Self) void {
     self.client_manager.deinit();
     self.atom_manager.deinit();
+    self.selection_owner_manager.deinit();
     self.installed_colormaps.deinit();
     self.screen_resources.deinit();
     self.display.destroy();
@@ -211,8 +201,25 @@ fn create_root_window(self: *Self) !*phx.Window {
     return root_window;
 }
 
-pub fn run(self: *Self) !void {
+pub fn setup(self: *Self) !void {
+    const server_connection = std.net.Server.Connection{
+        .stream = self.server_net.stream,
+        .address = self.server_net.listen_address,
+    };
+
+    self.root_client = self.add_client(server_connection) catch |err| {
+        std.log.err("Failed to add client: {d}, disconnecting client. Error: {s}", .{ server_connection.stream.handle, @errorName(err) });
+        server_connection.stream.close();
+        return error.FailedToSetupRootClient;
+    };
+
+    // TODO: Is this correct?
+    try self.root_client.add_colormap(screen_true_color_colormap);
+
     self.root_window = try self.create_root_window();
+}
+
+pub fn run(self: *Self) !void {
     std.log.defaultLog(.info, .default, "Phoenix is now running at {s}. You can connect to it by setting the DISPLAY environment variable to :1, for example \"DISPLAY=:1 glxgears\"", .{unix_domain_socket_path});
 
     const poll_timeout_ms: u32 = 500;
@@ -297,34 +304,24 @@ fn set_socket_non_blocking(socket: std.posix.socket_t) void {
     _ = std.posix.fcntl(socket, std.posix.F.SETFL, flags | std.posix.SOCK.NONBLOCK) catch unreachable;
 }
 
-fn add_client_internal(
-    epoll_fd: std.posix.fd_t,
-    connection: std.net.Server.Connection,
-    client_manager: *phx.ClientManager,
-    resource_id_base_manager: *phx.ResourceIdBaseManager,
-    allocator: std.mem.Allocator,
-) !*phx.Client {
+fn add_client(self: *Self, connection: std.net.Server.Connection) !*phx.Client {
     set_socket_non_blocking(connection.stream.handle);
     std.log.info("Client connected: {d}, waiting for client connection setup", .{connection.stream.handle});
 
-    const resource_id_base = resource_id_base_manager.get_next_free() orelse {
+    const resource_id_base = self.resource_id_base_manager.get_next_free() orelse {
         std.log.warn("All resources id bases are exhausted, no more clients can be accepted", .{});
         return error.ResourceIdBasesExhaused;
     };
-    errdefer resource_id_base_manager.free(resource_id_base);
+    errdefer self.resource_id_base_manager.free(resource_id_base);
 
     var new_client_epoll_event = std.os.linux.epoll_event{
         .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.OUT | std.os.linux.EPOLL.ET,
         .data = .{ .fd = connection.stream.handle },
     };
-    try std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_ADD, connection.stream.handle, &new_client_epoll_event);
-    errdefer std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, connection.stream.handle, null) catch {};
+    try std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_ADD, connection.stream.handle, &new_client_epoll_event);
+    errdefer std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_DEL, connection.stream.handle, null) catch {};
 
-    return client_manager.add_client(phx.Client.init(connection, resource_id_base, allocator));
-}
-
-fn add_client(self: *Self, connection: std.net.Server.Connection) !*phx.Client {
-    return add_client_internal(self.epoll_fd, connection, &self.client_manager, &self.resource_id_base_manager, self.allocator);
+    return self.client_manager.add_client(phx.Client.init(connection, resource_id_base, self, self.allocator));
 }
 
 fn remove_client(self: *Self, client_fd: std.posix.socket_t) void {
@@ -397,6 +394,10 @@ fn handle_client_request(self: *Self, client: *phx.Client) !bool {
             error.InvalidRequestLength,
             => try request_context.client.write_error(request_context, .length, 0),
             error.InvalidEnumTag => try request_context.client.write_error(request_context, .value, 0), // TODO: Return the correct value
+            else => {
+                std.log.err("TODO: phx.core.handle_request: Handle error better: {s}", .{@errorName(err)});
+                return error.UnhandledProtocolError;
+            },
         };
     } else if (request_header.major_opcode >= phx.opcode.extension_opcode_min and request_header.major_opcode <= phx.opcode.extension_opcode_max) {
         phx.extension.handle_request(request_context) catch |err| switch (err) {
@@ -408,7 +409,7 @@ fn handle_client_request(self: *Self, client: *phx.Client) !bool {
             error.InvalidEnumTag => try request_context.client.write_error(request_context, .value, 0), // TODO: Return the correct value
             else => {
                 std.log.err("TODO: phx.extension.handle_request: Handle error better: {s}", .{@errorName(err)});
-                try request_context.client.write_error(request_context, .implementation, 0);
+                return error.UnhandledProtocolError;
             },
         };
     } else {

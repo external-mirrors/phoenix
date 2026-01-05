@@ -22,6 +22,8 @@ resources: phx.ResourceHashMap,
 
 listening_to_windows: std.ArrayList(*phx.Window),
 
+server: *phx.Server,
+
 extension_versions: ExtensionVersions = .{
     .client_glx = .{ .major = 1, .minor = 0 },
     .server_glx = .{ .major = 1, .minor = 4 },
@@ -38,7 +40,7 @@ extension_versions: ExtensionVersions = .{
 
 xkb_initialized: bool = false,
 
-pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, allocator: std.mem.Allocator) Self {
+pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, server: *phx.Server, allocator: std.mem.Allocator) Self {
     return .{
         .allocator = allocator,
         .connection = connection,
@@ -56,6 +58,8 @@ pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, alloca
         .resources = .init(allocator),
 
         .listening_to_windows = .init(allocator),
+
+        .server = server,
     };
 }
 
@@ -96,6 +100,8 @@ pub fn deinit(self: *Self) void {
 
     self.read_buffer_fds.deinit();
     self.write_buffer_fds.deinit();
+
+    self.server.selection_owner_manager.clear_selections_by_client(self);
 }
 
 // Unused right now, but this will be used similarly to how xace works
@@ -217,10 +223,12 @@ pub fn read_request_assume_correct_size(self: *Self, comptime T: type, allocator
     return phx.message.Request(T).init(&req_data, &arena);
 }
 
+/// Also flushes the write buffer
 pub fn write_reply(self: *Self, reply_data: anytype) !void {
     return write_reply_with_fds(self, reply_data, &.{});
 }
 
+/// Also flushes the write buffer
 pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const phx.message.ReplyFd) !void {
     if (@typeInfo(@TypeOf(reply_data)) != .pointer)
         @compileError("Expected reply data to be a pointer");
@@ -232,8 +240,10 @@ pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const phx.m
     std.debug.assert(self.write_buffer.count - num_bytes_written_before >= 32);
     // TODO: If this fails but not the above then we need to discard data from the write end, how?
     try self.write_buffer_fds.write(fds);
+    try self.flush_write_buffer();
 }
 
+/// Also flushes the write buffer
 pub fn write_error(self: *Self, request_context: phx.RequestContext, error_type: phx.ErrorType, value: x11.Card32) !void {
     const err_reply = phx.Error{
         .code = error_type,
@@ -243,22 +253,27 @@ pub fn write_error(self: *Self, request_context: phx.RequestContext, error_type:
         .major_opcode = request_context.header.major_opcode,
     };
     std.log.err("Replying with error: {s}", .{x11.stringify_fmt(err_reply)});
-    return self.write_buffer.write(std.mem.asBytes(&err_reply));
+    try self.write_buffer.write(std.mem.asBytes(&err_reply));
+    try self.flush_write_buffer();
 }
 
+/// Also flushes the write buffer
 pub fn write_event(self: *Self, ev: *phx.event.Event) !void {
     ev.any.sequence_number = self.sequence_number;
     std.log.info("Replying with event: {d}", .{@intFromEnum(ev.any.code)});
-    return self.write_buffer.write(std.mem.asBytes(ev));
+    try self.write_buffer.write(std.mem.asBytes(ev));
+    try self.flush_write_buffer();
 }
 
+/// Also flushes the write buffer
 pub fn write_event_extension(self: *Self, ev: anytype) !void {
     if (@typeInfo(@TypeOf(ev)) != .pointer)
         @compileError("Expected event data to be a pointer");
 
     ev.sequence_number = self.sequence_number;
     std.log.info("Replying with event: {s}", .{x11.stringify_fmt(ev)});
-    return self.write_reply(ev);
+    try self.write_reply(ev);
+    try self.flush_write_buffer();
 }
 
 pub fn next_sequence_number(self: *Self) u16 {

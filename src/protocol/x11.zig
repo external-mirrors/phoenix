@@ -150,7 +150,12 @@ pub const Class = enum(Card16) {
 };
 
 pub const Timestamp = enum(Card32) {
+    current_time = 0,
     _,
+
+    pub fn to_int(self: Timestamp) u32 {
+        return @intFromEnum(self);
+    }
 };
 
 pub const PropertyValueData = union(enum) {

@@ -5,6 +5,8 @@ pub const Input = @import("backend/input/Input.zig");
 pub const AtomManager = @import("manager/AtomManager.zig");
 pub const ClientManager = @import("manager/ClientManager.zig");
 pub const ResourceIdBaseManager = @import("manager/ResourceIdBaseManager.zig");
+pub const SelectionOwnerManager = @import("manager/SelectionOwnerManager.zig");
+pub const SelectionOwner = SelectionOwnerManager.SelectionOwner;
 
 pub const Client = @import("net/Client.zig");
 pub const message = @import("net/message.zig");

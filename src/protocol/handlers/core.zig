@@ -25,6 +25,8 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .get_atom_name => get_atom_name(request_context),
         .change_property => change_property(request_context),
         .get_property => get_property(request_context),
+        .set_selection_owner => set_selection_owner(request_context),
+        .get_selection_owner => get_selection_owner(request_context),
         .grab_server => grab_server(request_context),
         .ungrab_server => ungrab_server(request_context),
         .query_pointer => query_pointer(request_context),
@@ -569,6 +571,57 @@ fn get_property(request_context: phx.RequestContext) !void {
         };
         window.write_core_event_to_event_listeners(&property_notify_event);
     }
+}
+
+fn set_selection_owner(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.SetSelectionOwner, request_context.allocator);
+    defer req.deinit();
+
+    _ = request_context.server.atom_manager.get_atom_name_by_id(req.request.selection) orelse {
+        std.log.err("Received invalid property atom {d} in SetSelectionOwner request", .{req.request.selection});
+        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.selection));
+    };
+
+    var window: ?*phx.Window = null;
+    if (req.request.owner != .none) {
+        window = request_context.server.get_window(req.request.owner) orelse {
+            std.log.err("Received invalid window {d} in SetSelectionOwner request", .{req.request.owner});
+            return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.owner));
+        };
+    }
+
+    try request_context.server.selection_owner_manager.set_owner(
+        req.request.selection,
+        window,
+        request_context.client,
+        req.request.time,
+        request_context.server.get_timestamp_milliseconds(),
+    );
+}
+
+fn get_selection_owner(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GetSelectionOwner, request_context.allocator);
+    defer req.deinit();
+
+    _ = request_context.server.atom_manager.get_atom_name_by_id(req.request.selection) orelse {
+        std.log.err("Received invalid property atom {d} in GetSelectionOwner request", .{req.request.selection});
+        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.selection));
+    };
+
+    const selection_owner_window =
+        if (request_context.server.selection_owner_manager.get_owner(req.request.selection)) |selection_owner|
+            if (selection_owner.owner_window) |owner_window|
+                owner_window.id
+            else
+                .none
+        else
+            .none;
+
+    var rep = Reply.GetSelectionOwner{
+        .sequence_number = request_context.sequence_number,
+        .owner = selection_owner_window,
+    };
+    try request_context.client.write_reply(&rep);
 }
 
 fn grab_server(request_context: phx.RequestContext) !void {
@@ -1371,6 +1424,22 @@ pub const Request = struct {
         long_length: x11.Card32,
     };
 
+    pub const SetSelectionOwner = struct {
+        opcode: phx.opcode.Major = .set_selection_owner,
+        pad1: x11.Card8 = 0,
+        length: x11.Card16,
+        owner: x11.WindowId, // Can be .none
+        selection: x11.Atom,
+        time: x11.Timestamp, // Can be .current_time
+    };
+
+    pub const GetSelectionOwner = struct {
+        opcode: phx.opcode.Major = .get_selection_owner,
+        pad1: x11.Card8 = 0,
+        length: x11.Card16,
+        selection: x11.Atom,
+    };
+
     pub const GrabServer = struct {
         opcode: phx.opcode.Major = .grab_server,
         pad1: x11.Card8,
@@ -1596,6 +1665,15 @@ const Reply = struct {
         bytes_after: x11.Card32 = 0,
         data_length: x11.Card32 = 0,
         pad1: [12]x11.Card8 = @splat(0),
+    };
+
+    pub const GetSelectionOwner = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        owner: x11.WindowId, // This can be .none
+        pad2: [20]x11.Card8 = @splat(0),
     };
 
     pub const QueryPointer = struct {

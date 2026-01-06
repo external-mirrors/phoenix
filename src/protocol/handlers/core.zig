@@ -15,6 +15,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 
     return switch (major_opcode) {
         .create_window => create_window(request_context),
+        .change_window_attributes => change_window_attributes(request_context),
         .get_window_attributes => get_window_attributes(request_context),
         .destroy_window => destroy_window(request_context),
         .map_window => map_window(request_context),
@@ -198,7 +199,7 @@ fn create_window(request_context: phx.RequestContext) !void {
     errdefer window.destroy();
 
     if (!event_mask.is_empty()) {
-        window.add_core_event_listener(window.client_owner, event_mask) catch |err| switch (err) {
+        window.add_core_event_listener(request_context.client, event_mask) catch |err| switch (err) {
             error.OutOfMemory => {
                 return request_context.client.write_error(request_context, .alloc, 0);
             },
@@ -224,6 +225,227 @@ fn create_window(request_context: phx.RequestContext) !void {
     window.write_core_event_to_event_listeners(&create_notify_event);
 }
 
+// TODO: Handle cursor change
+fn change_window_attributes(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.ChangeWindowAttributes, request_context.allocator);
+    defer req.deinit();
+
+    const window = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in ChangeWindowAttributes request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+
+    var new_window_attributes = window.attributes;
+
+    if (req.request.get_value(x11.Card32, "background_pixmap")) |arg| {
+        const new_background_pixmap: ?*const phx.Pixmap = switch (arg) {
+            none => null,
+            parent_relative => blk: {
+                const parent = window.parent orelse {
+                    std.log.err("CopyFromParent used on root window in ChangeWindowAttributes", .{});
+                    return request_context.client.write_error(
+                        request_context,
+                        .window,
+                        @intFromEnum(window.id),
+                    );
+                };
+                break :blk parent.attributes.background_pixmap;
+            },
+            else => request_context.server.get_pixmap(@enumFromInt(arg)) orelse {
+                std.log.err(
+                    "Received invalid background pixmap {d} in ChangeWindowAttributes request",
+                    .{arg},
+                );
+                return request_context.client.write_error(
+                    request_context,
+                    .pixmap,
+                    arg,
+                );
+            },
+        };
+
+        new_window_attributes.background_pixmap = new_background_pixmap;
+    }
+
+    if (req.request.get_value(x11.Card32, "border_pixmap")) |arg| {
+        const new_border_pixmap: ?*const phx.Pixmap = switch (arg) {
+            copy_from_parent => blk: {
+                const parent = window.parent orelse {
+                    std.log.err("CopyFromParent used on root window in ChangeWindowAttributes", .{});
+                    return request_context.client.write_error(
+                        request_context,
+                        .window,
+                        @intFromEnum(window.id),
+                    );
+                };
+                break :blk parent.attributes.border_pixmap;
+            },
+            else => request_context.server.get_pixmap(@enumFromInt(arg)) orelse {
+                std.log.err(
+                    "Received invalid border pixmap {d} in ChangeWindowAttributes request",
+                    .{arg},
+                );
+                return request_context.client.write_error(
+                    request_context,
+                    .pixmap,
+                    arg,
+                );
+            },
+        };
+
+        new_window_attributes.border_pixmap = new_border_pixmap;
+    }
+
+    if (req.request.get_value(x11.Card32, "colormap")) |arg| {
+        const new_colormap: phx.Colormap = switch (arg) {
+            copy_from_parent => blk: {
+                const parent = window.parent orelse {
+                    std.log.err("CopyFromParent used on root window in ChangeWindowAttributes", .{});
+                    return request_context.client.write_error(
+                        request_context,
+                        .window,
+                        @intFromEnum(window.id),
+                    );
+                };
+                break :blk parent.attributes.colormap;
+            },
+            else => request_context.server.get_colormap(@enumFromInt(arg)) orelse {
+                std.log.err(
+                    "Received invalid colormap {d} in ChangeWindowAttributes request",
+                    .{arg},
+                );
+                return request_context.client.write_error(
+                    request_context,
+                    .colormap,
+                    arg,
+                );
+            },
+        };
+
+        new_window_attributes.colormap = new_colormap;
+    }
+
+    if (req.request.get_value(x11.Card8, "bit_gravity")) |arg| {
+        const new_bit_gravity: BitGravity = std.meta.intToEnum(BitGravity, arg) catch |err| switch (err) {
+            error.InvalidEnumTag => {
+                std.log.err("Received invalid bit gravity {d} in ChangeWindowAttributes request", .{arg});
+                return request_context.client.write_error(request_context, .value, arg);
+            },
+        };
+
+        new_window_attributes.bit_gravity = new_bit_gravity;
+    }
+
+    if (req.request.get_value(x11.Card8, "win_gravity")) |arg| {
+        const new_win_gravity: WinGravity = std.meta.intToEnum(WinGravity, arg) catch |err| switch (err) {
+            error.InvalidEnumTag => {
+                std.log.err("Received invalid win gravity {d} in ChangeWindowAttributes request", .{arg});
+                return request_context.client.write_error(request_context, .value, arg);
+            },
+        };
+
+        new_window_attributes.win_gravity = new_win_gravity;
+    }
+
+    if (req.request.get_value(x11.Card8, "backing_store")) |arg| {
+        const new_backing_store: BackingStore = std.meta.intToEnum(BackingStore, arg) catch |err| switch (err) {
+            error.InvalidEnumTag => {
+                std.log.err("Received invalid backing store {d} in ChangeWindowAttributes request", .{arg});
+                return request_context.client.write_error(request_context, .value, arg);
+            },
+        };
+
+        new_window_attributes.backing_store = new_backing_store;
+    }
+
+    if (req.request.get_value(x11.Card32, "backing_planes")) |arg| {
+        new_window_attributes.backing_planes = arg;
+    }
+
+    if (req.request.get_value(x11.Card32, "backing_pixel")) |arg| {
+        new_window_attributes.backing_pixel = arg;
+    }
+
+    if (req.request.get_value(x11.Card32, "background_pixel")) |arg| {
+        new_window_attributes.background_pixel = arg;
+    }
+
+    if (req.request.get_value(x11.Card32, "border_pixel")) |arg| {
+        new_window_attributes.border_pixel = arg;
+    }
+
+    if (req.request.get_value(x11.Card8, "save_under")) |arg| {
+        new_window_attributes.save_under = arg != 0;
+    }
+
+    if (req.request.get_value(x11.Card8, "override_redirect")) |arg| {
+        new_window_attributes.override_redirect = arg != 0;
+    }
+
+    if (req.request.get_value(x11.Card16, "do_not_propagate_mask")) |arg| {
+        new_window_attributes.do_not_propagate_mask = @bitCast(arg);
+    }
+
+    if (req.request.get_value(x11.Card32, "event_mask")) |arg| {
+        const new_event_mask: EventMask = @bitCast(arg);
+
+        if(window.get_core_event_listener_index(request_context.client)) |event_listener_index| {
+            window.modify_core_event_listener_by_index(event_listener_index, new_event_mask) catch |err| switch (err) {
+                error.ExclusiveEventListenerTaken => {
+                    std.log.err("A client is already listening to exclusive events (ResizeRedirect, SubstructureRedirect, ButtonPress) on one of the parent windows", .{});
+                    return request_context.client.write_error(request_context, .access, 0);
+                },
+            };
+        } else {
+            window.add_core_event_listener(request_context.client, new_event_mask) catch |err| switch (err) {
+                error.OutOfMemory => {
+                    return request_context.client.write_error(request_context, .alloc, 0);
+                },
+                error.ExclusiveEventListenerTaken => {
+                    std.log.err("A client is already listening to exclusive events (ResizeRedirect, SubstructureRedirect, ButtonPress) on one of the parent windows", .{});
+                    return request_context.client.write_error(request_context, .access, 0);
+                },
+            };
+        }
+    }
+
+    if (window.attributes.colormap.id != new_window_attributes.colormap.id) {
+        if (window.attributes.colormap.id == .none) {
+            var configure_notify_event = phx.event.Event{
+                .colormap_notify = .{
+                    .window = window.id,
+                    .colormap = new_window_attributes.colormap.id,
+                    .new = false,
+                    .state = .installed,
+                },
+            };
+            window.write_core_event_to_event_listeners(&configure_notify_event);
+        } else if (new_window_attributes.colormap.id == .none) {
+            var configure_notify_event = phx.event.Event{
+                .colormap_notify = .{
+                    .window = window.id,
+                    .colormap = new_window_attributes.colormap.id,
+                    .new = false,
+                    .state = .uninstalled,
+                },
+            };
+            window.write_core_event_to_event_listeners(&configure_notify_event);
+        } else {
+            var configure_notify_event = phx.event.Event{
+                .colormap_notify = .{
+                    .window = window.id,
+                    .colormap = new_window_attributes.colormap.id,
+                    .new = true,
+                    .state = .installed,
+                },
+            };
+            window.write_core_event_to_event_listeners(&configure_notify_event);
+        }
+    }
+
+    window.attributes = new_window_attributes;
+}
+
 fn get_window_attributes(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetWindowAttributes, request_context.allocator);
     defer req.deinit();
@@ -246,7 +468,7 @@ fn get_window_attributes(request_context: phx.RequestContext) !void {
         .map_is_installed = true, // TODO: Return correct value
         .map_state = window.get_map_state(),
         .override_redirect = window.attributes.override_redirect,
-        .colormap = window.attributes.colormap.id, // TODO: Update when colormaps can get uninstalled
+        .colormap = window.attributes.colormap.id,
         .all_event_mask = window.get_all_event_mask_core(),
         .your_event_mask = window.get_client_event_mask_core(request_context.client),
         .do_not_propagate_mask = window.attributes.do_not_propagate_mask,
@@ -1311,6 +1533,25 @@ pub const Request = struct {
         value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
 
         pub fn get_value(self: *const CreateWindow, comptime T: type, comptime value_mask_field: []const u8) ?T {
+            if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
+                // The protocol specifies that all uninteresting bits are undefined, so we need to set them to 0
+                return downcast_integer(T, self.value_list.items[index]);
+            } else {
+                return null;
+            }
+        }
+    };
+
+    pub const ChangeWindowAttributes = struct {
+        opcode: phx.opcode.Major = .change_window_attributes,
+        pad: x11.Card8,
+        length: x11.Card16,
+        window: x11.WindowId,
+        // The protocol specifies that the value mask and list have the same values and restrictions as CreateWindow
+        value_mask: CreateWindowValueMask,
+        value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
+
+        pub fn get_value(self: *const ChangeWindowAttributes, comptime T: type, comptime value_mask_field: []const u8) ?T {
             if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
                 // The protocol specifies that all uninteresting bits are undefined, so we need to set them to 0
                 return downcast_integer(T, self.value_list.items[index]);

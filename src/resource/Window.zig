@@ -188,15 +188,8 @@ pub fn add_core_event_listener(self: *Self, client: *phx.Client, event_mask: phx
 
     std.debug.assert(self.get_core_event_listener_index(client) == null);
 
-    for (self.core_event_listeners.items) |*event_listener| {
-        if (event_mask.substructure_redirect and event_listener.event_mask.substructure_redirect) {
-            return error.ExclusiveEventListenerTaken;
-        } else if (event_mask.resize_redirect and event_listener.event_mask.resize_redirect) {
-            return error.ExclusiveEventListenerTaken;
-        } else if (event_mask.button_press and event_listener.event_mask.button_press) {
-            return error.ExclusiveEventListenerTaken;
-        }
-    }
+    if (!self.validate_event_exclusivity(event_mask))
+        return error.ExclusiveEventListenerTaken;
 
     try self.core_event_listeners.append(.{ .client = client, .event_mask = event_mask });
     errdefer _ = self.core_event_listeners.pop();
@@ -204,9 +197,17 @@ pub fn add_core_event_listener(self: *Self, client: *phx.Client, event_mask: phx
     try client.register_as_window_listener(self);
 }
 
-pub fn modify_core_event_listener(self: *Self, client: *phx.Client, event_mask: phx.core.EventMask) void {
-    if (self.get_core_event_listener_index(client)) |index|
-        self.core_event_listeners.items[index].event_mask = event_mask;
+/// Removes the event listener if the event mask is empty
+pub fn modify_core_event_listener_by_index(self: *Self, index: usize, event_mask: phx.core.EventMask) !void {
+    if (event_mask.is_empty()) {
+        _ = self.core_event_listeners.orderedRemove(index);
+        return;
+    }
+
+    if (!self.validate_event_exclusivity(event_mask))
+        return error.ExclusiveEventListenerTaken;
+
+    self.core_event_listeners.items[index].event_mask = event_mask;
 }
 
 pub fn remove_core_event_listener(self: *Self, client: *const phx.Client) void {
@@ -214,12 +215,29 @@ pub fn remove_core_event_listener(self: *Self, client: *const phx.Client) void {
         _ = self.core_event_listeners.orderedRemove(index);
 }
 
-fn get_core_event_listener_index(self: *Self, client: *const phx.Client) ?usize {
+pub fn get_core_event_listener_index(self: *Self, client: *const phx.Client) ?usize {
     for (self.core_event_listeners.items, 0..) |*event_listener, i| {
         if (event_listener.client == client)
             return i;
     }
     return null;
+}
+
+fn validate_event_exclusivity(self: *Self, event_mask: phx.core.EventMask) bool {
+    if (!event_mask.substructure_notify and !event_mask.resize_redirect and !event_mask.button_press)
+        return true;
+
+    for (self.core_event_listeners.items) |*event_listener| {
+        if (event_mask.substructure_redirect and event_listener.event_mask.substructure_redirect) {
+            return false;
+        } else if (event_mask.resize_redirect and event_listener.event_mask.resize_redirect) {
+            return false;
+        } else if (event_mask.button_press and event_listener.event_mask.button_press) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 // TODO: parents should be checked for clients with redirect event mask, to only send the event to that client.
@@ -288,6 +306,7 @@ inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, eve
         .configure_notify => event_mask.structure_notify,
         .property_notify => event_mask.property_change,
         .selection_clear => false, // Clients cant select to listen to this, they always listen to it and it's only sent to a single client
+        .colormap_notify => event_mask.colormap_change,
         .generic_event_extension => false, // TODO:
     };
 }
@@ -304,6 +323,7 @@ inline fn core_event_should_propagate_to_parent_substructure_notify(event_code: 
         .configure_notify => true,
         .property_notify => false,
         .selection_clear => false,
+        .colormap_notify => false,
         .generic_event_extension => false, // TODO:
     };
 }

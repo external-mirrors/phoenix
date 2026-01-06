@@ -88,6 +88,7 @@ pub const WindowId = enum(Card32) {
 
 /// Top three bits guaranteed to be zero
 pub const ColormapId = enum(Card32) {
+    none = 0,
     _,
 
     pub fn to_id(self: ColormapId) ResourceId {

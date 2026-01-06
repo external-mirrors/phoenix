@@ -13,6 +13,7 @@ pub const EventCode = enum(x11.Card8) {
     property_notify = 28,
     selection_clear = 29,
     //selection_request = 30,
+    colormap_notify = 32,
     // TODO: Clients need support for this (Generic Event Extension), but clients like mesa with opengl graphics expect present events
     // with this even when they dont tell the server it supports this
     generic_event_extension = 35,
@@ -242,6 +243,24 @@ pub const SelectionClearEvent = extern struct {
 //     }
 // };
 
+pub const ColormapNotifyEvent = extern struct {
+    code: EventCode = .colormap_notify,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+    window: x11.WindowId,
+    colormap: x11.ColormapId,
+    new: bool,
+    state: enum(x11.Card8) {
+        uninstalled = 0,
+        installed = 1,
+    },
+    pad2: [18]x11.Card8 = @splat(0),
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
+
 pub const Event = extern union {
     any: AnyEvent,
     key_press: KeyPressEvent,
@@ -255,6 +274,7 @@ pub const Event = extern union {
     property_notify: PropertyNotifyEvent,
     selection_clear: SelectionClearEvent,
     //selection_request: SelectionRequestEvent,
+    colormap_notify: ColormapNotifyEvent,
 
     comptime {
         std.debug.assert(@sizeOf(@This()) == 32);

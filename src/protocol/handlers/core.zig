@@ -1544,7 +1544,7 @@ pub const Request = struct {
 
     pub const ChangeWindowAttributes = struct {
         opcode: phx.opcode.Major = .change_window_attributes,
-        pad: x11.Card8,
+        pad1: x11.Card8,
         length: x11.Card16,
         window: x11.WindowId,
         // The protocol specifies that the value mask and list have the same values and restrictions as CreateWindow

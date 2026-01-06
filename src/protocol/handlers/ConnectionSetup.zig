@@ -22,10 +22,16 @@ pub fn handle_client_connect(server: *phx.Server, client: *phx.Client, root_wind
 
     const server_byte_order: ConnectionSetupRequestByteOrder = if (x11.native_endian == .little) .little else .big;
     if (connection_setup_request_header.byte_order != server_byte_order) {
+        const client_endian_name = std.enums.tagName(ConnectionSetupRequestByteOrder, connection_setup_request_header.byte_order);
         try reply_with_error(
             client,
-            "The server doesn't support swapped endian. Client is {s} endian while the server is {s} endian",
-            .{ @tagName(connection_setup_request_header.byte_order), @tagName(server_byte_order) },
+            "The server doesn't support swapped endian. Client is {s} ({d}) endian while the server is {s} ({d}) endian",
+            .{
+                client_endian_name orelse "Unknown",
+                @intFromEnum(connection_setup_request_header.byte_order),
+                @tagName(server_byte_order),
+                @intFromEnum(server_byte_order),
+            },
         );
         return false;
     }

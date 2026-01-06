@@ -165,7 +165,7 @@ pub const PropertyValueData = union(enum) {
 };
 
 pub const PropertyValue = struct {
-    type: Atom,
+    type: AtomId,
     item: PropertyValueData,
 
     pub fn deinit(self: *PropertyValue) void {
@@ -189,12 +189,12 @@ pub const PropertyValue = struct {
     }
 };
 
-pub const PropertyHashMap = std.HashMapUnmanaged(Atom, PropertyValue, struct {
-    pub fn hash(_: @This(), key: Atom) u64 {
+pub const PropertyHashMap = std.HashMapUnmanaged(AtomId, PropertyValue, struct {
+    pub fn hash(_: @This(), key: AtomId) u64 {
         return @intFromEnum(key);
     }
 
-    pub fn eql(_: @This(), a: Atom, b: Atom) bool {
+    pub fn eql(_: @This(), a: AtomId, b: AtomId) bool {
         return a == b;
     }
 }, std.hash_map.default_max_load_percentage);
@@ -207,7 +207,7 @@ pub fn stringify_fmt(value: anytype) std.json.Formatter(@TypeOf(value)) {
     return std.json.fmt(value, .{ .whitespace = .indent_4 });
 }
 
-pub const Atom = enum(Card32) {
+pub const AtomId = enum(Card32) {
     // Predefined atoms where the name and values are part of the core X11 protocol
     PRIMARY = 1,
     SECONDARY = 2,

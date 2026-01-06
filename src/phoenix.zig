@@ -38,7 +38,6 @@ pub const Xwayland = @import("protocol/handlers/extension/Xwayland.zig");
 pub const Render = @import("protocol/handlers/extension/Render.zig");
 pub const GenericEvent = @import("protocol/handlers/extension/GenericEvent.zig");
 
-pub const Visual = @import("resource/Visual.zig");
 pub const Colormap = @import("resource/Colormap.zig");
 pub const Cursor = @import("resource/Cursor.zig");
 pub const Drawable = @import("resource/Drawable.zig");
@@ -51,6 +50,9 @@ pub const GlxDrawable = @import("resource/GlxDrawable.zig");
 pub const resource = @import("resource/resource.zig");
 pub const Resource = resource.Resource;
 pub const ResourceHashMap = resource.ResourceHashMap;
+
+pub const Visual = @import("internal_resource/Visual.zig");
+pub const Atom = @import("internal_resource/Atom.zig");
 
 pub const Geometry = @import("misc/Geometry.zig");
 pub const Version = @import("misc/Version.zig");

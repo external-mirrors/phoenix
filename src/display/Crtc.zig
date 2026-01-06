@@ -60,12 +60,12 @@ pub fn get_preferred_mode(self: *const Self) *const Mode {
     return &self.modes[self.preferred_mode_index];
 }
 
-pub fn get_property(self: *Self, atom: x11.Atom) ?*PropertyValue {
-    return self.properties.getPtr(atom);
+pub fn get_property(self: *Self, atom: phx.Atom) ?*PropertyValue {
+    return self.properties.getPtr(atom.id);
 }
 
-pub fn get_property_single_value(self: *Self, comptime DataType: type, atom: x11.Atom) ?DataType {
-    if (self.properties.getPtr(atom)) |property_value| {
+pub fn get_property_single_value(self: *Self, comptime DataType: type, atom: phx.Atom) ?DataType {
+    if (self.properties.getPtr(atom.id)) |property_value| {
         const union_field_type = comptime property_element_type_to_union_field(DataType);
         if (std.meta.activeTag(property_value.item) == union_field_type and property_value.item.card8_list.items.len > 0) {
             return property_value.item.card8_list.items[0];
@@ -90,25 +90,25 @@ fn property_element_type_to_union_field(comptime DataType: type) PropertyValueDa
 pub fn replace_property(
     self: *Self,
     comptime DataType: type,
-    property_name: x11.Atom,
-    property_type: x11.Atom,
+    property_name: phx.Atom,
+    property_type: phx.Atom,
     value: []const DataType,
     ignore_immutable: bool,
 ) !void {
-    if (!ignore_immutable and is_property_immutable(property_name))
+    if (!ignore_immutable and is_property_immutable(property_name.id))
         return error.AttemptToMutateImmutableProperty;
 
     var array_list = try std.ArrayList(DataType).initCapacity(self.allocator, value.len);
     errdefer array_list.deinit();
     array_list.appendSliceAssumeCapacity(value);
 
-    var result = try self.properties.getOrPut(self.allocator, property_name);
+    var result = try self.properties.getOrPut(self.allocator, property_name.id);
     if (result.found_existing)
         result.value_ptr.deinit();
 
     const union_field_type = comptime property_element_type_to_union_field(DataType);
     result.value_ptr.* = .{
-        .type = property_type,
+        .type = property_type.id,
         .item = @unionInit(PropertyValueData, @tagName(union_field_type), array_list),
     };
 }
@@ -117,18 +117,18 @@ pub fn replace_property(
 fn property_add(
     self: *Self,
     comptime DataType: type,
-    property_name: x11.Atom,
-    property_type: x11.Atom,
+    property_name: phx.Atom,
+    property_type: phx.Atom,
     value: []const DataType,
     operation: enum { prepend, append },
     ignore_immutable: bool,
 ) !void {
-    if (!ignore_immutable and is_property_immutable(property_name))
+    if (!ignore_immutable and is_property_immutable(property_name.id))
         return error.AttemptToMutateImmutableProperty;
 
     const union_field_name = comptime property_element_type_to_union_field(DataType);
-    if (self.properties.getPtr(property_name)) |property| {
-        if (property.type != property_type)
+    if (self.properties.getPtr(property_name.id)) |property| {
+        if (property.type != property_type.id)
             return error.PropertyTypeMismatch;
 
         return switch (operation) {
@@ -141,18 +141,18 @@ fn property_add(
         array_list.appendSliceAssumeCapacity(value);
 
         const property = PropertyValue{
-            .type = property_type,
+            .type = property_type.id,
             .item = @unionInit(PropertyValueData, union_field_name, array_list),
         };
-        return self.properties.put(self.allocator, property_name, property);
+        return self.properties.put(self.allocator, property_name.id, property);
     }
 }
 
 pub fn prepend_property(
     self: *Self,
     comptime DataType: type,
-    property_name: x11.Atom,
-    property_type: x11.Atom,
+    property_name: phx.Atom,
+    property_type: phx.Atom,
     value: []const DataType,
     ignore_immutable: bool,
 ) !void {
@@ -162,23 +162,23 @@ pub fn prepend_property(
 pub fn append_property(
     self: *Self,
     comptime DataType: type,
-    property_name: x11.Atom,
-    property_type: x11.Atom,
+    property_name: phx.Atom,
+    property_type: phx.Atom,
     value: []const DataType,
     ignore_immutable: bool,
 ) !void {
     return self.property_add(DataType, property_name, property_type, value, .append, ignore_immutable);
 }
 
-pub fn delete_property(self: *Self, property_name: x11.Atom, ignore_immutable: bool) bool {
+pub fn delete_property(self: *Self, property_name: phx.Atom, ignore_immutable: bool) bool {
     if (!ignore_immutable and is_property_immutable(property_name))
         return error.AttemptToMutateImmutableProperty;
 
     return self.properties.remove(property_name);
 }
 
-pub fn is_property_immutable(property_name: x11.Atom) bool {
-    return switch (property_name) {
+pub fn is_property_immutable(property_name: phx.Atom) bool {
+    return switch (property_name.id) {
         .EDID => true,
         .CloneList => true,
         .CompatibilityList => true,
@@ -238,7 +238,7 @@ pub const PropertyValueData = union(PropertyValueDataType) {
 };
 
 pub const PropertyValue = struct {
-    type: x11.Atom,
+    type: x11.AtomId,
     item: PropertyValueData,
     valid_values: std.ArrayList(i32),
     range: bool,
@@ -265,12 +265,12 @@ pub const PropertyValue = struct {
     }
 };
 
-pub const PropertyHashMap = std.HashMapUnmanaged(x11.Atom, PropertyValue, struct {
-    pub fn hash(_: @This(), key: x11.Atom) u64 {
+pub const PropertyHashMap = std.HashMapUnmanaged(x11.AtomId, PropertyValue, struct {
+    pub fn hash(_: @This(), key: x11.AtomId) u64 {
         return @intFromEnum(key);
     }
 
-    pub fn eql(_: @This(), a: x11.Atom, b: x11.Atom) bool {
+    pub fn eql(_: @This(), a: x11.AtomId, b: x11.AtomId) bool {
         return a == b;
     }
 }, std.hash_map.default_max_load_percentage);

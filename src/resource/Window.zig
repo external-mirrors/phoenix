@@ -90,8 +90,8 @@ pub fn get_geometry(self: *Self) phx.Geometry {
     return self.attributes.geometry;
 }
 
-pub fn get_property(self: *Self, atom: x11.Atom) ?*x11.PropertyValue {
-    return self.properties.getPtr(atom);
+pub fn get_property(self: *Self, atom: phx.Atom) ?*x11.PropertyValue {
+    return self.properties.getPtr(atom.id);
 }
 
 fn property_element_type_to_union_field(comptime DataType: type) []const u8 {
@@ -107,21 +107,21 @@ fn property_element_type_to_union_field(comptime DataType: type) []const u8 {
 pub fn replace_property(
     self: *Self,
     comptime DataType: type,
-    property_name: x11.Atom,
-    property_type: x11.Atom,
+    property_name: phx.Atom,
+    property_type: phx.Atom,
     value: []const DataType,
 ) !void {
     var array_list = try std.ArrayList(DataType).initCapacity(self.allocator, value.len);
     errdefer array_list.deinit();
     array_list.appendSliceAssumeCapacity(value);
 
-    var result = try self.properties.getOrPut(self.allocator, property_name);
+    var result = try self.properties.getOrPut(self.allocator, property_name.id);
     if (result.found_existing)
         result.value_ptr.deinit();
 
     const union_field_name = comptime property_element_type_to_union_field(DataType);
     result.value_ptr.* = .{
-        .type = property_type,
+        .type = property_type.id,
         .item = @unionInit(x11.PropertyValueData, union_field_name, array_list),
     };
 }
@@ -130,14 +130,14 @@ pub fn replace_property(
 fn property_add(
     self: *Self,
     comptime DataType: type,
-    property_name: x11.Atom,
-    property_type: x11.Atom,
+    property_name: phx.Atom,
+    property_type: phx.Atom,
     value: []const DataType,
     operation: enum { prepend, append },
 ) !void {
     const union_field_name = comptime property_element_type_to_union_field(DataType);
-    if (self.properties.getPtr(property_name)) |property| {
-        if (property.type != property_type)
+    if (self.properties.getPtr(property_name.id)) |property| {
+        if (property.type != property_type.id)
             return error.PropertyTypeMismatch;
 
         return switch (operation) {
@@ -150,18 +150,18 @@ fn property_add(
         array_list.appendSliceAssumeCapacity(value);
 
         const property = x11.PropertyValue{
-            .type = property_type,
+            .type = property_type.id,
             .item = @unionInit(x11.PropertyValueData, union_field_name, array_list),
         };
-        return self.properties.put(self.allocator, property_name, property);
+        return self.properties.put(self.allocator, property_name.id, property);
     }
 }
 
 pub fn prepend_property(
     self: *Self,
     comptime DataType: type,
-    property_name: x11.Atom,
-    property_type: x11.Atom,
+    property_name: phx.Atom,
+    property_type: phx.Atom,
     value: []const DataType,
 ) !void {
     return self.property_add(DataType, property_name, property_type, value, .prepend);
@@ -170,15 +170,15 @@ pub fn prepend_property(
 pub fn append_property(
     self: *Self,
     comptime DataType: type,
-    property_name: x11.Atom,
-    property_type: x11.Atom,
+    property_name: phx.Atom,
+    property_type: phx.Atom,
     value: []const DataType,
 ) !void {
     return self.property_add(DataType, property_name, property_type, value, .append);
 }
 
-pub fn delete_property(self: *Self, property_name: x11.Atom) bool {
-    return self.properties.remove(property_name);
+pub fn delete_property(self: *Self, property_name: phx.Atom) bool {
+    return self.properties.remove(property_name.id);
 }
 
 /// It's invalid to add multiple event listeners with the same client.

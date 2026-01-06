@@ -145,7 +145,7 @@ fn get_output_info(request_context: phx.RequestContext) !void {
 
     var crtcs = [_]CrtcId{crtc.id};
 
-    const is_non_desktop = if (crtc.get_property_single_value(x11.Card32, .@"non-desktop")) |value| value == 1 else false;
+    const is_non_desktop = if (crtc.get_property_single_value(x11.Card32, .{ .id = .@"non-desktop" })) |value| value == 1 else false;
 
     // Xorg server doesn't seem to set these, so we don't really need them either
     //var clones = try get_clones_of_output_crtc(&request_context.server.screen_resources, output, request_context.allocator);
@@ -181,7 +181,7 @@ fn list_output_properties(request_context: phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .randr_output, @intFromEnum(req.request.output));
     };
 
-    var crtc_property_names = try request_context.allocator.alloc(x11.Atom, crtc.properties.count());
+    var crtc_property_names = try request_context.allocator.alloc(x11.AtomId, crtc.properties.count());
     defer request_context.allocator.free(crtc_property_names);
 
     var index: usize = 0;
@@ -720,7 +720,7 @@ const Reply = struct {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         num_atoms: x11.Card16 = 0,
         pad2: [22]x11.Card8 = @splat(0),
-        atoms: x11.ListOf(x11.Atom, .{ .length_field = "num_atoms" }),
+        atoms: x11.ListOf(x11.AtomId, .{ .length_field = "num_atoms" }),
     };
 
     pub const GetCrtcInfo = struct {

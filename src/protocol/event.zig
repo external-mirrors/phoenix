@@ -198,7 +198,7 @@ pub const PropertyNotifyEvent = extern struct {
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
     window: x11.WindowId,
-    atom: x11.Atom,
+    atom: x11.AtomId,
     time: x11.Timestamp,
     state: enum(x11.Card8) {
         new_value = 0,
@@ -217,7 +217,7 @@ pub const SelectionClearEvent = extern struct {
     sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
     time: x11.Timestamp,
     owner: x11.WindowId,
-    selection: x11.Atom,
+    selection: x11.AtomId,
     pad2: [16]x11.Card8 = @splat(0),
 
     comptime {
@@ -232,9 +232,9 @@ pub const SelectionClearEvent = extern struct {
 //     time: x11.Timestamp, // Can be .current_time
 //     owner: x11.WindowId,
 //     requestor: x11.WindowId,
-//     selection: x11.Atom,
-//     target: x11.Atom,
-//     property: x11.Atom, // Can be 0
+//     selection: x11.AtomId,
+//     target: x11.AtomId,
+//     property: x11.AtomId, // Can be 0
 //     pad2: x11.Card32 = 0,
 
 //     comptime {

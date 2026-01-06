@@ -196,7 +196,7 @@ fn create_root_window(self: *Self) !*phx.Window {
     var root_window = try phx.Window.create(null, root_window_id, &window_attributes, self, self.root_client, self.allocator);
     errdefer root_window.destroy();
 
-    try root_window.replace_property(u8, .RESOURCE_MANAGER, .STRING, "*background:\t#222222");
+    try root_window.replace_property(u8, .{ .id = .RESOURCE_MANAGER }, .{ .id = .STRING }, "*background:\t#222222");
 
     return root_window;
 }

@@ -549,9 +549,9 @@ const DeviceLedInfo = struct {
     physical_indicators: x11.Card32,
     state: x11.Card32,
     // TODO:
-    //names: x11.ListOf(x11.Atom, .{ .length_field = "names_present", .length_field_type = .bitmask }),
+    //names: x11.ListOf(x11.AtomId, .{ .length_field = "names_present", .length_field_type = .bitmask }),
     //maps: x11.ListOf(IndicatorMap, .{ .length_field = "maps_present", .length_field_type = .bitmask }),
-    names: x11.ListOf(x11.Atom, .{ .length_field = "names_present" }),
+    names: x11.ListOf(x11.AtomId, .{ .length_field = "names_present" }),
     maps: x11.ListOf(IndicatorMap, .{ .length_field = "maps_present" }),
 };
 
@@ -844,7 +844,7 @@ pub const Reply = struct {
         default_keyboard_fb: IdSpec,
         default_led_fb: IdSpec,
         pad1: x11.Card16 = 0,
-        dev_type: x11.Atom,
+        dev_type: x11.AtomId,
         name_len: x11.Card16 = 0,
         name: x11.ListOf(x11.Card8, .{ .length_field = "name_len" }),
         pad2: x11.AlignmentPadding = .{},

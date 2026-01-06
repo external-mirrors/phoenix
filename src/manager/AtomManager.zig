@@ -18,7 +18,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     };
     errdefer self.deinit();
 
-    inline for (@typeInfo(x11.Atom).@"enum".fields) |*field| {
+    inline for (@typeInfo(x11.AtomId).@"enum".fields) |*field| {
         const atom_name = try allocator.dupe(u8, field.name);
         errdefer allocator.free(atom_name);
         try self.atoms.append(atom_name);
@@ -35,20 +35,25 @@ pub fn deinit(self: *Self) void {
     self.atoms.deinit();
 }
 
-pub fn get_atom_name_by_id(self: *Self, atom_id: x11.Atom) ?[]const u8 {
+pub fn get_atom_by_id(self: *Self, atom_id: x11.AtomId) ?phx.Atom {
+    const atom_id_num = @intFromEnum(atom_id);
+    return if (atom_id_num > 0 and atom_id_num - 1 < self.atoms.items.len) .{ .id = atom_id } else null;
+}
+
+pub fn get_atom_name_by_id(self: *Self, atom_id: x11.AtomId) ?[]const u8 {
     const atom_id_num = @intFromEnum(atom_id);
     return if (atom_id_num > 0 and atom_id_num - 1 < self.atoms.items.len) self.atoms.items[atom_id_num - 1] else null;
 }
 
-pub fn get_atom_by_name(self: *Self, name: []const u8) ?x11.Atom {
+pub fn get_atom_by_name(self: *Self, name: []const u8) ?phx.Atom {
     for (self.atoms.items, 1..) |atom_name, atom_id| {
         if (std.mem.eql(u8, name, atom_name))
-            return @enumFromInt(atom_id);
+            return .{ .id = @enumFromInt(atom_id) };
     }
     return null;
 }
 
-pub fn get_atom_by_name_create_if_not_exists(self: *Self, name: []const u8) !x11.Atom {
+pub fn get_atom_by_name_create_if_not_exists(self: *Self, name: []const u8) !phx.Atom {
     if (self.get_atom_by_name(name)) |atom|
         return atom;
 
@@ -61,7 +66,7 @@ pub fn get_atom_by_name_create_if_not_exists(self: *Self, name: []const u8) !x11
     const atom_name = try self.allocator.dupe(u8, name);
     errdefer self.allocator.free(atom_name);
     try self.atoms.append(atom_name);
-    return @enumFromInt(self.atoms.items.len);
+    return .{ .id = @enumFromInt(self.atoms.items.len) };
 }
 
 test "get atom" {

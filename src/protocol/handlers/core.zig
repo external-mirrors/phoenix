@@ -399,9 +399,9 @@ fn intern_atom(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.InternAtom, request_context.allocator);
     defer req.deinit();
 
-    var atom: x11.Atom = undefined;
+    var atom: phx.Atom = undefined;
     if (req.request.only_if_exists) {
-        atom = if (request_context.server.atom_manager.get_atom_by_name(req.request.name.items)) |atom_id| atom_id else @enumFromInt(none);
+        atom = if (request_context.server.atom_manager.get_atom_by_name(req.request.name.items)) |item| item else .{ .id = @enumFromInt(none) };
     } else {
         atom = if (request_context.server.atom_manager.get_atom_by_name_create_if_not_exists(req.request.name.items)) |atom_id| atom_id else |err| switch (err) {
             error.OutOfMemory, error.TooManyAtoms => return request_context.client.write_error(request_context, .alloc, 0),
@@ -411,7 +411,7 @@ fn intern_atom(request_context: phx.RequestContext) !void {
 
     var rep = Reply.InternAtom{
         .sequence_number = request_context.sequence_number,
-        .atom = atom,
+        .atom = atom.id,
     };
     try request_context.client.write_reply(&rep);
 }
@@ -441,12 +441,12 @@ fn change_property(request_context: phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
 
-    _ = request_context.server.atom_manager.get_atom_name_by_id(req.request.property) orelse {
+    const property_atom = request_context.server.atom_manager.get_atom_by_id(req.request.property) orelse {
         std.log.err("Received invalid property atom {d} in ChangeProperty request", .{req.request.property});
         return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.property));
     };
 
-    _ = request_context.server.atom_manager.get_atom_name_by_id(req.request.type) orelse {
+    const type_atom = request_context.server.atom_manager.get_atom_by_id(req.request.type) orelse {
         std.log.err("Received invalid type atom {d} in ChangeProperty request", .{req.request.type});
         return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.type));
     };
@@ -455,9 +455,9 @@ fn change_property(request_context: phx.RequestContext) !void {
         inline else => |data| {
             const array_element_type = std.meta.Elem(@TypeOf(data));
             switch (req.request.mode) {
-                .replace => try window.replace_property(array_element_type, req.request.property, req.request.type, data),
-                .prepend => try window.prepend_property(array_element_type, req.request.property, req.request.type, data),
-                .append => try window.append_property(array_element_type, req.request.property, req.request.type, data),
+                .replace => try window.replace_property(array_element_type, property_atom, type_atom, data),
+                .prepend => try window.prepend_property(array_element_type, property_atom, type_atom, data),
+                .append => try window.append_property(array_element_type, property_atom, type_atom, data),
             }
         },
     }
@@ -483,7 +483,7 @@ fn get_property(request_context: phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
 
-    const property_atom_name = request_context.server.atom_manager.get_atom_name_by_id(req.request.property) orelse {
+    const property_atom = request_context.server.atom_manager.get_atom_by_id(req.request.property) orelse {
         std.log.err("Received invalid property atom {d} in GetProperty request", .{req.request.property});
         return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.property));
     };
@@ -497,7 +497,8 @@ fn get_property(request_context: phx.RequestContext) !void {
                 return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.type));
             };
 
-    const property = window.get_property(req.request.property) orelse {
+    const property = window.get_property(property_atom) orelse {
+        const property_atom_name = request_context.server.atom_manager.get_atom_name_by_id(req.request.property) orelse "Unknown";
         std.log.err("GetProperty: the property atom {d} ({s}) doesn't exist in window {d}, returning empty data", .{ req.request.property, property_atom_name, window.id });
         var rep = Reply.GetPropertyNone{
             .sequence_number = request_context.sequence_number,
@@ -509,6 +510,7 @@ fn get_property(request_context: phx.RequestContext) !void {
     const property_size_in_bytes: u32 = @min(property.get_size_in_bytes(), std.math.maxInt(u32));
 
     if (req.request.type != property.type and req.request.type != any_property_type) {
+        const property_atom_name = request_context.server.atom_manager.get_atom_name_by_id(req.request.property) orelse "Unknown";
         std.log.err(
             "GetProperty: the property atom {d} ({s}) exist in window {d} but it's of type {d}, not {d} ({s}) returning empty data",
             .{ req.request.property, property_atom_name, window.id, property.type, req.request.type, type_atom_name },
@@ -560,11 +562,11 @@ fn get_property(request_context: phx.RequestContext) !void {
     }
 
     if (req.request.delete) {
-        _ = window.delete_property(req.request.property);
+        _ = window.delete_property(property_atom);
         var property_notify_event = phx.event.Event{
             .property_notify = .{
                 .window = req.request.window,
-                .atom = req.request.property,
+                .atom = property_atom.id,
                 .time = request_context.server.get_timestamp_milliseconds(),
                 .state = .deleted,
             },
@@ -577,7 +579,7 @@ fn set_selection_owner(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.SetSelectionOwner, request_context.allocator);
     defer req.deinit();
 
-    _ = request_context.server.atom_manager.get_atom_name_by_id(req.request.selection) orelse {
+    const selection_atom = request_context.server.atom_manager.get_atom_by_id(req.request.selection) orelse {
         std.log.err("Received invalid property atom {d} in SetSelectionOwner request", .{req.request.selection});
         return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.selection));
     };
@@ -591,7 +593,7 @@ fn set_selection_owner(request_context: phx.RequestContext) !void {
     }
 
     try request_context.server.selection_owner_manager.set_owner(
-        req.request.selection,
+        selection_atom,
         window,
         request_context.client,
         req.request.time,
@@ -603,13 +605,13 @@ fn get_selection_owner(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetSelectionOwner, request_context.allocator);
     defer req.deinit();
 
-    _ = request_context.server.atom_manager.get_atom_name_by_id(req.request.selection) orelse {
+    const selection_atom = request_context.server.atom_manager.get_atom_by_id(req.request.selection) orelse {
         std.log.err("Received invalid property atom {d} in GetSelectionOwner request", .{req.request.selection});
         return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.selection));
     };
 
     const selection_owner_window =
-        if (request_context.server.selection_owner_manager.get_owner(req.request.selection)) |selection_owner|
+        if (request_context.server.selection_owner_manager.get_owner(selection_atom)) |selection_owner|
             if (selection_owner.owner_window) |owner_window|
                 owner_window.id
             else
@@ -1138,7 +1140,7 @@ const ConfigureWindowValueMask = packed struct(x11.Card16) {
 };
 
 const none: x11.Card32 = 0;
-const any_property_type: x11.Atom = @enumFromInt(0);
+const any_property_type: x11.AtomId = @enumFromInt(0);
 const parent_relative: x11.Card32 = 1;
 const window_pointer_root: x11.WindowId = @enumFromInt(1);
 const copy_from_parent: x11.Card32 = 0;
@@ -1386,7 +1388,7 @@ pub const Request = struct {
         opcode: phx.opcode.Major = .get_atom_name,
         pad: x11.Card8,
         length: x11.Card16,
-        atom: x11.Atom,
+        atom: x11.AtomId,
     };
 
     pub const ChangeProperty = struct {
@@ -1398,8 +1400,8 @@ pub const Request = struct {
         },
         length: x11.Card16,
         window: x11.WindowId,
-        property: x11.Atom,
-        type: x11.Atom,
+        property: x11.AtomId,
+        type: x11.AtomId,
         format: PropertyFormat,
         pad1: x11.Card8,
         pad2: x11.Card16,
@@ -1418,8 +1420,8 @@ pub const Request = struct {
         delete: bool,
         length: x11.Card16,
         window: x11.WindowId,
-        property: x11.Atom,
-        type: x11.Atom,
+        property: x11.AtomId,
+        type: x11.AtomId,
         long_offset: x11.Card32,
         long_length: x11.Card32,
     };
@@ -1429,7 +1431,7 @@ pub const Request = struct {
         pad1: x11.Card8 = 0,
         length: x11.Card16,
         owner: x11.WindowId, // Can be .none
-        selection: x11.Atom,
+        selection: x11.AtomId,
         time: x11.Timestamp, // Can be .current_time
     };
 
@@ -1437,7 +1439,7 @@ pub const Request = struct {
         opcode: phx.opcode.Major = .get_selection_owner,
         pad1: x11.Card8 = 0,
         length: x11.Card16,
-        selection: x11.Atom,
+        selection: x11.AtomId,
     };
 
     pub const GrabServer = struct {
@@ -1611,7 +1613,7 @@ const Reply = struct {
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        atom: x11.Atom,
+        atom: x11.AtomId,
         pad2: [20]x11.Card8 = @splat(0),
     };
 
@@ -1632,7 +1634,7 @@ const Reply = struct {
             format: x11.Card8 = @sizeOf(DataType),
             sequence_number: x11.Card16,
             length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-            type: x11.Atom,
+            type: x11.AtomId,
             bytes_after: x11.Card32,
             data_length: x11.Card32 = 0,
             pad1: [12]x11.Card8 = @splat(0),
@@ -1650,7 +1652,7 @@ const Reply = struct {
         format: x11.Card8 = 0,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        type: x11.Atom = @enumFromInt(none),
+        type: x11.AtomId = @enumFromInt(none),
         bytes_after: x11.Card32 = 0,
         data_length: x11.Card32 = 0,
         pad1: [12]x11.Card8 = @splat(0),
@@ -1661,7 +1663,7 @@ const Reply = struct {
         format: x11.Card8,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        type: x11.Atom,
+        type: x11.AtomId,
         bytes_after: x11.Card32 = 0,
         data_length: x11.Card32 = 0,
         pad1: [12]x11.Card8 = @splat(0),

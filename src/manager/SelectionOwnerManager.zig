@@ -19,7 +19,7 @@ pub fn deinit(self: *Self) void {
 
 pub fn set_owner(
     self: *Self,
-    selection: x11.Atom,
+    selection: phx.Atom,
     new_owner_window: ?*phx.Window,
     new_owner_client: ?*phx.Client,
     request_timestamp: x11.Timestamp,
@@ -42,7 +42,7 @@ pub fn set_owner(
                 .selection_clear = .{
                     .time = request_timestamp_valid,
                     .owner = if (selection_owner.owner_window) |owner_window| owner_window.id else .none,
-                    .selection = selection_owner.selection,
+                    .selection = selection_owner.selection.id,
                 },
             };
             try selection_owner.owner_client.?.write_event(&selection_clear_event);
@@ -62,9 +62,9 @@ pub fn set_owner(
     }
 }
 
-pub fn get_owner(self: *Self, selection: x11.Atom) ?*SelectionOwner {
+pub fn get_owner(self: *Self, selection: phx.Atom) ?*SelectionOwner {
     for (self.selection_owners.items, 0..) |*selection_owner, i| {
-        if (selection_owner.selection == selection)
+        if (selection_owner.selection.id == selection.id)
             return &self.selection_owners.items[i];
     }
     return null;
@@ -89,8 +89,10 @@ pub fn clear_selections_by_client(self: *Self, owner_client: *const phx.Client) 
 }
 
 pub const SelectionOwner = struct {
-    selection: x11.Atom,
+    selection: phx.Atom,
     owner_window: ?*phx.Window,
     owner_client: ?*phx.Client,
     last_changed_time: x11.Timestamp,
 };
+
+// TODO: Change Atom to AtomId, create a new atom class

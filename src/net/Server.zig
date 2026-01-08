@@ -101,6 +101,8 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     var input = phx.Input.create_linux();
     errdefer input.deinit();
 
+    input.load_keyboard_mapping();
+
     var installed_colormaps = std.ArrayList(phx.Colormap).init(allocator);
     errdefer installed_colormaps.deinit();
 

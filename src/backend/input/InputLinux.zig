@@ -279,14 +279,6 @@ fn linux_key_to_x11_keycode(key: Key) x11.KeyCode {
     return @enumFromInt(key.to_int() + 8);
 }
 
-pub fn get_min_keycode(_: *Self) x11.KeyCode {
-    return @enumFromInt(8);
-}
-
-pub fn get_max_keycode(_: *Self) x11.KeyCode {
-    return @enumFromInt(255);
-}
-
 // TODO: Read keyboard configuration from /usr/share/X11/xkb instead of manual mapping.
 // The current mapping is for US keyboards.
 pub fn x11_keycode_to_keysym(_: *const Self, keycode: x11.KeyCode) phx.KeySym {

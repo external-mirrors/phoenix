@@ -389,7 +389,7 @@ fn change_window_attributes(request_context: phx.RequestContext) !void {
     if (req.request.get_value(x11.Card32, "event_mask")) |arg| {
         const new_event_mask: EventMask = @bitCast(arg);
 
-        if(window.get_core_event_listener_index(request_context.client)) |event_listener_index| {
+        if (window.get_core_event_listener_index(request_context.client)) |event_listener_index| {
             window.modify_core_event_listener_by_index(event_listener_index, new_event_mask) catch |err| switch (err) {
                 error.ExclusiveEventListenerTaken => {
                     std.log.err("A client is already listening to exclusive events (ResizeRedirect, SubstructureRedirect, ButtonPress) on one of the parent windows", .{});
@@ -411,7 +411,7 @@ fn change_window_attributes(request_context: phx.RequestContext) !void {
 
     if (window.attributes.colormap.id != new_window_attributes.colormap.id) {
         if (window.attributes.colormap.id == .none) {
-            var configure_notify_event = phx.event.Event{
+            var colormap_notify_event = phx.event.Event{
                 .colormap_notify = .{
                     .window = window.id,
                     .colormap = new_window_attributes.colormap.id,
@@ -419,9 +419,9 @@ fn change_window_attributes(request_context: phx.RequestContext) !void {
                     .state = .installed,
                 },
             };
-            window.write_core_event_to_event_listeners(&configure_notify_event);
+            window.write_core_event_to_event_listeners(&colormap_notify_event);
         } else if (new_window_attributes.colormap.id == .none) {
-            var configure_notify_event = phx.event.Event{
+            var colormap_notify_event = phx.event.Event{
                 .colormap_notify = .{
                     .window = window.id,
                     .colormap = new_window_attributes.colormap.id,
@@ -429,9 +429,9 @@ fn change_window_attributes(request_context: phx.RequestContext) !void {
                     .state = .uninstalled,
                 },
             };
-            window.write_core_event_to_event_listeners(&configure_notify_event);
+            window.write_core_event_to_event_listeners(&colormap_notify_event);
         } else {
-            var configure_notify_event = phx.event.Event{
+            var colormap_notify_event = phx.event.Event{
                 .colormap_notify = .{
                     .window = window.id,
                     .colormap = new_window_attributes.colormap.id,
@@ -439,7 +439,7 @@ fn change_window_attributes(request_context: phx.RequestContext) !void {
                     .state = .installed,
                 },
             };
-            window.write_core_event_to_event_listeners(&configure_notify_event);
+            window.write_core_event_to_event_listeners(&colormap_notify_event);
         }
     }
 
@@ -1095,30 +1095,12 @@ fn get_keyboard_mapping(request_context: phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .value, req.request.count);
     }
 
-    const keysyms_per_keycode: u32 = 7;
-    var keysyms = try request_context.allocator.alloc(x11.KeySym, req.request.count * keysyms_per_keycode);
-    defer request_context.allocator.free(keysyms);
-
-    // TODO: These structure is hardcoded for now
-    var keysym_index: usize = 0;
-    for (0..req.request.count) |i| {
-        const keycode: x11.KeyCode = @enumFromInt(first_keycode + i);
-        const keysym = request_context.server.input.x11_keycode_to_keysym(keycode);
-        const keysym_lowercase = phx.keysym.to_lowercase(keysym);
-        keysyms[keysym_index + 0] = @enumFromInt(keysym_lowercase);
-        keysyms[keysym_index + 1] = @enumFromInt(keysym);
-        keysyms[keysym_index + 2] = @enumFromInt(keysym_lowercase);
-        keysyms[keysym_index + 3] = @enumFromInt(keysym);
-        keysyms[keysym_index + 4] = @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol);
-        keysyms[keysym_index + 5] = @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol);
-        keysyms[keysym_index + 6] = @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol);
-        keysym_index += keysyms_per_keycode;
-    }
+    const keyboard_mapping_table_start_index = first_keycode - min_keycode.to_int();
 
     var rep = Reply.GetKeyboardMapping{
-        .keysyms_per_keycode = @as(x11.Card8, keysyms_per_keycode),
+        .keysyms_per_keycode = request_context.server.input.get_keysyms_per_keycode(),
         .sequence_number = request_context.sequence_number,
-        .keysyms = .{ .items = keysyms },
+        .keysyms = .{ .items = @constCast(request_context.server.input.get_keyboard_mapping()[keyboard_mapping_table_start_index .. keyboard_mapping_table_start_index + req.request.count]) },
     };
     try request_context.client.write_reply(&rep);
 }

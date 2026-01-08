@@ -99,7 +99,7 @@ pub fn handle_client_connect(server: *phx.Server, client: *phx.Client, root_wind
             .colormap = screen_colormap.id,
             .white_pixel = 0x00ffffff,
             .black_pixel = 0x00000000,
-            .current_input_masks = 0, // TODO: KeyPressMask, KeyReleaseMask, etc
+            .current_input_masks = root_window.get_all_event_mask_core(),
             .width_pixels = @intCast(screen_info.width),
             .height_pixels = @intCast(screen_info.height),
             .width_mm = @intCast(screen_info.width_mm),
@@ -211,7 +211,7 @@ const Screen = struct {
     colormap: x11.ColormapId,
     white_pixel: x11.Card32,
     black_pixel: x11.Card32,
-    current_input_masks: x11.Card32,
+    current_input_masks: phx.core.EventMask,
     width_pixels: x11.Card16,
     height_pixels: x11.Card16,
     width_mm: x11.Card16,

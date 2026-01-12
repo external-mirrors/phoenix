@@ -211,7 +211,7 @@ pub fn get_keyboard_map(self: *Self, params: *const phx.Xkb.Request.GetMap, aren
     const key_syms_opt = if (present.key_syms and xcb_reply.nKeySyms > 0) try get_keyboard_map_key_sym_map(&map, xcb_reply.nKeySyms, allocator) else null;
     const key_actions_opt = if (present.key_actions) try get_keyboard_map_key_actions(&map, xcb_reply.nKeyActions, xcb_reply.totalActions, allocator) else null;
 
-    std.log.err("TODO: Implement get_keyboard_map properly", .{});
+    std.log.err("TODO: Implement get_keyboard_map (xkb) properly", .{});
     const reply = phx.Xkb.Reply.GetMap{
         .device_id = xcb_reply.deviceID,
         .sequence_number = 0,

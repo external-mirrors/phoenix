@@ -37,7 +37,7 @@ fn query_version(request_context: phx.RequestContext) !void {
 
 fn create_region(_: phx.RequestContext) !void {
     // TODO: Implement
-    std.log.warn("TODO: Implement CreateRegion", .{});
+    std.log.err("TODO: Implement CreateRegion", .{});
 }
 
 const MinorOpcode = enum(x11.Card8) {

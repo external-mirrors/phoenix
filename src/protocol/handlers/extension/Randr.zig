@@ -20,6 +20,8 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .get_output_info => get_output_info(request_context),
         .list_output_properties => list_output_properties(request_context),
         .get_crtc_info => get_crtc_info(request_context),
+        .get_crtc_gamma_size => get_crtc_gamma_size(request_context),
+        .get_crtc_gamma => get_crtc_gamma(request_context),
         .get_screen_resources_current => get_screen_resources(Request.GetScreenResourcesCurrent, Reply.GetScreenResourcesCurrent, request_context),
         .get_crtc_transform => get_crtc_transform(request_context),
         .get_output_primary => get_output_primary(request_context),
@@ -252,6 +254,40 @@ fn get_crtc_info(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn get_crtc_gamma_size(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GetCrtcGammaSize, request_context.allocator);
+    defer req.deinit();
+
+    const crtc = request_context.server.screen_resources.get_crtc_by_id(req.request.crtc) orelse {
+        std.log.err("Received invalid output {d} in RandrGetCrtcGammaSize request", .{req.request.crtc});
+        return request_context.client.write_error(request_context, .randr_crtc, @intFromEnum(req.request.crtc));
+    };
+
+    var rep = Reply.GetCrtcGammaSize{
+        .sequence_number = request_context.sequence_number,
+        .size = @intCast(crtc.gamma_ramps_red.items.len),
+    };
+    try request_context.client.write_reply(&rep);
+}
+
+fn get_crtc_gamma(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GetCrtcGamma, request_context.allocator);
+    defer req.deinit();
+
+    const crtc = request_context.server.screen_resources.get_crtc_by_id(req.request.crtc) orelse {
+        std.log.err("Received invalid output {d} in RandrGetCrtcGamma request", .{req.request.crtc});
+        return request_context.client.write_error(request_context, .randr_crtc, @intFromEnum(req.request.crtc));
+    };
+
+    var rep = Reply.GetCrtcGamma{
+        .sequence_number = request_context.sequence_number,
+        .red = .{ .items = crtc.gamma_ramps_red.items },
+        .green = .{ .items = crtc.gamma_ramps_green.items },
+        .blue = .{ .items = crtc.gamma_ramps_blue.items },
+    };
+    try request_context.client.write_reply(&rep);
+}
+
 fn get_crtc_transform(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetCrtcTransform, request_context.allocator);
     defer req.deinit();
@@ -432,6 +468,8 @@ const MinorOpcode = enum(x11.Card8) {
     get_output_info = 9,
     list_output_properties = 10,
     get_crtc_info = 20,
+    get_crtc_gamma_size = 22,
+    get_crtc_gamma = 23,
     get_screen_resources_current = 25,
     get_crtc_transform = 27,
     get_output_primary = 31,
@@ -636,6 +674,20 @@ pub const Request = struct {
         config_timestamp: x11.Timestamp,
     };
 
+    pub const GetCrtcGammaSize = struct {
+        major_opcode: phx.opcode.Major = .randr,
+        minor_opcode: MinorOpcode = .get_crtc_gamma_size,
+        length: x11.Card16,
+        crtc: CrtcId,
+    };
+
+    pub const GetCrtcGamma = struct {
+        major_opcode: phx.opcode.Major = .randr,
+        minor_opcode: MinorOpcode = .get_crtc_gamma,
+        length: x11.Card16,
+        crtc: CrtcId,
+    };
+
     pub const GetScreenResourcesCurrent = struct {
         major_opcode: phx.opcode.Major = .randr,
         minor_opcode: MinorOpcode = .get_screen_resources_current,
@@ -740,6 +792,28 @@ const Reply = struct {
         num_possible_outputs: x11.Card16 = 0,
         outputs: x11.ListOf(OutputId, .{ .length_field = "num_outputs" }),
         possible_outputs: x11.ListOf(OutputId, .{ .length_field = "num_possible_outputs" }),
+    };
+
+    pub const GetCrtcGammaSize = struct {
+        type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        size: x11.Card16,
+        pad2: [22]x11.Card8 = @splat(0),
+    };
+
+    pub const GetCrtcGamma = struct {
+        type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        size: x11.Card16 = 0,
+        pad2: [22]x11.Card8 = @splat(0),
+        red: x11.ListOf(x11.Card16, .{ .length_field = "size" }),
+        green: x11.ListOf(x11.Card16, .{ .length_field = "size" }),
+        blue: x11.ListOf(x11.Card16, .{ .length_field = "size" }),
+        pad3: x11.AlignmentPadding = .{},
     };
 
     pub const GetScreenResourcesCurrent = struct {

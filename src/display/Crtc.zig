@@ -39,6 +39,10 @@ current_filter_params: std.ArrayListUnmanaged(phx.Render.Fixed) = .empty,
 
 properties: PropertyHashMap = .empty,
 
+gamma_ramps_red: std.ArrayListUnmanaged(u16) = .empty,
+gamma_ramps_green: std.ArrayListUnmanaged(u16) = .empty,
+gamma_ramps_blue: std.ArrayListUnmanaged(u16) = .empty,
+
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     var property_it = self.properties.valueIterator();
     while (property_it.next()) |property| {

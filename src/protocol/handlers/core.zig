@@ -513,7 +513,7 @@ fn configure_window(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.ConfigureWindow, request_context.allocator);
     defer req.deinit();
 
-    std.log.warn("TODO: Implement ConfigureWindow properly", .{});
+    std.log.err("TODO: Implement ConfigureWindow properly", .{});
 
     var window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in ConfigureWindow request", .{req.request.window});
@@ -864,7 +864,7 @@ fn query_pointer(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryPointer, request_context.allocator);
     defer req.deinit();
 
-    std.log.warn("TODO: Implement QueryPointer properly", .{});
+    std.log.err("TODO: Implement QueryPointer properly", .{});
 
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in QueryPointer request", .{req.request.window});
@@ -894,7 +894,7 @@ fn get_input_focus(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetInputFocus, request_context.allocator);
     defer req.deinit();
 
-    std.log.warn("TODO: Implement GetInputFocus properly", .{});
+    std.log.err("TODO: Implement GetInputFocus properly", .{});
 
     var rep = Reply.GetInputFocus{
         .revert_to = .pointer_root,
@@ -1072,7 +1072,7 @@ fn get_keyboard_mapping(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetKeyboardMapping, request_context.allocator);
     defer req.deinit();
 
-    std.log.warn("TODO: Implement GetKeyboardMapping properly for different keyboard layouts", .{});
+    std.log.err("TODO: Implement GetKeyboardMapping properly for different keyboard layouts", .{});
 
     const first_keycode = req.request.first_keycode.to_int();
     const min_keycode = request_context.server.input.get_min_keycode();
@@ -1109,7 +1109,7 @@ fn get_modifier_mapping(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetModifierMapping, request_context.allocator);
     defer req.deinit();
 
-    std.log.warn("TODO: Implement GetModifierMapping properly for different keyboard layouts", .{});
+    std.log.err("TODO: Implement GetModifierMapping properly for different keyboard layouts", .{});
 
     var keycodes = [3 * 8]x11.KeyCode{
         // Shift

@@ -15,7 +15,9 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 
     return switch (minor_opcode) {
         .use_extension => use_extension(request_context),
+        .get_state => get_state(request_context),
         .get_map => get_map(request_context),
+        .get_names => get_names(request_context),
         .per_client_flags => per_client_flags(request_context),
         .get_device_info => get_device_info(request_context),
     };
@@ -38,11 +40,31 @@ fn use_extension(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn get_state(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GetState, request_context.allocator);
+    defer req.deinit();
+
+    if (!request_context.client.xkb_initialized) {
+        std.log.err("Received XkbGetState, but the client hasn't called UseExtension, returning access error", .{});
+        return request_context.client.write_error(request_context, .access, 0);
+    }
+
+    var arena = std.heap.ArenaAllocator.init(request_context.allocator);
+    defer arena.deinit();
+
+    var reply = request_context.server.display.get_keyboard_state(&req.request, &arena) catch |err| {
+        std.log.err("XkbGetState: error: {s}", .{@errorName(err)});
+        std.log.err("XkbGetState: TODO: Use the correct error message", .{});
+        return request_context.client.write_error(request_context, .implementation, 0);
+    };
+    reply.sequence_number = request_context.sequence_number;
+
+    try request_context.client.write_reply(&reply);
+}
+
 fn get_map(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetMap, request_context.allocator);
     defer req.deinit();
-
-    std.log.err("TODO: Implement GetMap properly", .{});
 
     if (!request_context.client.xkb_initialized) {
         std.log.err("Received XkbGetMap, but the client hasn't called UseExtension, returning access error", .{});
@@ -55,6 +77,28 @@ fn get_map(request_context: phx.RequestContext) !void {
     var reply = request_context.server.display.get_keyboard_map(&req.request, &arena) catch |err| {
         std.log.err("XkbGetMap: error: {s}", .{@errorName(err)});
         std.log.err("XkbGetMap: TODO: Use the correct error message", .{});
+        return request_context.client.write_error(request_context, .implementation, 0);
+    };
+    reply.sequence_number = request_context.sequence_number;
+
+    try request_context.client.write_reply(&reply);
+}
+
+fn get_names(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GetNames, request_context.allocator);
+    defer req.deinit();
+
+    if (!request_context.client.xkb_initialized) {
+        std.log.err("Received XkbGetNames, but the client hasn't called UseExtension, returning access error", .{});
+        return request_context.client.write_error(request_context, .access, 0);
+    }
+
+    var arena = std.heap.ArenaAllocator.init(request_context.allocator);
+    defer arena.deinit();
+
+    var reply = request_context.server.display.get_keyboard_names(&req.request, &arena) catch |err| {
+        std.log.err("XkbGetNames: error: {s}", .{@errorName(err)});
+        std.log.err("XkbGetNames: TODO: Use the correct error message", .{});
         return request_context.client.write_error(request_context, .implementation, 0);
     };
     reply.sequence_number = request_context.sequence_number;
@@ -140,7 +184,9 @@ fn get_device_info(request_context: phx.RequestContext) !void {
 
 const MinorOpcode = enum(x11.Card8) {
     use_extension = 0,
+    get_state = 4,
     get_map = 8,
+    get_names = 17,
     per_client_flags = 21,
     get_device_info = 24,
 };
@@ -666,6 +712,25 @@ const PerClientFlag = packed struct(x11.Card32) {
     _padding: u27 = 0,
 };
 
+const NameDetail = packed struct(x11.Card32) {
+    keycodes: bool,
+    geometry: bool,
+    symbols: bool,
+    phys_symbols: bool,
+    types: bool,
+    compat: bool,
+    key_type_names: bool,
+    kt_level_names: bool,
+    indicator_names: bool,
+    key_names: bool,
+    key_aliases: bool,
+    virtual_mod_names: bool,
+    group_names: bool,
+    rg_names: bool,
+
+    _padding: u18 = 0,
+};
+
 pub const Request = struct {
     pub const UseExtension = struct {
         major_opcode: phx.opcode.Major = .xkb,
@@ -673,6 +738,14 @@ pub const Request = struct {
         length: x11.Card16,
         major_version: x11.Card16,
         minor_version: x11.Card16,
+    };
+
+    pub const GetState = struct {
+        major_opcode: phx.opcode.Major = .xkb,
+        minor_opcode: MinorOpcode = .get_state,
+        length: x11.Card16,
+        device_spec: DeviceSpec,
+        pad1: x11.Card16,
     };
 
     pub const GetMap = struct {
@@ -698,6 +771,15 @@ pub const Request = struct {
         first_virtual_mod_map_key: x11.KeyCode,
         num_virtual_mod_map_keys: x11.Card8,
         pad1: x11.Card16,
+    };
+
+    pub const GetNames = struct {
+        major_opcode: phx.opcode.Major = .xkb,
+        minor_opcode: MinorOpcode = .get_names,
+        length: x11.Card16,
+        device_spec: DeviceSpec,
+        pad1: x11.Card16,
+        which: NameDetail,
     };
 
     pub const PerClientFlags = struct {
@@ -737,6 +819,29 @@ pub const Reply = struct {
         major_version: x11.Card16,
         minor_version: x11.Card16,
         pad1: [20]x11.Card8 = @splat(0),
+    };
+
+    pub const GetState = struct {
+        type: phx.reply.ReplyType = .reply,
+        device_id: x11.Card8,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        mods: phx.event.ModMask,
+        base_mods: phx.event.ModMask,
+        latched_mods: phx.event.ModMask,
+        locked_mods: phx.event.ModMask,
+        group: Group,
+        locked_group: Group,
+        base_group: i16,
+        latched_group: i16,
+        compat_state: phx.event.ModMask,
+        grab_mods: phx.event.ModMask,
+        compat_grab_mods: phx.event.ModMask,
+        lookup_mods: phx.event.ModMask,
+        compat_lookup_mods: phx.event.ModMask,
+        pad1: x11.Card8 = 0,
+        ptr_btn_state: phx.event.KeyButMask,
+        pad2: [6]x11.Card8 = @splat(0),
     };
 
     pub const GetMap = struct {
@@ -812,6 +917,27 @@ pub const Reply = struct {
             /// The length is specified by the number of bits set in Reply.GetMap.virtual_virtual_mod_map_keys
             virtual_mod_map_return: x11.ListOf(KeyVirtualModMap, .{ .length_field = null }),
         },
+    };
+
+    pub const GetNames = struct {
+        type: phx.reply.ReplyType = .reply,
+        device_id: x11.Card8,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        which: NameDetail,
+        min_key_code: x11.KeyCode,
+        max_key_code: x11.KeyCode,
+        n_types: x11.Card8,
+        group_names: Group,
+        virtual_mods: VirtualMod,
+        first_key: x11.KeyCode,
+        n_keys: x11.Card8,
+        indicators: x11.Card32,
+        n_radio_groups: x11.Card8,
+        n_key_aliases: x11.Card8,
+        n_kt_levels: x11.Card16,
+        pad1: x11.Card32 = 0,
+        value_list: x11.ListOf(x11.Card32, .{ .length_field = null }), // TODO: length_field_type = .bitmask and length_field should be set to "which" somehow
     };
 
     pub const PerClientFlags = struct {

@@ -148,6 +148,43 @@ pub fn get_supported_modifiers(self: *Self, window: *phx.Window, depth: u8, bpp:
     return self.graphics.get_supported_modifiers(depth, bpp, modifiers);
 }
 
+pub fn get_keyboard_state(self: *Self, params: *const phx.Xkb.Request.GetState, _: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetState {
+    const cookie = c.xcb_xkb_get_state(self.connection, @intFromEnum(params.device_spec));
+
+    var err: [*c]c.xcb_generic_error_t = null;
+    defer if (err) |e| cstdlib.free(e);
+
+    const xcb_reply: *c.xcb_xkb_get_state_reply_t = c.xcb_xkb_get_state_reply(self.connection, cookie, &err) orelse {
+        if (err) |e| {
+            std.log.err("xcb_xkb_get_state_reply failed, error: {d}, {d}", .{ e.*.error_code, e.*.resource_id });
+        } else {
+            std.log.err("xcb_xkb_get_state_reply failed, unknown error", .{});
+        }
+        return error.FailedToGetReply;
+    };
+    defer cstdlib.free(xcb_reply);
+    if (err != null) return error.FailedToGetReply;
+
+    return .{
+        .device_id = xcb_reply.deviceID,
+        .sequence_number = 0,
+        .mods = @bitCast(xcb_reply.mods),
+        .base_mods = @bitCast(xcb_reply.baseMods),
+        .latched_mods = @bitCast(xcb_reply.latchedMods),
+        .locked_mods = @bitCast(xcb_reply.lockedMods),
+        .group = @bitCast(xcb_reply.group),
+        .locked_group = @bitCast(xcb_reply.lockedGroup),
+        .base_group = xcb_reply.baseGroup,
+        .latched_group = xcb_reply.latchedGroup,
+        .compat_state = @bitCast(xcb_reply.compatState),
+        .grab_mods = @bitCast(xcb_reply.grabMods),
+        .compat_grab_mods = @bitCast(xcb_reply.compatGrabMods),
+        .lookup_mods = @bitCast(xcb_reply.lookupMods),
+        .compat_lookup_mods = @bitCast(xcb_reply.compatLookupMods),
+        .ptr_btn_state = @bitCast(xcb_reply.ptrBtnState),
+    };
+}
+
 pub fn get_keyboard_map(self: *Self, params: *const phx.Xkb.Request.GetMap, arena: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetMap {
     const allocator = arena.allocator();
 
@@ -212,7 +249,8 @@ pub fn get_keyboard_map(self: *Self, params: *const phx.Xkb.Request.GetMap, aren
     const key_actions_opt = if (present.key_actions) try get_keyboard_map_key_actions(&map, xcb_reply.nKeyActions, xcb_reply.totalActions, allocator) else null;
 
     std.log.err("TODO: Implement get_keyboard_map (xkb) properly", .{});
-    const reply = phx.Xkb.Reply.GetMap{
+
+    return .{
         .device_id = xcb_reply.deviceID,
         .sequence_number = 0,
         .min_key_code = @enumFromInt(xcb_reply.minKeyCode),
@@ -249,8 +287,64 @@ pub fn get_keyboard_map(self: *Self, params: *const phx.Xkb.Request.GetMap, aren
         .modmap = null, // TODO: Set
         .virtual_mod_map = null, // TODO: Set
     };
+}
 
-    return reply;
+pub fn get_keyboard_names(self: *Self, params: *const phx.Xkb.Request.GetNames, arena: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetNames {
+    const allocator = arena.allocator();
+
+    const cookie = c.xcb_xkb_get_names(self.connection, @intFromEnum(params.device_spec), @bitCast(params.which));
+
+    var err: [*c]c.xcb_generic_error_t = null;
+    defer if (err) |e| cstdlib.free(e);
+
+    const xcb_reply: *c.xcb_xkb_get_names_reply_t = c.xcb_xkb_get_names_reply(self.connection, cookie, &err) orelse {
+        if (err) |e| {
+            std.log.err("xcb_xkb_get_names_reply failed, error: {d}, {d}", .{ e.*.error_code, e.*.resource_id });
+        } else {
+            std.log.err("xcb_xkb_get_names_reply failed, unknown error", .{});
+        }
+        return error.FailedToGetReply;
+    };
+    defer cstdlib.free(xcb_reply);
+    if (err != null) return error.FailedToGetReply;
+
+    const value_list_raw = c.xcb_xkb_get_names_value_list(xcb_reply) orelse return error.FailedToGetReply;
+
+    const value_list_size = @divExact(c.xcb_xkb_get_names_value_list_sizeof(
+        value_list_raw,
+        xcb_reply.nTypes,
+        xcb_reply.indicators,
+        xcb_reply.virtualMods,
+        xcb_reply.groupNames,
+        xcb_reply.nKeys,
+        xcb_reply.nKeyAliases,
+        xcb_reply.nRadioGroups,
+        xcb_reply.which,
+    ), 4);
+
+    var value_list: []x11.Card32 = undefined;
+    value_list.ptr = @alignCast(@ptrCast(value_list_raw));
+    value_list.len = @intCast(value_list_size);
+
+    const value_list_copy = try allocator.dupe(x11.Card32, value_list);
+
+    return .{
+        .device_id = xcb_reply.deviceID,
+        .sequence_number = 0,
+        .which = @bitCast(xcb_reply.which),
+        .min_key_code = @enumFromInt(xcb_reply.minKeyCode),
+        .max_key_code = @enumFromInt(xcb_reply.maxKeyCode),
+        .n_types = xcb_reply.nTypes,
+        .group_names = @bitCast(xcb_reply.groupNames),
+        .virtual_mods = @bitCast(xcb_reply.virtualMods),
+        .first_key = @enumFromInt(xcb_reply.firstKey),
+        .n_keys = xcb_reply.nKeys,
+        .indicators = xcb_reply.indicators,
+        .n_radio_groups = xcb_reply.nRadioGroups,
+        .n_key_aliases = xcb_reply.nKeyAliases,
+        .n_kt_levels = xcb_reply.nKTLevels,
+        .value_list = .{ .items = value_list_copy },
+    };
 }
 
 fn get_keyboard_map_key_types(map: *const c.xcb_xkb_get_map_map_t, num_types: u8, allocator: std.mem.Allocator) ![]phx.Xkb.KeyType {

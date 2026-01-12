@@ -57,3 +57,4 @@ Support multiple monitors in nested mode. This is useful for testing (both phoen
 Make pixmap reference counted. This is needed for PresentPixmap as it shouldn't get deleted immediately even if FreePixmap is called, it should instead be deleted after it has been rendered.
 ConnectorType and SignalFormat Randr properties are declared as mandatory in the Randr protocol but they aren't always set by the Xorg server. Are they really mandatory? We don't currently set them in phoenix.
 Implement a screen recording x11 extension (zero copy) and use it in gpu screen recorder as well. Also modify an existing desktop portal and add support for that there to make other applications (such as obs, discord, etc) be able to record monitors efficiently.
+When TILE support is added consider this: https://gitlab.freedesktop.org/wlroots/wlroots/-/merge_requests/4154#note_3249071 SRC_X drm property doesn't work on nvidia.

@@ -76,9 +76,21 @@ pub fn get_supported_modifiers(self: *Self, window: *phx.Window, depth: u8, bpp:
     };
 }
 
+pub fn get_keyboard_state(self: *Self, params: *const phx.Xkb.Request.GetState, arena: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetState {
+    return switch (self.impl) {
+        inline else => |item| item.get_keyboard_state(params, arena),
+    };
+}
+
 pub fn get_keyboard_map(self: *Self, params: *const phx.Xkb.Request.GetMap, arena: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetMap {
     return switch (self.impl) {
         inline else => |item| item.get_keyboard_map(params, arena),
+    };
+}
+
+pub fn get_keyboard_names(self: *Self, params: *const phx.Xkb.Request.GetNames, arena: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetNames {
+    return switch (self.impl) {
+        inline else => |item| item.get_keyboard_names(params, arena),
     };
 }
 

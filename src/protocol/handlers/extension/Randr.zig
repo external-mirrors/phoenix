@@ -399,12 +399,16 @@ fn screen_resource_create_mode_infos(screen_resources: *const phx.ScreenResource
     var mode_infos_with_name = ModeInfosWithName.init(allocator);
     errdefer mode_infos_with_name.deinit();
 
-    var mode_name_buf: [128]u8 = undefined;
     for (screen_resources.crtcs.items) |*crtc| {
+        if (crtc.modes.len == 0)
+            continue;
+
+        const preferred_mode = crtc.get_preferred_mode();
+        try mode_infos_with_name.append_mode(preferred_mode);
+
         for (crtc.modes) |*mode| {
-            const mode_name = std.fmt.bufPrint(&mode_name_buf, "{d}x{d}{s}", .{ mode.width, mode.height, if (mode.interlace) "i" else "" }) catch unreachable;
-            try mode_infos_with_name.mode_names.appendSlice(mode_name);
-            try mode_infos_with_name.mode_infos.append(mode_to_mode_info(mode, mode_name));
+            if(mode != preferred_mode)
+                try mode_infos_with_name.append_mode(mode);
         }
     }
 
@@ -458,6 +462,13 @@ const ModeInfosWithName = struct {
     pub fn deinit(self: *ModeInfosWithName) void {
         self.mode_infos.deinit();
         self.mode_names.deinit();
+    }
+
+    pub fn append_mode(self: *ModeInfosWithName, mode: *const phx.Crtc.Mode) !void {
+        var mode_name_buf: [128]u8 = undefined;
+        const mode_name = std.fmt.bufPrint(&mode_name_buf, "{d}x{d}{s}", .{ mode.width, mode.height, if (mode.interlace) "i" else "" }) catch unreachable;
+        try self.mode_names.appendSlice(mode_name);
+        try self.mode_infos.append(mode_to_mode_info(mode, mode_name));
     }
 };
 

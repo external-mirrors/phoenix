@@ -461,12 +461,27 @@ pub fn get_screen_resources(_: *Self, timestamp: x11.Timestamp, allocator: std.m
     const crtc_name = try allocator.dupe(u8, "DP-1");
     errdefer allocator.free(crtc_name);
 
-    var modes = try allocator.alloc(phx.Crtc.Mode, 1);
+    var modes = try allocator.alloc(phx.Crtc.Mode, 2);
     errdefer allocator.free(modes);
 
-    // Since we have a virtual monitor (a window) it doesn't have a real clock rate, set it to 1080p 60fps for now
     modes[0] = .{
         .id = @enumFromInt(1),
+        .width = 1280,
+        .height = 720,
+        .dot_clock = 1280 * 720 * 60,
+        .hsync_start = 0,
+        .hsync_end = 0,
+        .htotal = 1280,
+        .hskew = 0,
+        .vsync_start = 0,
+        .vsync_end = 0,
+        .vtotal = 720,
+        .interlace = false,
+    };
+
+    // Since we have a virtual monitor (a window) it doesn't have a real clock rate, set it to 1080p 60fps for now
+    modes[1] = .{
+        .id = @enumFromInt(2),
         .width = 1920,
         .height = 1080,
         .dot_clock = 1920 * 1080 * 60,
@@ -493,8 +508,8 @@ pub fn get_screen_resources(_: *Self, timestamp: x11.Timestamp, allocator: std.m
             .horizontal = false,
             .vertical = false,
         },
-        .active_mode_index = 0,
-        .preferred_mode_index = 0,
+        .active_mode_index = 1,
+        .preferred_mode_index = 1,
         .name = crtc_name,
         .modes = modes,
     });

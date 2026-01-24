@@ -9,6 +9,7 @@ allocator: std.mem.Allocator,
 impl: GraphicsImpl,
 
 pub fn create_egl(
+    server: *phx.Server,
     width: u32,
     height: u32,
     platform: c_uint,
@@ -20,7 +21,7 @@ pub fn create_egl(
 ) !Self {
     const egl = try allocator.create(GraphicsEgl);
     errdefer allocator.destroy(egl);
-    egl.* = try .init(width, height, platform, screen_type, connection, window_id, debug, allocator);
+    egl.* = try .init(server, width, height, platform, screen_type, connection, window_id, debug, allocator,);
     return .{
         .allocator = allocator,
         .impl = .{ .egl = egl },

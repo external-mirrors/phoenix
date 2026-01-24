@@ -45,6 +45,7 @@ egl_surface: c.EGLSurface,
 egl_context: c.EGLContext,
 dri_card_fd: std.posix.fd_t,
 
+server: *phx.Server,
 allocator: std.mem.Allocator,
 
 pixmap_textures: std.ArrayList(phx.Graphics.PixmapTexture),
@@ -63,6 +64,7 @@ eglQueryDmaBufModifiersEXT: PFNEGLQUERYDMABUFMODIFIERSEXTPROC,
 glCopyImageSubData: PFNGLCOPYIMAGESUBDATAPROC,
 
 pub fn init(
+    server: *phx.Server,
     width: u32,
     height: u32,
     platform: c_uint,
@@ -184,6 +186,7 @@ pub fn init(
         .egl_context = egl_context,
         .dri_card_fd = dri_card_fd.?,
 
+        .server = server,
         .allocator = allocator,
 
         .pixmap_textures = .init(allocator),
@@ -481,6 +484,13 @@ pub fn render(self: *Self) !void {
     self.mutex.unlock();
 
     _ = c.eglSwapBuffers(self.egl_display, self.egl_surface);
+    self.server.append_event(&.{
+        .vsync_finished = .{
+            .timestamp_sec = phx.time.clock_get_monotonic_seconds(),
+        },
+    }) catch {
+        std.log.err("Failed to add vsync finished event to server", .{});
+    };
 }
 
 pub fn resize(self: *Self, width: u32, height: u32) void {

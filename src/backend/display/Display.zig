@@ -8,11 +8,11 @@ const Self = @This();
 allocator: std.mem.Allocator,
 impl: DisplayImpl,
 
-pub fn create_x11(event_fd: std.posix.fd_t, allocator: std.mem.Allocator) !Self {
+pub fn create_x11(server: *phx.Server, allocator: std.mem.Allocator) !Self {
     const display_x11 = try allocator.create(DisplayX11);
     errdefer allocator.destroy(display_x11);
 
-    display_x11.* = try .init(event_fd, allocator);
+    display_x11.* = try .init(server, allocator);
     errdefer display_x11.deinit();
 
     try display_x11.run_update_thread();

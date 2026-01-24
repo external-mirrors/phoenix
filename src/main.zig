@@ -11,17 +11,13 @@ pub fn main() !void {
         var gpa = std.heap.DebugAllocator(.{}){};
         defer std.debug.assert(gpa.deinit() == .ok);
 
-        var server = try phx.Server.init(gpa.allocator());
-        defer server.deinit();
-
-        try server.setup();
-        try server.run();
+        var server = try phx.Server.create(gpa.allocator());
+        defer server.destroy();
+        return server.run();
     } else {
-        var server = try phx.Server.init(std.heap.smp_allocator);
-        defer server.deinit();
-
-        try server.setup();
-        try server.run();
+        var server = try phx.Server.create(std.heap.smp_allocator);
+        defer server.destroy();
+        return server.run();
     }
 }
 

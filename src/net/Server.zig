@@ -28,6 +28,8 @@ epoll_fd: i32,
 epoll_events: [32]std.os.linux.epoll_event = undefined,
 signal_fd: std.posix.fd_t,
 event_fd: std.posix.fd_t,
+events: std.ArrayListUnmanaged(Event) = .empty,
+events_mutex: std.Thread.Mutex = .{},
 resource_id_base_manager: phx.ResourceIdBaseManager,
 atom_manager: phx.AtomManager,
 client_manager: phx.ClientManager,
@@ -43,9 +45,14 @@ screen_resources: phx.ScreenResources,
 cursor_x: i32,
 cursor_y: i32,
 
+running: bool = false,
+
 /// The server will catch sigint and close down (if |run| has been executed)
-pub fn init(allocator: std.mem.Allocator) !Self {
-    const started_time_seconds = clock_get_monotonic_seconds();
+pub fn create(allocator: std.mem.Allocator) !*Self {
+    var self = try allocator.create(Self);
+    errdefer allocator.destroy(self);
+
+    const started_time_seconds = phx.time.clock_get_monotonic_seconds();
 
     const address = try std.net.Address.initUnix(unix_domain_socket_path);
     std.posix.unlink(unix_domain_socket_path) catch {}; // TODO: Dont just remove the file? what if it's used by something else. I guess they will have a reference to it so it wont get deleted?
@@ -91,7 +98,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     errdefer std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, event_fd, null) catch {};
 
     // TODO: Choose backend from argv but give an error if phoenix is built without that backend
-    var display = try phx.Display.create_x11(event_fd, allocator);
+    var display = try phx.Display.create_x11(self, allocator);
     errdefer display.destroy();
 
     comptime {
@@ -111,7 +118,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     var screen_resources = try display.get_screen_resources(@enumFromInt(1), allocator);
     errdefer screen_resources.deinit();
 
-    return .{
+    self.* = .{
         .allocator = allocator,
         .root_client = undefined,
         .root_window = undefined,
@@ -131,9 +138,25 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         .cursor_x = 0,
         .cursor_y = 0,
     };
+
+    const server_connection = std.net.Server.Connection{
+        .stream = self.server_net.stream,
+        .address = self.server_net.listen_address,
+    };
+
+    self.root_client = self.add_client(server_connection) catch |err| {
+        std.log.err("Failed to add client: {d}, disconnecting client. Error: {s}", .{ server_connection.stream.handle, @errorName(err) });
+        server_connection.stream.close();
+        return error.FailedToSetupRootClient;
+    };
+
+    try self.root_client.add_colormap(screen_true_color_colormap);
+    self.root_window = try self.create_root_window();
+
+    return self;
 }
 
-pub fn deinit(self: *Self) void {
+pub fn destroy(self: *Self) void {
     self.client_manager.deinit();
     self.atom_manager.deinit();
     self.selection_owner_manager.deinit();
@@ -141,22 +164,17 @@ pub fn deinit(self: *Self) void {
     self.screen_resources.deinit();
     self.display.destroy();
     self.input.deinit();
+    self.events.deinit(self.allocator);
     std.posix.close(self.epoll_fd);
     std.posix.close(self.signal_fd);
     std.posix.close(self.event_fd);
     std.posix.unlink(unix_domain_socket_path) catch {};
-}
-
-fn clock_get_monotonic_seconds() f64 {
-    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch @panic("clock_gettime(MONOTIC) failed");
-    const seconds: f64 = @floatFromInt(ts.sec);
-    const nanoseconds: f64 = @floatFromInt(ts.nsec);
-    return seconds + nanoseconds * 0.000000001;
+    self.allocator.destroy(self);
 }
 
 /// Following the X11 protocol standard
 pub fn get_timestamp_milliseconds(self: *Self) x11.Timestamp {
-    const now = clock_get_monotonic_seconds();
+    const now = phx.time.clock_get_monotonic_seconds();
     const elapsed_time_milliseconds: u64 = @intFromFloat((now - self.started_time_seconds) * 1000.0);
     var timestamp_milliseconds: u32 = @intCast(elapsed_time_milliseconds % 0xFFFFFFFF);
     // TODO: Find a better solution. 0 defines the special value CurrentTime and the protocol says that the server
@@ -203,41 +221,22 @@ fn create_root_window(self: *Self) !*phx.Window {
     return root_window;
 }
 
-pub fn setup(self: *Self) !void {
-    const server_connection = std.net.Server.Connection{
-        .stream = self.server_net.stream,
-        .address = self.server_net.listen_address,
-    };
-
-    self.root_client = self.add_client(server_connection) catch |err| {
-        std.log.err("Failed to add client: {d}, disconnecting client. Error: {s}", .{ server_connection.stream.handle, @errorName(err) });
-        server_connection.stream.close();
-        return error.FailedToSetupRootClient;
-    };
-
-    // TODO: Is this correct?
-    try self.root_client.add_colormap(screen_true_color_colormap);
-
-    self.root_window = try self.create_root_window();
-}
-
 pub fn run(self: *Self) !void {
     std.log.defaultLog(.info, .default, "Phoenix is now running at {s}. You can connect to it by setting the DISPLAY environment variable to :1, for example \"DISPLAY=:1 glxgears\"", .{unix_domain_socket_path});
 
     const poll_timeout_ms: u32 = 500;
-    var running = true;
+    self.running = true;
 
-    while (running) {
+    while (self.running) {
         const num_events = std.posix.epoll_wait(self.epoll_fd, &self.epoll_events, poll_timeout_ms);
         for (0..num_events) |event_index| {
             const epoll_event = &self.epoll_events[event_index];
 
             if (epoll_event.data.fd == self.event_fd) {
-                var buf: [@sizeOf(u64)]u8 = undefined;
-                _ = std.posix.read(self.event_fd, &buf) catch unreachable;
+                self.handle_events();
             } else if (epoll_event.data.fd == self.signal_fd) {
                 std.log.info("Received SIGINT signal, stopping " ++ vendor, .{});
-                running = false;
+                self.running = false;
             } else if (epoll_event.data.fd == self.server_net.stream.handle) {
                 const connection = self.server_net.accept() catch |err| {
                     std.log.err("Connection from client failed, error: {s}", .{@errorName(err)});
@@ -283,7 +282,7 @@ pub fn run(self: *Self) !void {
                         std.log.err("Epoll del failed for server: {d}. Error: {s}", .{ epoll_event.data.fd, @errorName(err) });
                     };
                     std.log.err("Server socket failed (HUP), closing " ++ vendor, .{});
-                    running = false;
+                    self.running = false;
                     break;
                 } else {
                     std.log.info("Client disconnected: {d}", .{epoll_event.data.fd});
@@ -294,7 +293,7 @@ pub fn run(self: *Self) !void {
 
             if (!self.display.is_running()) {
                 std.log.info("Server: display closed, shutting down the server...", .{});
-                running = false;
+                self.running = false;
                 break;
             }
         }
@@ -486,3 +485,49 @@ pub fn get_colormap(self: *Self, colormap_id: x11.ColormapId) ?phx.Colormap {
 pub fn get_glx_context(self: *Self, glx_context_id: phx.Glx.ContextId) ?phx.GlxContext {
     return self.client_manager.get_resource_of_type(glx_context_id.to_id(), .glx_context);
 }
+
+pub fn handle_events(self: *Self) void {
+    self.events_mutex.lock();
+    defer self.events_mutex.unlock();
+
+    var buf: [@sizeOf(u64)]u8 = undefined;
+    _ = std.posix.read(self.event_fd, &buf) catch unreachable;
+
+    for (self.events.items) |*event| {
+        switch (event.*) {
+            .shutdown => self.running = false,
+            .vsync_finished => |vsync_finished| {
+                _ = vsync_finished;
+            },
+            .mouse_move => |mouse_move| {
+                _ = mouse_move;
+            },
+        }
+    }
+    self.events.clearRetainingCapacity();
+}
+
+/// Thread-safe
+pub fn append_event(self: *Self, event: *const Event) !void {
+    self.events_mutex.lock();
+    defer self.events_mutex.unlock();
+
+    try self.events.append(self.allocator, event.*);
+    const value: u64 = 1;
+    _ = std.posix.write(self.event_fd, std.mem.bytesAsSlice(u8, std.mem.asBytes(&value))) catch unreachable;
+}
+
+pub const Event = union(enum) {
+    shutdown: void,
+    vsync_finished: VsyncFinishedEvent,
+    mouse_move: MouseMoveEvent,
+};
+
+pub const VsyncFinishedEvent = struct {
+    timestamp_sec: f64,
+};
+
+pub const MouseMoveEvent = struct {
+    x: i32,
+    y: i32,
+};

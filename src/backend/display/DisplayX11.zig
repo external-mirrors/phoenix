@@ -10,7 +10,7 @@ const Self = @This();
 // TODO:
 const gl_debug = builtin.mode == .Debug;
 
-event_fd: std.posix.fd_t,
+server: *phx.Server,
 allocator: std.mem.Allocator,
 connection: *c.xcb_connection_t,
 root_window: c.xcb_window_t,
@@ -26,7 +26,7 @@ running: bool,
 
 // No need to explicitly cleanup all x11 resources on failure, xcb_disconnect will do that (server-side)
 
-pub fn init(event_fd: std.posix.fd_t, allocator: std.mem.Allocator) !Self {
+pub fn init(server: *phx.Server, allocator: std.mem.Allocator) !Self {
     const connection = c.xcb_connect(null, null) orelse return error.FailedToConnectToXServer;
     errdefer c.xcb_disconnect(connection);
 
@@ -61,7 +61,7 @@ pub fn init(event_fd: std.posix.fd_t, allocator: std.mem.Allocator) !Self {
         return error.FailedToCreateRootWindow;
     }
 
-    var graphics = try phx.Graphics.create_egl(width, height, c.EGL_PLATFORM_XCB_EXT, c.EGL_PLATFORM_XCB_SCREEN_EXT, connection, window_id, gl_debug, allocator);
+    var graphics = try phx.Graphics.create_egl(server, width, height, c.EGL_PLATFORM_XCB_EXT, c.EGL_PLATFORM_XCB_SCREEN_EXT, connection, window_id, gl_debug, allocator);
     errdefer graphics.destroy();
 
     const map_cookie = c.xcb_map_window_checked(connection, window_id);
@@ -81,7 +81,7 @@ pub fn init(event_fd: std.posix.fd_t, allocator: std.mem.Allocator) !Self {
     _ = c.xcb_change_property(connection, c.XCB_PROP_MODE_REPLACE, window_id, wm_protocols_reply.*.atom, c.XCB_ATOM_ATOM, 32, 1, &wm_delete_window_reply.*.atom);
 
     return .{
-        .event_fd = event_fd,
+        .server = server,
         .allocator = allocator,
         .connection = connection,
         .root_window = window_id,
@@ -525,7 +525,7 @@ fn update_thread(self: *Self) !void {
     self.graphics.make_current_thread_active() catch |err| {
         std.log.err("Failed to make current thread active for graphics!, error: {s}", .{@errorName(err)});
         self.running = false;
-        self.signal_event_fd();
+        self.signal_server_shutdown();
         return;
     };
 
@@ -546,7 +546,7 @@ fn update_thread(self: *Self) !void {
                     if (client_message.data.data32[0] == self.wm_delete_window_atom) {
                         std.log.info("DisplayX11: window closed", .{});
                         self.running = false;
-                        self.signal_event_fd();
+                        self.signal_server_shutdown();
                         break;
                     }
                 },
@@ -574,7 +574,8 @@ fn update_thread(self: *Self) !void {
     };
 }
 
-fn signal_event_fd(self: *Self) void {
-    const value: u64 = 1;
-    _ = std.posix.write(self.event_fd, std.mem.bytesAsSlice(u8, std.mem.asBytes(&value))) catch unreachable;
+fn signal_server_shutdown(self: *Self) void {
+    self.server.append_event(&.{ .shutdown = {} }) catch {
+        std.log.err("Failed to add shutdown event to server", .{});
+    };
 }

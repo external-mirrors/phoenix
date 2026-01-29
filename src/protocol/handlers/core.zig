@@ -33,6 +33,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .query_pointer => query_pointer(request_context),
         .get_input_focus => get_input_focus(request_context),
         .open_font => open_font(request_context),
+        .list_fonts => list_fonts(request_context),
         .create_pixmap => create_pixmap(request_context),
         .free_pixmap => free_pixmap(request_context),
         .create_gc => create_gc(request_context),
@@ -911,6 +912,34 @@ fn open_font(request_context: phx.RequestContext) !void {
     std.log.err("TODO: Implement OpenFont", .{});
 }
 
+fn list_fonts(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.ListFonts, request_context.allocator);
+    defer req.deinit();
+
+    const supported_font_names = [_][]const u8{
+        "fixed",
+        "cursor",
+    };
+
+    var strings: [2]String8WithLength = undefined;
+    var num_strings: usize = 0;
+
+    for (supported_font_names) |supported_font_name| {
+        if (phx.pattern.pattern_match(supported_font_name, req.request.pattern.items)) {
+            strings[num_strings] = .{
+                .data = .{ .items = @constCast(supported_font_name) },
+            };
+            num_strings += 1;
+        }
+    }
+
+    var rep = Reply.ListFonts{
+        .sequence_number = request_context.sequence_number,
+        .names = .{ .items = &strings },
+    };
+    try request_context.client.write_reply(&rep);
+}
+
 fn create_pixmap(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreatePixmap, request_context.allocator);
     defer req.deinit();
@@ -1475,7 +1504,7 @@ const RevertTo = enum(x11.Card8) {
 };
 
 const String8WithLength = struct {
-    length: x11.Card8,
+    length: x11.Card8 = 0,
     data: x11.ListOf(x11.Card8, .{ .length_field = "length" }),
 };
 
@@ -1701,6 +1730,16 @@ pub const Request = struct {
         pad3: x11.AlignmentPadding = .{},
     };
 
+    pub const ListFonts = struct {
+        opcode: phx.opcode.Major = .list_fonts,
+        pad1: x11.Card8,
+        length: x11.Card16,
+        max_names: x11.Card16,
+        length_of_pattern: x11.Card16,
+        pattern: x11.ListOf(x11.Card8, .{ .length_field = "length_of_pattern" }),
+        pad2: x11.AlignmentPadding = .{},
+    };
+
     pub const CreatePixmap = struct {
         opcode: phx.opcode.Major = .create_pixmap,
         depth: x11.Card8,
@@ -1923,6 +1962,17 @@ pub const Reply = struct {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         focused_window: x11.WindowId,
         pad1: [20]x11.Card8 = @splat(0),
+    };
+
+    pub const ListFonts = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        num_strs: x11.Card16 = 0,
+        pad2: [22]x11.Card8 = @splat(0),
+        names: x11.ListOf(String8WithLength, .{ .length_field = "num_strs" }),
+        pad3: x11.AlignmentPadding = .{},
     };
 
     pub const QueryExtension = struct {

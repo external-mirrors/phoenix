@@ -58,6 +58,7 @@ pub const Geometry = @import("misc/Geometry.zig");
 pub const Version = @import("misc/Version.zig");
 pub const fixed = @import("misc/fixed.zig");
 pub const time = @import("misc/time.zig");
+pub const pattern = @import("misc/pattern.zig");
 
 pub const keysym = @import("keyboard/keysym.zig");
 pub const KeySym = keysym.KeySym;

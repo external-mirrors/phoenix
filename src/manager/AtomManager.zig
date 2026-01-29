@@ -74,7 +74,8 @@ test "get atom" {
     defer atom_manager.deinit();
 
     try std.testing.expect(atom_manager.get_atom_name_by_id(@enumFromInt(0)) == null);
-    try std.testing.expectEqualSlices(u8, "PRIMARY", atom_manager.get_atom_name_by_id(.primary).?);
-    try std.testing.expectEqualSlices(u8, "WM_TRANSIENT_FOR", atom_manager.get_atom_name_by_id(.wm_transient_for).?);
-    try std.testing.expectEqual(.bitmap, atom_manager.get_atom_by_name("BITMAP"));
+    try std.testing.expectEqualSlices(u8, "PRIMARY", atom_manager.get_atom_name_by_id(.PRIMARY).?);
+    try std.testing.expectEqualSlices(u8, "WM_TRANSIENT_FOR", atom_manager.get_atom_name_by_id(.WM_TRANSIENT_FOR).?);
+    try std.testing.expectEqual(.BITMAP, atom_manager.get_atom_by_name("BITMAP").?.id);
+    try std.testing.expectEqual(null, atom_manager.get_atom_by_name("invalid"));
 }

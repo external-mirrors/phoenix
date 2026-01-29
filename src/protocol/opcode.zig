@@ -21,6 +21,7 @@ pub const Major = enum(x11.Card8) {
     query_pointer = 38,
     get_input_focus = 43,
     open_font = 45,
+    list_fonts = 49,
     create_pixmap = 53,
     free_pixmap = 54,
     create_gc = 55,

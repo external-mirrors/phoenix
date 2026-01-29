@@ -344,13 +344,17 @@ fn get_monitors(request_context: phx.RequestContext) !void {
     var output_ids = try request_context.allocator.alloc(OutputId, request_context.server.screen_resources.crtcs.items.len);
     defer request_context.allocator.free(output_ids);
 
+    var num_monitors: usize = 0;
+
     for (request_context.server.screen_resources.crtcs.items, 0..) |*crtc, i| {
+        if (req.request.get_active and crtc.status != .connected)
+            continue;
+
         const monitor_name_atom = try request_context.server.atom_manager.get_atom_by_name_create_if_not_exists(crtc.name);
         const active_mode = crtc.get_active_mode();
 
-        output_ids[i] = crtc.id.to_output_id();
-
-        monitors[i] = .{
+        output_ids[num_monitors] = crtc.id.to_output_id();
+        monitors[num_monitors] = .{
             .name = monitor_name_atom.id,
             .primary = if (request_context.server.screen_resources.primary_crtc_index) |primary_crtc_index| primary_crtc_index == i else false,
             .automatic = true,
@@ -362,13 +366,15 @@ fn get_monitors(request_context: phx.RequestContext) !void {
             .height_in_millimeters = crtc.height_mm,
             .outputs = .{ .items = output_ids[i .. i + 1] },
         };
+
+        num_monitors += 1;
     }
 
     var rep = Reply.GetMonitors{
         .sequence_number = request_context.sequence_number,
         .timestamp = request_context.server.screen_resources.timestamp,
-        .num_outputs = @intCast(output_ids.len),
-        .monitors = .{ .items = monitors },
+        .num_outputs = @intCast(num_monitors),
+        .monitors = .{ .items = monitors[0..num_monitors] },
     };
     try request_context.client.write_reply(&rep);
 }

@@ -935,7 +935,7 @@ fn list_fonts(request_context: phx.RequestContext) !void {
 
     var rep = Reply.ListFonts{
         .sequence_number = request_context.sequence_number,
-        .names = .{ .items = &strings },
+        .names = .{ .items = strings[0..num_strings] },
     };
     try request_context.client.write_reply(&rep);
 }

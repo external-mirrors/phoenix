@@ -1782,7 +1782,7 @@ pub const Request = struct {
     };
 };
 
-const Reply = struct {
+pub const Reply = struct {
     pub const GetWindowAttributes = struct {
         reply_type: phx.reply.ReplyType = .reply,
         backing_store: BackingStore,

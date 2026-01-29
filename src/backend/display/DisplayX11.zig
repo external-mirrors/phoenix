@@ -514,6 +514,7 @@ pub fn get_screen_resources(_: *Self, timestamp: x11.Timestamp, allocator: std.m
         .modes = modes,
     });
 
+    screen_resources.primary_crtc_index = 0;
     return screen_resources;
 }
 

@@ -209,7 +209,7 @@ pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator)
     if (fsr.num_bytes_read != request_length)
         return error.InvalidRequestLength;
 
-    std.log.info("{s} request: {s}", .{ @typeName(T), x11.stringify_fmt(req_data) });
+    std.log.debug("{s} request: {s}", .{ @typeName(T), x11.stringify_fmt(req_data) });
     return phx.message.Request(T).init(&req_data, &arena);
 }
 
@@ -233,7 +233,7 @@ pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const phx.m
     if (@typeInfo(@TypeOf(reply_data)) != .pointer)
         @compileError("Expected reply data to be a pointer");
 
-    std.log.info("{s} reply: {s}", .{ @typeName(@TypeOf(reply_data.*)), x11.stringify_fmt(reply_data.*) });
+    //std.log.info("{s} reply: {s}", .{ @typeName(@TypeOf(reply_data.*)), x11.stringify_fmt(reply_data.*) });
     const num_bytes_written_before = self.write_buffer.count;
     try phx.reply.write_reply(@TypeOf(reply_data.*), reply_data, self.write_buffer.writer());
     // The X11 protocol says that replies have to be at least 32-bytes
@@ -260,7 +260,7 @@ pub fn write_error(self: *Self, request_context: phx.RequestContext, error_type:
 /// Also flushes the write buffer
 pub fn write_event(self: *Self, ev: *phx.event.Event) !void {
     ev.any.sequence_number = self.sequence_number;
-    std.log.info("Replying with event: {d}", .{@intFromEnum(ev.any.code)});
+    std.log.debug("Replying with event: {d}", .{@intFromEnum(ev.any.code)});
     try self.write_buffer.write(std.mem.asBytes(ev));
     try self.flush_write_buffer();
 }
@@ -271,7 +271,7 @@ pub fn write_event_extension(self: *Self, ev: anytype) !void {
         @compileError("Expected event data to be a pointer");
 
     ev.sequence_number = self.sequence_number;
-    std.log.info("Replying with event: {s}", .{x11.stringify_fmt(ev)});
+    std.log.debug("Replying with event: {s}", .{x11.stringify_fmt(ev)});
     try self.write_reply(ev);
     try self.flush_write_buffer();
 }

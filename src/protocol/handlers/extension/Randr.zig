@@ -25,6 +25,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .get_screen_resources_current => get_screen_resources(Request.GetScreenResourcesCurrent, Reply.GetScreenResourcesCurrent, request_context),
         .get_crtc_transform => get_crtc_transform(request_context),
         .get_output_primary => get_output_primary(request_context),
+        .get_monitors => get_monitors(request_context),
     };
 }
 
@@ -328,6 +329,50 @@ fn get_output_primary(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn get_monitors(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GetMonitors, request_context.allocator);
+    defer req.deinit();
+
+    _ = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in RandrGetMonitors request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+
+    var monitors = try request_context.allocator.alloc(MonitorInfo, request_context.server.screen_resources.crtcs.items.len);
+    defer request_context.allocator.free(monitors);
+
+    var output_ids = try request_context.allocator.alloc(OutputId, request_context.server.screen_resources.crtcs.items.len);
+    defer request_context.allocator.free(output_ids);
+
+    for (request_context.server.screen_resources.crtcs.items, 0..) |*crtc, i| {
+        const monitor_name_atom = try request_context.server.atom_manager.get_atom_by_name_create_if_not_exists(crtc.name);
+        const active_mode = crtc.get_active_mode();
+
+        output_ids[i] = crtc.id.to_output_id();
+
+        monitors[i] = .{
+            .name = monitor_name_atom.id,
+            .primary = if (request_context.server.screen_resources.primary_crtc_index) |primary_crtc_index| primary_crtc_index == i else false,
+            .automatic = true,
+            .x = @intCast(crtc.x),
+            .y = @intCast(crtc.y),
+            .width = @intCast(active_mode.width),
+            .height = @intCast(active_mode.height),
+            .width_in_millimeters = crtc.width_mm,
+            .height_in_millimeters = crtc.height_mm,
+            .outputs = .{ .items = output_ids[i .. i + 1] },
+        };
+    }
+
+    var rep = Reply.GetMonitors{
+        .sequence_number = request_context.sequence_number,
+        .timestamp = request_context.server.screen_resources.timestamp,
+        .num_outputs = @intCast(output_ids.len),
+        .monitors = .{ .items = monitors },
+    };
+    try request_context.client.write_reply(&rep);
+}
+
 fn crtc_get_rotation(crtc: *const phx.Crtc) Rotation {
     var rotation = Rotation{};
 
@@ -407,7 +452,7 @@ fn screen_resource_create_mode_infos(screen_resources: *const phx.ScreenResource
         try mode_infos_with_name.append_mode(preferred_mode);
 
         for (crtc.modes) |*mode| {
-            if(mode != preferred_mode)
+            if (mode != preferred_mode)
                 try mode_infos_with_name.append_mode(mode);
         }
     }
@@ -484,6 +529,7 @@ const MinorOpcode = enum(x11.Card8) {
     get_screen_resources_current = 25,
     get_crtc_transform = 27,
     get_output_primary = 31,
+    get_monitors = 42,
 };
 
 pub const CrtcId = enum(x11.Card32) {
@@ -637,6 +683,20 @@ pub const Filter = enum {
     }
 };
 
+const MonitorInfo = struct {
+    name: x11.AtomId,
+    primary: bool,
+    automatic: bool,
+    num_outputs: x11.Card16 = 0,
+    x: i16,
+    y: i16,
+    width: x11.Card16,
+    height: x11.Card16,
+    width_in_millimeters: x11.Card32,
+    height_in_millimeters: x11.Card32,
+    outputs: x11.ListOf(OutputId, .{ .length_field = "num_outputs" }),
+};
+
 pub const Request = struct {
     pub const QueryVersion = struct {
         major_opcode: phx.opcode.Major = .randr,
@@ -718,6 +778,16 @@ pub const Request = struct {
         minor_opcode: MinorOpcode = .get_output_primary,
         length: x11.Card16,
         window: x11.WindowId,
+    };
+
+    pub const GetMonitors = struct {
+        major_opcode: phx.opcode.Major = .randr,
+        minor_opcode: MinorOpcode = .get_monitors,
+        length: x11.Card16,
+        window: x11.WindowId,
+        get_active: bool,
+        pad1: x11.Card8,
+        pad2: x11.Card16,
     };
 };
 
@@ -877,6 +947,18 @@ const Reply = struct {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         output: OutputId,
         pad2: [20]x11.Card8 = @splat(0),
+    };
+
+    pub const GetMonitors = struct {
+        type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        timestamp: x11.Timestamp,
+        num_monitors: x11.Card32 = 0,
+        num_outputs: x11.Card32,
+        pad2: [12]x11.Card8 = @splat(0),
+        monitors: x11.ListOf(MonitorInfo, .{ .length_field = "num_monitors" }),
     };
 };
 

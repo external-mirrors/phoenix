@@ -19,6 +19,7 @@ resource_id_base: u32,
 sequence_number: u16,
 sequence_number_counter: u16,
 resources: phx.ResourceHashMap,
+client_connected_timestamp_sec: f64,
 
 listening_to_windows: std.ArrayList(*phx.Window),
 
@@ -56,6 +57,7 @@ pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, server
         .sequence_number = 1,
         .sequence_number_counter = 1,
         .resources = .init(allocator),
+        .client_connected_timestamp_sec = phx.time.clock_get_monotonic_seconds(),
 
         .listening_to_windows = .init(allocator),
 
@@ -260,7 +262,7 @@ pub fn write_error(self: *Self, request_context: phx.RequestContext, error_type:
 /// Also flushes the write buffer
 pub fn write_event(self: *Self, ev: *phx.event.Event) !void {
     ev.any.sequence_number = self.sequence_number;
-    std.log.debug("Replying with event: {d}", .{@intFromEnum(ev.any.code)});
+    std.log.debug("Replying with event: {s}", .{x11.stringify_fmt(ev)});
     try self.write_buffer.write(std.mem.asBytes(ev));
     try self.flush_write_buffer();
 }
@@ -273,6 +275,16 @@ pub fn write_event_extension(self: *Self, ev: anytype) !void {
     ev.sequence_number = self.sequence_number;
     std.log.debug("Replying with event: {s}", .{x11.stringify_fmt(ev)});
     try self.write_reply(ev);
+    try self.flush_write_buffer();
+}
+
+pub fn write_event_static_size(self: *Self, ev: anytype) !void {
+    if (@typeInfo(@TypeOf(ev)) != .pointer)
+        @compileError("Expected event data to be a pointer");
+
+    ev.sequence_number = self.sequence_number;
+    std.log.debug("Replying with event: {s}", .{x11.stringify_fmt(ev)});
+    try self.write_buffer.write(std.mem.asBytes(ev));
     try self.flush_write_buffer();
 }
 

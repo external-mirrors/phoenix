@@ -308,6 +308,7 @@ inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, eve
         .selection_clear => false, // Clients cant select to listen to this, they always listen to it and it's only sent to a single client
         .colormap_notify => event_mask.colormap_change,
         .generic_event_extension => false, // TODO:
+        else => false,
     };
 }
 
@@ -325,6 +326,7 @@ inline fn core_event_should_propagate_to_parent_substructure_notify(event_code: 
         .selection_clear => false,
         .colormap_notify => false,
         .generic_event_extension => false, // TODO:
+        else => false,
     };
 }
 
@@ -380,6 +382,8 @@ pub fn write_extension_event_to_event_listeners(self: *const Self, ev: anytype) 
     //const event_minor_opcode = ev.get_minor_opcode();
     const event_mask = ev.to_event_mask();
 
+    ev.window = self.id;
+
     std.log.info("write extension event to client, num listeners: {d}", .{self.extension_event_listeners.items.len});
     for (self.extension_event_listeners.items) |*event_listener| {
         if (event_listener.extension_major_opcode != extension_major_opcode) {
@@ -392,16 +396,34 @@ pub fn write_extension_event_to_event_listeners(self: *const Self, ev: anytype) 
             continue;
         }
 
-        ev.event_id = @enumFromInt(event_listener.event_id.to_int());
+        if (comptime @hasField(@TypeOf(ev.*), "length")) {
+            ev.event_id = @enumFromInt(event_listener.event_id.to_int());
 
-        event_listener.client.write_event_extension(ev) catch |err| {
-            // TODO: What should be done if this happens? disconnect the client?
-            std.log.err(
-                "Failed to write (buffer) extension event {d} to client {d}, error: {s}",
-                .{ @intFromEnum(phx.event.EventCode.generic_event_extension), event_listener.client.connection.stream.handle, @errorName(err) },
-            );
-            continue;
-        };
+            event_listener.client.write_event_extension(ev) catch |err| {
+                // TODO: What should be done if this happens? disconnect the client?
+                std.log.err(
+                    "Failed to write (buffer) extension event {d} to client {d}, error: {s}",
+                    .{ @intFromEnum(phx.event.EventCode.generic_event_extension), event_listener.client.connection.stream.handle, @errorName(err) },
+                );
+                continue;
+            };
+        } else {
+            event_listener.client.write_event_static_size(ev) catch |err| {
+                // TODO: What should be done if this happens? disconnect the client?
+                std.log.err(
+                    "Failed to write event {d} to client {d}, error: {s}",
+                    .{ @intFromEnum(ev.code), event_listener.client.connection.stream.handle, @errorName(err) },
+                );
+                continue;
+            };
+        }
+    }
+}
+
+pub fn write_extension_event_to_event_listeners_recursive(self: *const Self, ev: anytype) void {
+    self.write_extension_event_to_event_listeners(ev);
+    for (self.children.items) |child| {
+        child.write_extension_event_to_event_listeners_recursive(ev);
     }
 }
 

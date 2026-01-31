@@ -1,5 +1,6 @@
 const std = @import("std");
-const x11 = @import("x11.zig");
+const phx = @import("../phoenix.zig");
+const x11 = phx.x11;
 
 pub const EventCode = enum(x11.Card8) {
     key_press = 2,
@@ -17,7 +18,12 @@ pub const EventCode = enum(x11.Card8) {
     // TODO: Clients need support for this (Generic Event Extension), but clients like mesa with opengl graphics expect present events
     // with this even when they dont tell the server it supports this
     generic_event_extension = 35,
+
+    randr_screen_change_notify = randr_first_event + 0,
+    randr_notify = randr_first_event + 1,
 };
+
+pub const randr_first_event: x11.Card8 = 50;
 
 pub const AnyEvent = extern struct {
     code: EventCode,
@@ -199,7 +205,7 @@ pub const PropertyNotifyEvent = extern struct {
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
     window: x11.WindowId,
-    atom: x11.AtomId,
+    property_name: x11.AtomId,
     time: x11.Timestamp,
     state: enum(x11.Card8) {
         new_value = 0,

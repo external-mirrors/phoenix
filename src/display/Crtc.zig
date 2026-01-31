@@ -4,6 +4,8 @@ const x11 = phx.x11;
 
 const Self = @This();
 
+// TODO: When adding "Border" property make it a pending property
+
 id: phx.Randr.CrtcId,
 x: i32,
 y: i32,
@@ -16,6 +18,8 @@ active_mode_index: usize,
 preferred_mode_index: usize,
 name: []u8,
 modes: []Mode,
+
+config_changed_timestamp: x11.Timestamp,
 
 pending_filter: phx.Randr.Filter = .bilinear,
 pending_transform: phx.Randr.Transform = .{
@@ -176,9 +180,9 @@ pub fn append_property(
 
 pub fn delete_property(self: *Self, property_name: phx.Atom, ignore_immutable: bool) bool {
     if (!ignore_immutable and is_property_immutable(property_name))
-        return error.AttemptToMutateImmutableProperty;
+        return false;
 
-    return self.properties.remove(property_name);
+    return self.properties.remove(property_name.id);
 }
 
 pub fn is_property_immutable(property_name: phx.Atom) bool {

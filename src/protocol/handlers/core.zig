@@ -688,7 +688,7 @@ fn change_property(request_context: phx.RequestContext) !void {
     var property_notify_event = phx.event.Event{
         .property_notify = .{
             .window = req.request.window,
-            .atom = req.request.property,
+            .property_name = req.request.property,
             .time = request_context.server.get_timestamp_milliseconds(),
             .state = .new_value,
         },
@@ -784,17 +784,18 @@ fn get_property(request_context: phx.RequestContext) !void {
         },
     }
 
-    if (req.request.delete) {
-        _ = window.delete_property(property_atom);
-        var property_notify_event = phx.event.Event{
-            .property_notify = .{
-                .window = req.request.window,
-                .atom = property_atom.id,
-                .time = request_context.server.get_timestamp_milliseconds(),
-                .state = .deleted,
-            },
-        };
-        window.write_core_event_to_event_listeners(&property_notify_event);
+    if (req.request.delete and bytes_remaining_after_read == 0) {
+        if (window.delete_property(property_atom)) {
+            var property_notify_event = phx.event.Event{
+                .property_notify = .{
+                    .window = req.request.window,
+                    .property_name = property_atom.id,
+                    .time = request_context.server.get_timestamp_milliseconds(),
+                    .state = .deleted,
+                },
+            };
+            window.write_core_event_to_event_listeners(&property_notify_event);
+        }
     }
 }
 
@@ -1083,6 +1084,7 @@ fn query_extension(request_context: phx.RequestContext) !void {
     } else if (std.mem.eql(u8, req.request.name.items, "RANDR")) {
         rep.present = true;
         rep.major_opcode = @intFromEnum(phx.opcode.Major.randr);
+        rep.first_event = phx.event.randr_first_event;
         rep.first_error = phx.err.randr_first_error;
     } else if (std.mem.eql(u8, req.request.name.items, "Generic Event Extension")) {
         rep.present = true;

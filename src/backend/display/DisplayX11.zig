@@ -454,7 +454,7 @@ fn get_keyboard_map_key_actions(map: *const c.xcb_xkb_get_map_map_t, num_key_act
 // }
 
 pub fn get_screen_resources(_: *Self, timestamp: x11.Timestamp, allocator: std.mem.Allocator) !phx.ScreenResources {
-    var screen_resources = phx.ScreenResources.init(timestamp, timestamp, allocator);
+    var screen_resources = phx.ScreenResources.init(timestamp, allocator);
     errdefer screen_resources.deinit();
 
     // Since we have a virtual monitor (a window) it doesn't have any name, so we set it to whatever
@@ -512,6 +512,7 @@ pub fn get_screen_resources(_: *Self, timestamp: x11.Timestamp, allocator: std.m
         .preferred_mode_index = 1,
         .name = crtc_name,
         .modes = modes,
+        .config_changed_timestamp = timestamp,
     });
 
     screen_resources.primary_crtc_index = 0;

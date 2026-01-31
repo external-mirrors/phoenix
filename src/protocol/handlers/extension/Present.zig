@@ -304,7 +304,7 @@ const Event = struct {
 
         pub fn get_extension_major_opcode(self: *const CompleteNotify) phx.opcode.Major {
             _ = self;
-            return phx.opcode.Major.present;
+            return .present;
         }
 
         pub fn to_event_mask(self: *const CompleteNotify) u32 {

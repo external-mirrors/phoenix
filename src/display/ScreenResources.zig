@@ -9,15 +9,21 @@ pub const max_outputs: usize = 32;
 
 crtcs: std.ArrayList(phx.Crtc),
 primary_crtc_index: ?u8 = null,
-timestamp: x11.Timestamp,
-config_timestamp: x11.Timestamp,
+config_set_timestamp: x11.Timestamp,
+config_changed_timestamp: x11.Timestamp,
+screen_changed_timestamp: x11.Timestamp,
+list_of_monitors_last_changed_timestamp: x11.Timestamp,
+config_changed_timestamp_sec: f64,
 allocator: std.mem.Allocator,
 
-pub fn init(timestamp: x11.Timestamp, config_timestamp: x11.Timestamp, allocator: std.mem.Allocator) Self {
+pub fn init(timestamp: x11.Timestamp, allocator: std.mem.Allocator) Self {
     return .{
         .crtcs = .init(allocator),
-        .timestamp = timestamp,
-        .config_timestamp = config_timestamp,
+        .config_set_timestamp = timestamp,
+        .config_changed_timestamp = timestamp,
+        .screen_changed_timestamp = timestamp,
+        .list_of_monitors_last_changed_timestamp = timestamp,
+        .config_changed_timestamp_sec = phx.time.clock_get_monotonic_seconds(),
         .allocator = allocator,
     };
 }

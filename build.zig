@@ -131,7 +131,7 @@ fn generate_docs(install_path: []const u8) !void {
     try generate_protocol_docs(phx.Xkb, &install_path_dir);
     try generate_protocol_docs(phx.GenericEvent, &install_path_dir);
 
-    // TODO: Also generate replies, errors and events
+    // TODO: Also generate replies, errors and events (including phx.event.Event)
 }
 
 fn generate_protocol_docs(comptime file_struct: type, install_path_dir: *std.fs.Dir) !void {

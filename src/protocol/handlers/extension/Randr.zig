@@ -19,6 +19,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .get_screen_resources => get_screen_resources(Request.GetScreenResources, Reply.GetScreenResources, request_context),
         .get_output_info => get_output_info(request_context),
         .list_output_properties => list_output_properties(request_context),
+        .get_output_property => get_output_property(request_context),
         .get_crtc_info => get_crtc_info(request_context),
         .get_crtc_gamma_size => get_crtc_gamma_size(request_context),
         .get_crtc_gamma => get_crtc_gamma(request_context),
@@ -52,6 +53,8 @@ fn select_input(request_context: phx.RequestContext) !void {
     const client_version = request_context.client.extension_versions.randr.to_int();
     const version_1_2 = (phx.Version{ .major = 1, .minor = 2 }).to_int();
     const version_1_4 = (phx.Version{ .major = 1, .minor = 4 }).to_int();
+    const version_1_6 = (phx.Version{ .major = 1, .minor = 6 }).to_int();
+    const supports_non_desktop = client_version >= version_1_6;
     const event_id_none: x11.ResourceId = @enumFromInt(0);
 
     if (client_version < version_1_2) {
@@ -83,6 +86,66 @@ fn select_input(request_context: phx.RequestContext) !void {
             return;
         try window.add_extension_event_listener(request_context.client, event_id_none, .randr, @as(u16, @bitCast(req.request.enable)));
     }
+
+    const screen_config_changed_since_connect = request_context.server.screen_resources.config_changed_timestamp_sec > request_context.client.client_connected_timestamp_sec;
+
+    if (screen_config_changed_since_connect) {
+        if (req.request.enable.screen_change) {
+            const screen_info = request_context.server.screen_resources.create_screen_info();
+            var screen_change_notify = Event.ScreenChangeNotify{
+                .rotation = .{ .rotation_0 = true },
+                .screen_changed_timestamp = request_context.server.screen_resources.screen_changed_timestamp,
+                .config_changed_timestamp = request_context.server.screen_resources.config_changed_timestamp,
+                .root_window = request_context.server.root_window.id,
+                .window = req.request.window,
+                .size_id = 0,
+                .subpixel_order = .unknown,
+                .width = @intCast(screen_info.width),
+                .height = @intCast(screen_info.height),
+                .width_mm = @intCast(screen_info.width_mm),
+                .height_mm = @intCast(screen_info.height_mm),
+            };
+            try request_context.client.write_event_static_size(&screen_change_notify);
+        }
+
+        if (req.request.enable.crtc_change) {
+            for (request_context.server.screen_resources.crtcs.items) |*crtc| {
+                const active_mode = crtc.get_active_mode();
+                var crtc_change_notify = Event.CrtcChangeNotify{
+                    .crtc_changed_timestamp = crtc.config_changed_timestamp,
+                    .window = req.request.window,
+                    .crtc = crtc.id,
+                    .mode = active_mode.id,
+                    .rotation = crtc_get_rotation(Rotation(x11.Card16), crtc),
+                    .x = @intCast(crtc.x),
+                    .y = @intCast(crtc.y),
+                    .width = @intCast(active_mode.width),
+                    .height = @intCast(active_mode.height),
+                };
+                try request_context.client.write_event_static_size(&crtc_change_notify);
+            }
+        }
+
+        if (req.request.enable.output_change) {
+            for (request_context.server.screen_resources.crtcs.items) |*crtc| {
+                const active_mode = crtc.get_active_mode();
+                const is_non_desktop = if (crtc.get_property_single_value(x11.Card32, .{ .id = .@"non-desktop" })) |value| value == 1 else false;
+
+                var output_change_notify = Event.OutputChangeNotify{
+                    .output_changed_timestamp = crtc.config_changed_timestamp,
+                    .config_changed_timestamp = request_context.server.screen_resources.config_changed_timestamp,
+                    .window = req.request.window,
+                    .output = crtc.id.to_output_id(),
+                    .crtc = crtc.id,
+                    .mode = active_mode.id,
+                    .rotation = crtc_get_rotation(Rotation(x11.Card16), crtc),
+                    .connection = if (supports_non_desktop and is_non_desktop) .disconnected else crtc_status_to_connect(crtc.status),
+                    .subpixel_order = .unknown,
+                };
+                try request_context.client.write_event_static_size(&output_change_notify);
+            }
+        }
+    }
 }
 
 fn get_screen_resources(comptime RequestType: type, comptime ReplyType: type, request_context: phx.RequestContext) !void {
@@ -105,8 +168,8 @@ fn get_screen_resources(comptime RequestType: type, comptime ReplyType: type, re
 
     var rep = ReplyType{
         .sequence_number = request_context.sequence_number,
-        .timestamp = request_context.server.screen_resources.timestamp,
-        .config_timestamp = request_context.server.screen_resources.config_timestamp,
+        .config_set_timestamp = request_context.server.screen_resources.config_set_timestamp,
+        .config_changed_timestamp = request_context.server.screen_resources.config_changed_timestamp,
         .crtcs = .{ .items = crtc_ids },
         .outputs = .{ .items = output_ids },
         .mode_infos = .{ .items = mode_infos_with_name.mode_infos.items },
@@ -127,11 +190,11 @@ fn get_output_info(request_context: phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .randr_output, @intFromEnum(req.request.output));
     };
 
-    if (req.request.config_timestamp != request_context.server.screen_resources.config_timestamp) {
+    if (req.request.config_timestamp != request_context.server.screen_resources.config_changed_timestamp) {
         var rep = Reply.GetOutputInfo{
             .status = .invalid_config_time,
             .sequence_number = request_context.sequence_number,
-            .timestamp = @enumFromInt(0),
+            .config_set_timestamp = @enumFromInt(0),
             .crtc = @enumFromInt(0),
             .width_mm = 0,
             .height_mm = 0,
@@ -160,7 +223,7 @@ fn get_output_info(request_context: phx.RequestContext) !void {
     var rep = Reply.GetOutputInfo{
         .status = .success,
         .sequence_number = request_context.sequence_number,
-        .timestamp = request_context.server.screen_resources.timestamp,
+        .config_set_timestamp = request_context.server.screen_resources.config_set_timestamp,
         .crtc = crtc.id,
         .width_mm = crtc.width_mm,
         .height_mm = crtc.height_mm,
@@ -201,6 +264,108 @@ fn list_output_properties(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+// Pending property in request is currently ignored since there are not pending properties
+fn get_output_property(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GetOutputProperty, request_context.allocator);
+    defer req.deinit();
+
+    const crtc = request_context.server.screen_resources.get_crtc_by_id(req.request.output.to_crtc_id()) orelse {
+        std.log.err("Received invalid output {d} in RandrGetOutputProperty request", .{req.request.output});
+        return request_context.client.write_error(request_context, .randr_output, @intFromEnum(req.request.output));
+    };
+
+    const property_atom = request_context.server.atom_manager.get_atom_by_id(req.request.property) orelse {
+        std.log.err("Received invalid property atom {d} in RandrGetOutputProperty request", .{req.request.property});
+        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.property));
+    };
+
+    const type_atom_name =
+        if (req.request.type == any_property_type)
+            ""
+        else
+            request_context.server.atom_manager.get_atom_name_by_id(req.request.type) orelse {
+                std.log.err("Received invalid type atom {d} in RandrGetOutputProperty request", .{req.request.type});
+                return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.type));
+            };
+
+    const property = crtc.get_property(property_atom) orelse {
+        const property_atom_name = request_context.server.atom_manager.get_atom_name_by_id(req.request.property) orelse "Unknown";
+        std.log.err("RandrGetOutputProperty: the property atom {d} ({s}) doesn't exist in output {d}, returning empty data", .{ req.request.property, property_atom_name, req.request.output });
+        var rep = Reply.GetOutputPropertyNone{
+            .sequence_number = request_context.sequence_number,
+        };
+        return request_context.client.write_reply(&rep);
+    };
+
+    // TODO: Ensure properties cant get this big
+    const property_size_in_bytes: u32 = @min(property.get_size_in_bytes(), std.math.maxInt(u32));
+
+    if (req.request.type != property.type and req.request.type != any_property_type) {
+        const property_atom_name = request_context.server.atom_manager.get_atom_name_by_id(req.request.property) orelse "Unknown";
+        std.log.err(
+            "RandrGetOutputProperty: the property atom {d} ({s}) exist in output {d} but it's of type {d}, not {d} ({s}) returning empty data",
+            .{ req.request.property, property_atom_name, req.request.output, property.type, req.request.type, type_atom_name },
+        );
+        var rep = Reply.GetOutputPropertyNoData{
+            .sequence_number = request_context.sequence_number,
+            .format = @intCast(property.get_data_type_size() * 8),
+            .type = property.type,
+            .bytes_after = property_size_in_bytes,
+        };
+        return request_context.client.write_reply(&rep);
+    }
+
+    const offset_in_bytes, const overflow_offset = @mulWithOverflow(4, req.request.long_offset);
+    if (overflow_offset != 0) {
+        std.log.err("Received invalid long-offset {d} (overflow) in RandrGetOutputProperty request", .{req.request.long_offset});
+        return request_context.client.write_error(request_context, .value, req.request.long_offset);
+    }
+
+    if (offset_in_bytes > property_size_in_bytes) {
+        std.log.err("Received invalid long-offset {d} (larger than property size {d}) in RandrGetOutputProperty request", .{ req.request.long_offset, property_size_in_bytes / 4 });
+        return request_context.client.write_error(request_context, .value, req.request.long_offset);
+    }
+
+    const length_in_bytes, const overflow_length = @mulWithOverflow(4, req.request.long_length);
+    if (overflow_length != 0) {
+        std.log.err("Received invalid long-length {d} (overflow) in RandrGetOutputProperty request", .{req.request.long_length});
+        return request_context.client.write_error(request_context, .value, req.request.long_length);
+    }
+
+    const bytes_available_to_read = property_size_in_bytes - offset_in_bytes;
+    const num_bytes_to_read = @min(bytes_available_to_read, length_in_bytes);
+    const bytes_remaining_after_read = property_size_in_bytes - (offset_in_bytes + num_bytes_to_read);
+
+    switch (property.item) {
+        inline else => |item| {
+            const property_element_type = std.meta.Elem(@TypeOf(item.items));
+            const offset_in_units = offset_in_bytes / @sizeOf(property_element_type);
+            const num_items_to_read = num_bytes_to_read / @sizeOf(property_element_type);
+
+            var rep = Reply.GetOutputProperty(property_element_type){
+                .sequence_number = request_context.sequence_number,
+                .type = property.type,
+                .bytes_after = bytes_remaining_after_read,
+                .data = .{ .items = item.items[offset_in_units .. offset_in_units + num_items_to_read] },
+            };
+            try request_context.client.write_reply(&rep);
+        },
+    }
+
+    if (req.request.delete and bytes_remaining_after_read == 0) {
+        if (crtc.delete_property(property_atom, false)) {
+            var idle_notify_event = Event.OutputPropertyNotify{
+                .window = @enumFromInt(0),
+                .output = req.request.output,
+                .property_name = property_atom.id,
+                .crtc_changed_timestamp = crtc.config_changed_timestamp,
+                .state = .deleted,
+            };
+            request_context.server.root_window.write_extension_event_to_event_listeners_recursive(&idle_notify_event);
+        }
+    }
+}
+
 fn get_crtc_info(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetCrtcInfo, request_context.allocator);
     defer req.deinit();
@@ -211,11 +376,11 @@ fn get_crtc_info(request_context: phx.RequestContext) !void {
     };
     const active_mode = crtc.get_active_mode();
 
-    if (req.request.config_timestamp != request_context.server.screen_resources.config_timestamp) {
+    if (req.request.config_timestamp != request_context.server.screen_resources.config_changed_timestamp) {
         var rep = Reply.GetCrtcInfo{
             .status = .invalid_config_time,
             .sequence_number = request_context.sequence_number,
-            .timestamp = @enumFromInt(0),
+            .config_set_timestamp = @enumFromInt(0),
             .x = 0,
             .y = 0,
             .width = 0,
@@ -234,13 +399,13 @@ fn get_crtc_info(request_context: phx.RequestContext) !void {
     var rep = Reply.GetCrtcInfo{
         .status = .success,
         .sequence_number = request_context.sequence_number,
-        .timestamp = request_context.server.screen_resources.timestamp,
+        .config_set_timestamp = request_context.server.screen_resources.config_set_timestamp,
         .x = @intCast(crtc.x),
         .y = @intCast(crtc.y),
         .width = @intCast(active_mode.width),
         .height = @intCast(active_mode.height),
         .mode = active_mode.id,
-        .current_rotation = crtc_get_rotation(crtc),
+        .current_rotation = crtc_get_rotation(Rotation(x11.Card16), crtc),
         .possible_rotations = .{
             .rotation_0 = true,
             .rotation_90 = true,
@@ -362,8 +527,8 @@ fn get_monitors(request_context: phx.RequestContext) !void {
             .y = @intCast(crtc.y),
             .width = @intCast(active_mode.width),
             .height = @intCast(active_mode.height),
-            .width_in_millimeters = crtc.width_mm,
-            .height_in_millimeters = crtc.height_mm,
+            .width_mm = crtc.width_mm,
+            .height_mm = crtc.height_mm,
             .outputs = .{ .items = output_ids[i .. i + 1] },
         };
 
@@ -372,15 +537,15 @@ fn get_monitors(request_context: phx.RequestContext) !void {
 
     var rep = Reply.GetMonitors{
         .sequence_number = request_context.sequence_number,
-        .timestamp = request_context.server.screen_resources.timestamp,
+        .list_of_monitors_last_changed_timestamp = request_context.server.screen_resources.list_of_monitors_last_changed_timestamp,
         .num_outputs = @intCast(num_monitors),
         .monitors = .{ .items = monitors[0..num_monitors] },
     };
     try request_context.client.write_reply(&rep);
 }
 
-fn crtc_get_rotation(crtc: *const phx.Crtc) Rotation {
-    var rotation = Rotation{};
+fn crtc_get_rotation(comptime RotationType: type, crtc: *const phx.Crtc) RotationType {
+    var rotation = RotationType{};
 
     switch (crtc.rotation) {
         .rotation_0 => rotation.rotation_0 = true,
@@ -529,6 +694,7 @@ const MinorOpcode = enum(x11.Card8) {
     get_screen_resources = 8,
     get_output_info = 9,
     list_output_properties = 10,
+    get_output_property = 15,
     get_crtc_info = 20,
     get_crtc_gamma_size = 22,
     get_crtc_gamma = 23,
@@ -537,6 +703,9 @@ const MinorOpcode = enum(x11.Card8) {
     get_output_primary = 31,
     get_monitors = 42,
 };
+
+const none: x11.Card32 = 0;
+const any_property_type: x11.AtomId = @enumFromInt(0);
 
 pub const CrtcId = enum(x11.Card32) {
     none = 0,
@@ -634,32 +803,46 @@ const ConfigStatus = enum(x11.Card8) {
     failed = 3,
 };
 
-const Connection = enum(x11.Card8) {
+pub const Connection = enum(x11.Card8) {
     connected = 0,
     disconnected = 1,
     unknown = 2,
 };
 
-const SubPixel = enum(x11.Card8) {
-    unknown = 0,
-    horizontal_rgb = 1,
-    horizontal_bgr = 2,
-    vertical_rgb = 3,
-    vertical_bgr = 4,
-    none = 5,
-};
+pub fn SubPixel(comptime DataType: type) type {
+    return enum(DataType) {
+        unknown = 0,
+        horizontal_rgb = 1,
+        horizontal_bgr = 2,
+        vertical_rgb = 3,
+        vertical_bgr = 4,
+        none = 5,
+    };
+}
 
-// TODO: This isn't x11.Card16 everywhere, for example ScreenChangeNotify which isn't implemented yet
-pub const Rotation = packed struct(x11.Card16) {
-    rotation_0: bool = false,
-    rotation_90: bool = false,
-    rotation_180: bool = false,
-    rotation_270: bool = false,
-    reflect_x: bool = false,
-    reflect_y: bool = false,
+fn UnsignedIntegerType(comptime NumBits: comptime_int) type {
+    return @Type(
+        .{
+            .int = .{
+                .signedness = .unsigned,
+                .bits = NumBits,
+            },
+        },
+    );
+}
 
-    _padding: u10 = 0,
-};
+pub fn Rotation(comptime DataType: type) type {
+    return packed struct(DataType) {
+        rotation_0: bool = false,
+        rotation_90: bool = false,
+        rotation_180: bool = false,
+        rotation_270: bool = false,
+        reflect_x: bool = false,
+        reflect_y: bool = false,
+
+        _padding: UnsignedIntegerType(@bitSizeOf(DataType) - 6) = 0,
+    };
+}
 
 pub const Transform = struct {
     // zig fmt: off
@@ -698,8 +881,8 @@ const MonitorInfo = struct {
     y: i16,
     width: x11.Card16,
     height: x11.Card16,
-    width_in_millimeters: x11.Card32,
-    height_in_millimeters: x11.Card32,
+    width_mm: x11.Card32,
+    height_mm: x11.Card32,
     outputs: x11.ListOf(OutputId, .{ .length_field = "num_outputs" }),
 };
 
@@ -741,6 +924,20 @@ pub const Request = struct {
         minor_opcode: MinorOpcode = .list_output_properties,
         length: x11.Card16,
         output: OutputId,
+    };
+
+    pub const GetOutputProperty = struct {
+        major_opcode: phx.opcode.Major = .randr,
+        minor_opcode: MinorOpcode = .get_output_property,
+        length: x11.Card16,
+        output: OutputId,
+        property: x11.AtomId,
+        type: x11.AtomId,
+        long_offset: x11.Card32,
+        long_length: x11.Card32,
+        delete: bool,
+        pending: bool,
+        pad1: x11.Card16,
     };
 
     pub const GetCrtcInfo = struct {
@@ -813,8 +1010,8 @@ const Reply = struct {
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        timestamp: x11.Timestamp,
-        config_timestamp: x11.Timestamp,
+        config_set_timestamp: x11.Timestamp,
+        config_changed_timestamp: x11.Timestamp,
         num_crtcs: x11.Card16 = 0,
         num_outputs: x11.Card16 = 0,
         num_mode_infos: x11.Card16 = 0,
@@ -834,12 +1031,12 @@ const Reply = struct {
         status: ConfigStatus,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        timestamp: x11.Timestamp,
+        config_set_timestamp: x11.Timestamp,
         crtc: CrtcId,
         width_mm: x11.Card32,
         height_mm: x11.Card32,
         connection: Connection,
-        subpixel_order: SubPixel,
+        subpixel_order: SubPixel(x11.Card8),
         num_crtcs: x11.Card16 = 0,
         num_modes: x11.Card16 = 0,
         num_preferred_modes: x11.Card16,
@@ -862,19 +1059,60 @@ const Reply = struct {
         atoms: x11.ListOf(x11.AtomId, .{ .length_field = "num_atoms" }),
     };
 
+    pub fn GetOutputProperty(comptime DataType: type) type {
+        return struct {
+            reply_type: phx.reply.ReplyType = .reply,
+            format: x11.Card8 = @sizeOf(DataType),
+            sequence_number: x11.Card16,
+            length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+            type: x11.AtomId,
+            bytes_after: x11.Card32,
+            data_length: x11.Card32 = 0,
+            pad1: [12]x11.Card8 = @splat(0),
+            data: x11.ListOf(DataType, .{ .length_field = "data_length" }),
+            pad2: x11.AlignmentPadding = .{},
+        };
+    }
+
+    pub const GetOutputPropertyCard8 = GetOutputProperty(x11.Card8);
+    pub const GetOutputPropertyCard16 = GetOutputProperty(x11.Card16);
+    pub const GetOutputPropertyCard32 = GetOutputProperty(x11.Card32);
+
+    pub const GetOutputPropertyNone = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        format: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        type: x11.AtomId = @enumFromInt(none),
+        bytes_after: x11.Card32 = 0,
+        data_length: x11.Card32 = 0,
+        pad1: [12]x11.Card8 = @splat(0),
+    };
+
+    pub const GetOutputPropertyNoData = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        format: x11.Card8,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        type: x11.AtomId,
+        bytes_after: x11.Card32 = 0,
+        data_length: x11.Card32 = 0,
+        pad1: [12]x11.Card8 = @splat(0),
+    };
+
     pub const GetCrtcInfo = struct {
         type: phx.reply.ReplyType = .reply,
         status: ConfigStatus,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        timestamp: x11.Timestamp,
+        config_set_timestamp: x11.Timestamp,
         x: i16,
         y: i16,
         width: x11.Card16,
         height: x11.Card16,
         mode: ModeId,
-        current_rotation: Rotation,
-        possible_rotations: Rotation,
+        current_rotation: Rotation(x11.Card16),
+        possible_rotations: Rotation(x11.Card16),
         num_outputs: x11.Card16 = 0,
         num_possible_outputs: x11.Card16 = 0,
         outputs: x11.ListOf(OutputId, .{ .length_field = "num_outputs" }),
@@ -908,8 +1146,8 @@ const Reply = struct {
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        timestamp: x11.Timestamp,
-        config_timestamp: x11.Timestamp,
+        config_set_timestamp: x11.Timestamp,
+        config_changed_timestamp: x11.Timestamp,
         num_crtcs: x11.Card16 = 0,
         num_outputs: x11.Card16 = 0,
         num_mode_infos: x11.Card16 = 0,
@@ -960,7 +1198,7 @@ const Reply = struct {
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        timestamp: x11.Timestamp,
+        list_of_monitors_last_changed_timestamp: x11.Timestamp,
         num_monitors: x11.Card32 = 0,
         num_outputs: x11.Card32,
         pad2: [12]x11.Card8 = @splat(0),
@@ -968,4 +1206,141 @@ const Reply = struct {
     };
 };
 
-const Event = struct {};
+const NotifySubCode = enum(x11.Card8) {
+    crtc_change = 0,
+    output_change = 1,
+    output_property = 2,
+    provider_change = 3,
+    provider_property = 4,
+    resource_change = 5,
+    // Added in 1.6
+    lease = 6,
+};
+
+pub const Event = struct {
+    pub const ScreenChangeNotify = extern struct {
+        code: phx.event.EventCode = .randr_screen_change_notify,
+        rotation: phx.Randr.Rotation(x11.Card8),
+        sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+        screen_changed_timestamp: x11.Timestamp,
+        config_changed_timestamp: x11.Timestamp,
+        root_window: x11.WindowId,
+        window: x11.WindowId,
+        size_id: x11.Card16,
+        subpixel_order: phx.Randr.SubPixel(x11.Card16),
+        width: x11.Card16,
+        height: x11.Card16,
+        width_mm: x11.Card16,
+        height_mm: x11.Card16,
+
+        pub fn get_extension_major_opcode(self: *const ScreenChangeNotify) phx.opcode.Major {
+            _ = self;
+            return .randr;
+        }
+
+        pub fn to_event_mask(self: *const ScreenChangeNotify) u32 {
+            _ = self;
+            var event_mask: RRSelectMask = @bitCast(@as(u16, 0));
+            event_mask.screen_change = true;
+            return @as(u16, @bitCast(event_mask));
+        }
+
+        comptime {
+            std.debug.assert(@sizeOf(@This()) == 32);
+        }
+    };
+
+    pub const CrtcChangeNotify = extern struct {
+        code: phx.event.EventCode = .randr_notify,
+        subcode: NotifySubCode = .crtc_change,
+        sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+        crtc_changed_timestamp: x11.Timestamp,
+        window: x11.WindowId,
+        crtc: phx.Randr.CrtcId,
+        mode: phx.Randr.ModeId,
+        rotation: phx.Randr.Rotation(x11.Card16),
+        pad1: x11.Card16 = 0,
+        x: i16,
+        y: i16,
+        width: x11.Card16,
+        height: x11.Card16,
+
+        pub fn get_extension_major_opcode(self: *const CrtcChangeNotify) phx.opcode.Major {
+            _ = self;
+            return .randr;
+        }
+
+        pub fn to_event_mask(self: *const CrtcChangeNotify) u32 {
+            _ = self;
+            var event_mask: RRSelectMask = @bitCast(@as(u16, 0));
+            event_mask.crtc_change = true;
+            return @as(u16, @bitCast(event_mask));
+        }
+
+        comptime {
+            std.debug.assert(@sizeOf(@This()) == 32);
+        }
+    };
+
+    pub const OutputChangeNotify = extern struct {
+        code: phx.event.EventCode = .randr_notify,
+        subcode: NotifySubCode = .output_change,
+        sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+        output_changed_timestamp: x11.Timestamp,
+        config_changed_timestamp: x11.Timestamp,
+        window: x11.WindowId,
+        output: phx.Randr.OutputId,
+        crtc: phx.Randr.CrtcId,
+        mode: phx.Randr.ModeId,
+        rotation: phx.Randr.Rotation(x11.Card16),
+        connection: phx.Randr.Connection,
+        subpixel_order: phx.Randr.SubPixel(x11.Card8),
+
+        pub fn get_extension_major_opcode(self: *const OutputChangeNotify) phx.opcode.Major {
+            _ = self;
+            return .randr;
+        }
+
+        pub fn to_event_mask(self: *const OutputChangeNotify) u32 {
+            _ = self;
+            var event_mask: RRSelectMask = @bitCast(@as(u16, 0));
+            event_mask.output_change = true;
+            return @as(u16, @bitCast(event_mask));
+        }
+
+        comptime {
+            std.debug.assert(@sizeOf(@This()) == 32);
+        }
+    };
+
+    pub const OutputPropertyNotify = extern struct {
+        code: phx.event.EventCode = .randr_notify,
+        subcode: NotifySubCode = .output_property,
+        sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+        window: x11.WindowId,
+        output: phx.Randr.OutputId,
+        property_name: x11.AtomId,
+        crtc_changed_timestamp: x11.Timestamp,
+        state: enum(x11.Card8) {
+            new_value = 0,
+            deleted = 1,
+        },
+        pad1: [11]x11.Card8 = @splat(0),
+
+        pub fn get_extension_major_opcode(self: *const OutputPropertyNotify) phx.opcode.Major {
+            _ = self;
+            return .randr;
+        }
+
+        pub fn to_event_mask(self: *const OutputPropertyNotify) u32 {
+            _ = self;
+            var event_mask: RRSelectMask = @bitCast(@as(u16, 0));
+            event_mask.output_property = true;
+            return @as(u16, @bitCast(event_mask));
+        }
+
+        comptime {
+            std.debug.assert(@sizeOf(@This()) == 32);
+        }
+    };
+};

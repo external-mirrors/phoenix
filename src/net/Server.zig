@@ -36,6 +36,12 @@ client_manager: phx.ClientManager,
 selection_owner_manager: phx.SelectionOwnerManager,
 display: phx.Display,
 input: phx.Input,
+input_focus: phx.InputFocus = .{
+    .focus = .{ .none = {} },
+    .revert_to = .none,
+    .last_focus_change_time = @enumFromInt(1),
+},
+keyboard_grabbed: bool = false,
 
 installed_colormaps: std.ArrayList(phx.Colormap),
 started_time_seconds: f64,
@@ -176,7 +182,7 @@ pub fn destroy(self: *Self) void {
 pub fn get_timestamp_milliseconds(self: *Self) x11.Timestamp {
     const now = phx.time.clock_get_monotonic_seconds();
     const elapsed_time_milliseconds: u64 = @intFromFloat((now - self.started_time_seconds) * 1000.0);
-    var timestamp_milliseconds: u32 = @intCast(elapsed_time_milliseconds % 0xFFFFFFFF);
+    var timestamp_milliseconds: u32 = @intCast(elapsed_time_milliseconds & 0xFFFFFFFF);
     // TODO: Find a better solution. 0 defines the special value CurrentTime and the protocol says that the server
     // timestamp should never be that value
     if (timestamp_milliseconds == 0)

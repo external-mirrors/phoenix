@@ -19,6 +19,7 @@ pub const Major = enum(x11.Card8) {
     grab_server = 36,
     ungrab_server = 37,
     query_pointer = 38,
+    set_input_focus = 42,
     get_input_focus = 43,
     open_font = 45,
     list_fonts = 49,

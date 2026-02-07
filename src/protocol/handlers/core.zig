@@ -31,6 +31,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .grab_server => grab_server(request_context),
         .ungrab_server => ungrab_server(request_context),
         .query_pointer => query_pointer(request_context),
+        .set_input_focus => set_input_focus(request_context),
         .get_input_focus => get_input_focus(request_context),
         .open_font => open_font(request_context),
         .list_fonts => list_fonts(request_context),
@@ -892,16 +893,62 @@ fn query_pointer(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn set_input_focus(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.SetInputFocus, request_context.allocator);
+    defer req.deinit();
+
+    const current_server_timestamp = request_context.server.get_timestamp_milliseconds();
+    const request_timestamp = if (req.request.timestamp == .current_time) current_server_timestamp else req.request.timestamp;
+    if (request_timestamp.to_int() < request_context.server.input_focus.last_focus_change_time.to_int() or request_timestamp.to_int() > current_server_timestamp.to_int()) {
+        std.log.warn("Received SetInputFocus request with timestamp that is either earlier than last focus change time or later than current server timestamp, request was ignored\n", .{});
+        return;
+    }
+
+    const prev_focus = request_context.server.input_focus.focus;
+
+    switch (req.request.focus_window) {
+        window_none => {
+            request_context.server.input_focus.focus = .{ .none = {} };
+            request_context.server.input_focus.revert_to = .none;
+        },
+        window_pointer_root => {
+            request_context.server.input_focus.focus = .{ .pointer_root = {} };
+            request_context.server.input_focus.revert_to = .none;
+        },
+        else => {
+            const focus_window = request_context.server.get_window(req.request.focus_window) orelse {
+                std.log.err("Received invalid window {d} in SetInputFocus request", .{req.request.focus_window});
+                return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.focus_window));
+            };
+
+            if (focus_window.get_map_state() == .unviewable) {
+                std.log.err("Received unviewable window {d} in SetInputFocus request", .{req.request.focus_window});
+                return request_context.client.write_error(request_context, .match, @intFromEnum(req.request.focus_window));
+            }
+
+            request_context.server.input_focus.focus = .{ .window = focus_window };
+            request_context.server.input_focus.revert_to = req.request.revert_to;
+        },
+    }
+
+    phx.Window.on_input_focus_changed(request_context.server, prev_focus, request_context.server.input_focus.focus);
+    request_context.server.input_focus.last_focus_change_time = current_server_timestamp;
+}
+
 fn get_input_focus(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetInputFocus, request_context.allocator);
     defer req.deinit();
 
-    std.log.err("TODO: Implement GetInputFocus properly", .{});
+    const focused_window_id = switch (request_context.server.input_focus.focus) {
+        .none => window_none,
+        .pointer_root => window_pointer_root,
+        .window => |window| window.id,
+    };
 
     var rep = Reply.GetInputFocus{
-        .revert_to = .pointer_root,
+        .revert_to = request_context.server.input_focus.revert_to,
         .sequence_number = request_context.sequence_number,
-        .focused_window = request_context.server.root_window.id,
+        .focused_window = focused_window_id,
     };
     try request_context.client.write_reply(&rep);
 }
@@ -1377,6 +1424,7 @@ const ConfigureWindowValueMask = packed struct(x11.Card16) {
 const none: x11.Card32 = 0;
 const any_property_type: x11.AtomId = @enumFromInt(0);
 const parent_relative: x11.Card32 = 1;
+const window_none: x11.WindowId = @enumFromInt(0);
 const window_pointer_root: x11.WindowId = @enumFromInt(1);
 const copy_from_parent: x11.Card32 = 0;
 
@@ -1499,7 +1547,7 @@ pub const DeviceEventMask = packed struct(x11.Card16) {
     }
 };
 
-const RevertTo = enum(x11.Card8) {
+pub const RevertTo = enum(x11.Card8) {
     none = 0,
     pointer_root = 1,
     parent = 2,
@@ -1713,6 +1761,14 @@ pub const Request = struct {
         pad1: x11.Card8,
         length: x11.Card16,
         window: x11.WindowId,
+    };
+
+    pub const SetInputFocus = struct {
+        opcode: phx.opcode.Major = .set_input_focus,
+        revert_to: RevertTo,
+        length: x11.Card16,
+        focus_window: x11.WindowId,
+        timestamp: x11.Timestamp,
     };
 
     pub const GetInputFocus = struct {

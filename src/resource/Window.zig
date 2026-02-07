@@ -65,6 +65,7 @@ pub fn destroy(self: *Self) void {
 
     // TODO: trigger DestroyNotify event (first in children, then this window).
     // TODO: Also do a UnmapWindow operation if the window is mapped, which triggers UnmapNotify event.
+    // TODO: Also trigger LeaveNotify and VisibilityNotify
     for (self.children.items) |child| {
         child.destroy();
     }
@@ -84,6 +85,260 @@ pub fn destroy(self: *Self) void {
     self.allocator.destroy(self);
 
     self.server.selection_owner_manager.clear_selections_by_window(self);
+    self.revert_input_focus();
+}
+
+fn revert_input_focus(self: *Self) void {
+    if (std.meta.activeTag(self.server.input_focus.focus) == .window and self.server.input_focus.focus.window == self) {
+        const prev_focus = self.server.input_focus.focus;
+        switch (self.server.input_focus.revert_to) {
+            .none => {
+                self.server.input_focus.focus = .{ .none = {} };
+                self.server.input_focus.revert_to = .none;
+            },
+            .pointer_root => {
+                self.server.input_focus.focus = .{ .pointer_root = {} };
+                self.server.input_focus.revert_to = .none;
+            },
+            .parent => {
+                if (self.get_first_viewable_parent()) |viewable_parent| {
+                    self.server.input_focus.focus = .{ .window = viewable_parent };
+                } else {
+                    self.server.input_focus.focus = .{ .none = {} };
+                }
+                self.server.input_focus.revert_to = .none;
+            },
+        }
+        on_input_focus_changed(self.server, prev_focus, self.server.input_focus.focus);
+    }
+}
+
+pub fn on_input_focus_changed(server: *phx.Server, prev_focus: phx.InputFocus.Focus, new_focus: phx.InputFocus.Focus) void {
+    if (new_focus.equals(prev_focus))
+        return;
+
+    // XXX: Not all possible details and modes are handled and thats fine for now.
+    // Handle more combinations if needed
+
+    const mode: phx.event.FocusMode = if (server.keyboard_grabbed) .while_grabbed else .normal;
+
+    switch (prev_focus) {
+        .none => {
+            var focus_out_event = phx.event.Event{
+                .focus_out = .{
+                    .detail = .none,
+                    .window = server.root_window.id,
+                    .mode = mode,
+                },
+            };
+            server.root_window.write_core_event_to_event_listeners(&focus_out_event);
+
+            switch (new_focus) {
+                .none => {},
+                .pointer_root => {
+                    var focus_in_event = phx.event.Event{
+                        .focus_in = .{
+                            .detail = .pointer_root,
+                            .window = server.root_window.id,
+                            .mode = mode,
+                        },
+                    };
+                    server.root_window.write_core_event_to_event_listeners(&focus_in_event);
+                },
+                .window => |new_window| {
+                    var focus_in_event = phx.event.Event{
+                        .focus_in = .{
+                            .detail = .nonlinear,
+                            .window = new_window.id,
+                            .mode = mode,
+                        },
+                    };
+                    new_window.write_core_event_to_event_listeners(&focus_in_event);
+                },
+            }
+        },
+        .pointer_root => {
+            var focus_out_event = phx.event.Event{
+                .focus_out = .{
+                    .detail = .pointer_root,
+                    .window = server.root_window.id,
+                    .mode = mode,
+                },
+            };
+            server.root_window.write_core_event_to_event_listeners(&focus_out_event);
+
+            switch (new_focus) {
+                .none => {
+                    var focus_in_event = phx.event.Event{
+                        .focus_in = .{
+                            .detail = .none,
+                            .window = server.root_window.id,
+                            .mode = mode,
+                        },
+                    };
+                    server.root_window.write_core_event_to_event_listeners(&focus_in_event);
+                },
+                .pointer_root => {},
+                .window => |new_window| {
+                    var focus_in_event = phx.event.Event{
+                        .focus_in = .{
+                            .detail = .nonlinear,
+                            .window = new_window.id,
+                            .mode = mode,
+                        },
+                    };
+                    new_window.write_core_event_to_event_listeners(&focus_in_event);
+                },
+            }
+        },
+        .window => |prev_window| {
+            switch (new_focus) {
+                .none, .pointer_root => {
+                    var focus_out_event = phx.event.Event{
+                        .focus_out = .{
+                            .detail = .nonlinear,
+                            .window = prev_window.id,
+                            .mode = mode,
+                        },
+                    };
+                    prev_window.write_core_event_to_event_listeners(&focus_out_event);
+
+                    var focus_in_event = phx.event.Event{
+                        .focus_in = .{
+                            .detail = if (std.meta.activeTag(new_focus) == .none) .none else .pointer_root,
+                            .window = server.root_window.id,
+                            .mode = mode,
+                        },
+                    };
+                    server.root_window.write_core_event_to_event_listeners(&focus_in_event);
+                },
+                .window => |new_window| {
+                    switch (get_window_relationship(prev_window, new_window)) {
+                        .ancestor => {
+                            var focus_out_event = phx.event.Event{
+                                .focus_out = .{
+                                    .detail = .inferior,
+                                    .window = prev_window.id,
+                                    .mode = mode,
+                                },
+                            };
+                            prev_window.write_core_event_to_event_listeners(&focus_out_event);
+
+                            write_focus_event_every_window_between(new_window, prev_window, mode, .focus_in);
+
+                            var focus_in_event = phx.event.Event{
+                                .focus_in = .{
+                                    .detail = .ancestor,
+                                    .window = new_window.id,
+                                    .mode = mode,
+                                },
+                            };
+                            new_window.write_core_event_to_event_listeners(&focus_in_event);
+                        },
+                        .inferior => {
+                            var focus_out_event = phx.event.Event{
+                                .focus_out = .{
+                                    .detail = .ancestor,
+                                    .window = prev_window.id,
+                                    .mode = mode,
+                                },
+                            };
+                            prev_window.write_core_event_to_event_listeners(&focus_out_event);
+
+                            write_focus_event_every_window_between(prev_window, new_window, mode, .focus_out);
+
+                            var focus_in_event = phx.event.Event{
+                                .focus_in = .{
+                                    .detail = .inferior,
+                                    .window = new_window.id,
+                                    .mode = mode,
+                                },
+                            };
+                            new_window.write_core_event_to_event_listeners(&focus_in_event);
+                        },
+                    }
+                },
+            }
+        },
+    }
+}
+
+fn write_focus_event_every_window_between(
+    child_window: *Self,
+    parent_window: *Self,
+    mode: phx.event.FocusMode,
+    comptime focus_type: enum { focus_in, focus_out },
+) void {
+    var window = child_window.parent;
+    while (window) |win| {
+        if (win == parent_window)
+            break;
+
+        switch (focus_type) {
+            .focus_in => {
+                var focus_out_event = phx.event.Event{
+                    .focus_in = .{
+                        .detail = .virtual,
+                        .window = win.id,
+                        .mode = mode,
+                    },
+                };
+                win.write_core_event_to_event_listeners(&focus_out_event);
+            },
+            .focus_out => {
+                var focus_out_event = phx.event.Event{
+                    .focus_out = .{
+                        .detail = .virtual,
+                        .window = win.id,
+                        .mode = mode,
+                    },
+                };
+                win.write_core_event_to_event_listeners(&focus_out_event);
+            },
+        }
+
+        window = win.parent;
+    }
+}
+
+const WindowRelationship = enum {
+    ancestor,
+    inferior,
+};
+
+fn get_window_relationship(this: *Self, other: *Self) WindowRelationship {
+    std.debug.assert(this != other);
+
+    var this_parent = this.parent;
+    while (this_parent) |parent| {
+        if (parent == other)
+            return .inferior;
+        this_parent = parent.parent;
+    }
+
+    var other_parent = other.parent;
+    while (other_parent) |parent| {
+        if (parent == this)
+            return .ancestor;
+        other_parent = parent.parent;
+    }
+
+    unreachable;
+}
+
+fn get_first_viewable_parent(self: *Self) ?*Self {
+    var mapped_parent = self.get_first_mapped_parent() orelse return null;
+    return if (mapped_parent.get_map_state() == .viewable) mapped_parent else null;
+}
+
+fn get_first_mapped_parent(self: *Self) ?*Self {
+    var parent = self.parent;
+    while (parent) |par| {
+        if (par.attributes.mapped)
+            return par;
+        parent = par.parent;
+    }
+    return null;
 }
 
 pub fn get_geometry(self: *Self) phx.Geometry {
@@ -482,7 +737,7 @@ pub fn get_client_event_mask_core(self: *Self, client: *const phx.Client) phx.co
 
 /// Returns .unmapped if the window isn't mapped,
 /// .unviewable if the window is mapped but a parent window isn't, otherwise returns .viewable
-pub fn get_map_state(self: *Self) phx.core.MapState {
+pub fn get_map_state(self: *const Self) phx.core.MapState {
     if (!self.attributes.mapped)
         return .unmapped;
 

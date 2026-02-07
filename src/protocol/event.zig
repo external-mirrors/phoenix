@@ -7,6 +7,8 @@ pub const EventCode = enum(x11.Card8) {
     key_release = 3,
     button_press = 4,
     button_release = 5,
+    focus_in = 9,
+    focus_out = 10,
     create_notify = 16,
     map_notify = 19,
     map_request = 20,
@@ -25,9 +27,27 @@ pub const EventCode = enum(x11.Card8) {
 
 pub const randr_first_event: x11.Card8 = 50;
 
+pub const FocusDetail = enum(x11.Card8) {
+    ancestor = 0,
+    virtual = 1,
+    inferior = 2,
+    nonlinear = 3,
+    nonlinear_virtual = 4,
+    pointer = 5,
+    pointer_root = 6,
+    none = 7,
+};
+
+pub const FocusMode = enum(x11.Card8) {
+    normal = 0,
+    grab = 1,
+    ungrab = 2,
+    while_grabbed = 3,
+};
+
 pub const AnyEvent = extern struct {
     code: EventCode,
-    pad1: x11.Card8,
+    detail: x11.Card8,
     sequence_number: x11.Card16,
 };
 
@@ -133,6 +153,32 @@ fn ButtonEvent(comptime code: EventCode) type {
 
 pub const ButtonPressEvent = ButtonEvent(.button_press);
 pub const ButtonReleaseEvent = ButtonEvent(.button_release);
+
+pub const FocusInEvent = extern struct {
+    code: EventCode = .focus_in,
+    detail: FocusDetail,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+    window: x11.WindowId,
+    mode: FocusMode,
+    pad1: [23]x11.Card8 = @splat(0),
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
+
+pub const FocusOutEvent = extern struct {
+    code: EventCode = .focus_out,
+    detail: FocusDetail,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+    window: x11.WindowId,
+    mode: FocusMode,
+    pad1: [23]x11.Card8 = @splat(0),
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
 
 pub const CreateNotifyEvent = extern struct {
     code: EventCode = .create_notify,
@@ -273,6 +319,8 @@ pub const Event = extern union {
     key_release: KeyReleaseEvent,
     button_press: ButtonPressEvent,
     button_release: ButtonReleaseEvent,
+    focus_in: FocusInEvent,
+    focus_out: FocusOutEvent,
     create_notify: CreateNotifyEvent,
     map_notify: MapNotifyEvent,
     map_request: MapRequestEvent,

@@ -15,6 +15,7 @@ allocator: std.mem.Allocator,
 connection: *c.xcb_connection_t,
 root_window: c.xcb_window_t,
 graphics: phx.Graphics,
+window: u32,
 width: u32,
 height: u32,
 size_updated: bool,
@@ -33,7 +34,7 @@ pub fn init(server: *phx.Server, allocator: std.mem.Allocator) !Self {
     const xkb_use_extension_reply = c.xcb_xkb_use_extension_reply(connection, c.xcb_xkb_use_extension(connection, 1, 0), null) orelse return error.XkbUseExtensionFailed;
     cstdlib.free(xkb_use_extension_reply);
 
-    const event_mask: u32 = c.XCB_EVENT_MASK_KEY_PRESS | c.XCB_EVENT_MASK_STRUCTURE_NOTIFY;
+    const event_mask: u32 = c.XCB_EVENT_MASK_KEY_PRESS | c.XCB_EVENT_MASK_BUTTON_PRESS | c.XCB_EVENT_MASK_BUTTON_RELEASE | c.XCB_EVENT_MASK_POINTER_MOTION | c.XCB_EVENT_MASK_STRUCTURE_NOTIFY;
     const attributes = [_]u32{ 0, c.XCB_GRAVITY_NORTH_WEST, event_mask };
     const screen = c.xcb_setup_roots_iterator(c.xcb_get_setup(connection)).data;
     const window_id = c.xcb_generate_id(connection);
@@ -86,6 +87,7 @@ pub fn init(server: *phx.Server, allocator: std.mem.Allocator) !Self {
         .connection = connection,
         .root_window = window_id,
         .graphics = graphics,
+        .window = window_id,
         .width = width,
         .height = height,
         .size_updated = true,
@@ -104,7 +106,7 @@ pub fn deinit(self: *Self) void {
     }
 
     self.graphics.destroy();
-    //_ = c.xcb_destroy_window(self.connection, self.root_window);
+    _ = c.xcb_destroy_window(self.connection, self.window);
     c.xcb_disconnect(self.connection);
     self.connection = undefined;
 }
@@ -519,6 +521,13 @@ pub fn get_screen_resources(_: *Self, timestamp: x11.Timestamp, allocator: std.m
     return screen_resources;
 }
 
+pub fn get_cursor_position(self: *Self) @Vector(2, i32) {
+    const query_pointer_cookie = c.xcb_query_pointer(self.connection, self.window);
+    const query_pointer_reply = c.xcb_query_pointer_reply(self.connection, query_pointer_cookie, null) orelse return .{ 0, 0 };
+    defer cstdlib.free(query_pointer_reply);
+    return .{ query_pointer_reply.*.win_x, query_pointer_reply.*.win_y };
+}
+
 pub fn is_running(self: *Self) bool {
     return self.running;
 }
@@ -552,6 +561,27 @@ fn update_thread(self: *Self) !void {
                         break;
                     }
                 },
+                c.XCB_MOTION_NOTIFY => {
+                    const motion_notify: *const c.xcb_motion_notify_event_t = @ptrCast(event);
+                    self.server.append_event(&.{ .mouse_move = .{ .x = motion_notify.event_x, .y = motion_notify.event_y } }) catch {
+                        std.log.err("Failed to add mouse move event to server", .{});
+                    };
+                },
+                c.XCB_BUTTON_PRESS, c.XCB_BUTTON_RELEASE => |event_type| {
+                    const button_press: *const c.xcb_button_press_event_t = @ptrCast(event);
+                    if (x11_button_to_phx_event_button(button_press.detail)) |button| {
+                        self.server.append_event(&.{
+                            .mouse_click = .{
+                                .x = button_press.event_x,
+                                .y = button_press.event_y,
+                                .button = button,
+                                .state = if (event_type == c.XCB_BUTTON_PRESS) .press else .release,
+                            },
+                        }) catch {
+                            std.log.err("Failed to add button press/release event to server", .{});
+                        };
+                    }
+                },
                 else => {},
             }
             cstdlib.free(event);
@@ -579,5 +609,14 @@ fn update_thread(self: *Self) !void {
 fn signal_server_shutdown(self: *Self) void {
     self.server.append_event(&.{ .shutdown = {} }) catch {
         std.log.err("Failed to add shutdown event to server", .{});
+    };
+}
+
+fn x11_button_to_phx_event_button(detail: u8) ?phx.Server.MouseClickButton {
+    return switch (detail) {
+        c.XCB_BUTTON_INDEX_1 => .left,
+        c.XCB_BUTTON_INDEX_2 => .middle,
+        c.XCB_BUTTON_INDEX_3 => .right,
+        else => null,
     };
 }

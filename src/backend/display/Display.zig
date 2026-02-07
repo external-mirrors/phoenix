@@ -100,6 +100,12 @@ pub fn get_screen_resources(self: *Self, timestamp: x11.Timestamp, allocator: st
     };
 }
 
+pub fn get_cursor_position(self: *Self) @Vector(2, i32) {
+    return switch (self.impl) {
+        inline else => |item| item.get_cursor_position(),
+    };
+}
+
 pub fn is_running(self: *Self) bool {
     return switch (self.impl) {
         inline else => |item| item.is_running(),

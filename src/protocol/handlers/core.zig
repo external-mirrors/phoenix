@@ -876,7 +876,8 @@ fn query_pointer(request_context: phx.RequestContext) !void {
 
     var offset_x: i32 = 0;
     var offset_y: i32 = 0;
-    const child_window_at_cursor_pos = get_child_window_at_position(window, request_context.server.cursor_x, request_context.server.cursor_y, &offset_x, &offset_y);
+    const cursor_pos = @Vector(2, i32){ request_context.server.cursor_x, request_context.server.cursor_y };
+    const child_window_at_cursor_pos = get_child_window_at_position(window, cursor_pos, &offset_x, &offset_y);
 
     var rep = Reply.QueryPointer{
         .same_screen = true,
@@ -900,7 +901,7 @@ fn set_input_focus(request_context: phx.RequestContext) !void {
     const current_server_timestamp = request_context.server.get_timestamp_milliseconds();
     const request_timestamp = if (req.request.timestamp == .current_time) current_server_timestamp else req.request.timestamp;
     if (request_timestamp.to_int() < request_context.server.input_focus.last_focus_change_time.to_int() or request_timestamp.to_int() > current_server_timestamp.to_int()) {
-        std.log.warn("Received SetInputFocus request with timestamp that is either earlier than last focus change time or later than current server timestamp, request was ignored\n", .{});
+        std.log.warn("Received SetInputFocus request with timestamp that is either earlier than last focus change time or later than current server timestamp, request was ignored", .{});
         return;
     }
 
@@ -1246,7 +1247,7 @@ fn depth_is_supported(depth: u8) bool {
     };
 }
 
-fn get_child_window_at_position(window: *const phx.Window, root_x: i32, root_y: i32, offset_x: *i32, offset_y: *i32) ?*const phx.Window {
+fn get_child_window_at_position(window: *const phx.Window, pos: @Vector(2, i32), offset_x: *i32, offset_y: *i32) ?*const phx.Window {
     if (window.children.items.len == 0)
         return null;
 
@@ -1255,18 +1256,12 @@ fn get_child_window_at_position(window: *const phx.Window, root_x: i32, root_y: 
     var i: isize = @intCast(window.children.items.len - 1);
     while (i >= 0) : (i -= 1) {
         const child_window = window.children.items[@intCast(i)];
-        const width: i32 = @intCast(child_window.attributes.geometry.width);
-        const height: i32 = @intCast(child_window.attributes.geometry.height);
-        // zig fmt: off
-        if(child_window.attributes.mapped
-            and root_x >= window_abs_pos[0] + child_window.attributes.geometry.x and root_x <= window_abs_pos[0] + child_window.attributes.geometry.x + width
-            and root_y >= window_abs_pos[1] + child_window.attributes.geometry.y and root_y <= window_abs_pos[1] + child_window.attributes.geometry.y + height)
-        {
-            offset_x.* = (window_abs_pos[0] + child_window.attributes.geometry.x) - root_x;
-            offset_y.* = (window_abs_pos[1] + child_window.attributes.geometry.y) - root_y;
+        const sub_geometry = child_window.attributes.geometry.get_sub_geometry(window.attributes.geometry);
+        if (sub_geometry.contains_point(pos)) {
+            offset_x.* = (window_abs_pos[0] + child_window.attributes.geometry.x) - pos[0];
+            offset_y.* = (window_abs_pos[1] + child_window.attributes.geometry.y) - pos[1];
             return child_window;
         }
-        // zig fmt: on
     }
 
     return null;

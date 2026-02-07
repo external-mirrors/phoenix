@@ -59,3 +59,4 @@ ConnectorType and SignalFormat Randr properties are declared as mandatory in the
 Implement a screen recording x11 extension (zero copy) and use it in gpu screen recorder as well. Also modify an existing desktop portal and add support for that there to make other applications (such as obs, discord, etc) be able to record monitors efficiently.
 When TILE support is added consider this: https://gitlab.freedesktop.org/wlroots/wlroots/-/merge_requests/4154#note_3249071 SRC_X drm property doesn't work on nvidia.
 When damage/expose tracking is added have a keybind to toggle showing updated regions (flash red rectangle).
+Trigger KeymapNotify (for FocusIn).

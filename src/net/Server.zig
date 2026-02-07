@@ -236,6 +236,10 @@ pub fn run(self: *Self) !void {
     const poll_timeout_ms: u32 = 500;
     self.running = true;
 
+    const cursor_pos = self.display.get_cursor_position();
+    self.cursor_x = cursor_pos[0];
+    self.cursor_y = cursor_pos[1];
+
     while (self.running) {
         const num_events = std.posix.epoll_wait(self.epoll_fd, &self.epoll_events, poll_timeout_ms);
         for (0..num_events) |event_index| {
@@ -504,9 +508,37 @@ fn handle_events(self: *Self) void {
             .shutdown => self.running = false,
             .vsync_finished => |vsync_finished| {
                 _ = vsync_finished;
+                // TODO: trigger PresentCompleteNotify or whatever
             },
             .mouse_move => |mouse_move| {
-                _ = mouse_move;
+                self.cursor_x = mouse_move.x;
+                self.cursor_y = mouse_move.y;
+                // TODO: trigger MotionNotify
+            },
+            .mouse_click => |mouse_click| {
+                self.cursor_x = mouse_click.x;
+                self.cursor_y = mouse_click.y;
+
+                if (mouse_click.button == .left and mouse_click.state == .press) {
+                    const prev_focus = self.input_focus.focus;
+                    const cursor_pos = @Vector(2, i32){ mouse_click.x, mouse_click.y };
+                    const cursor_window = phx.Window.get_window_at_position(self.root_window, cursor_pos);
+
+                    const prev_window = switch (prev_focus) {
+                        .none => null,
+                        .pointer_root => self.root_window,
+                        .window => |window| window,
+                    };
+
+                    if (prev_window != cursor_window) {
+                        self.input_focus.focus = .{ .window = cursor_window };
+                        self.input_focus.revert_to = .pointer_root;
+                        phx.Window.on_input_focus_changed(self, prev_focus, self.input_focus.focus);
+                        self.input_focus.last_focus_change_time = self.get_timestamp_milliseconds();
+                    }
+                }
+
+                // TODO: trigger ButtonPress/ButtonRelease
             },
         }
     }
@@ -553,6 +585,7 @@ pub const Event = union(enum) {
     shutdown: void,
     vsync_finished: VsyncFinishedEvent,
     mouse_move: MouseMoveEvent,
+    mouse_click: MouseClickEvent,
 };
 
 pub const VsyncFinishedEvent = struct {
@@ -562,4 +595,22 @@ pub const VsyncFinishedEvent = struct {
 pub const MouseMoveEvent = struct {
     x: i32,
     y: i32,
+};
+
+pub const MouseClickEvent = struct {
+    x: i32,
+    y: i32,
+    button: MouseClickButton,
+    state: MouseClickState,
+};
+
+pub const MouseClickButton = enum {
+    left,
+    middle,
+    right,
+};
+
+pub const MouseClickState = enum {
+    press,
+    release,
 };

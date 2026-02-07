@@ -809,6 +809,28 @@ fn map_internal(self: *Self, map_target_window: *const phx.Window, substructure_
     }
 }
 
+/// Returns |root_window| if no window matches
+pub fn get_window_at_position(root_window: *phx.Window, pos: @Vector(2, i32)) *phx.Window {
+    return root_window.get_window_at_position_recursive(root_window.attributes.geometry, pos);
+}
+
+fn get_window_at_position_recursive(self: *phx.Window, geometry: phx.Geometry, pos: @Vector(2, i32)) *phx.Window {
+    if (self.children.items.len == 0)
+        return self;
+
+    var i: isize = @intCast(self.children.items.len - 1);
+    while (i >= 0) : (i -= 1) {
+        var child_window = self.children.items[@intCast(i)];
+        if (!child_window.attributes.mapped)
+            continue;
+
+        const sub_geometry = child_window.attributes.geometry.get_sub_geometry(geometry);
+        if (sub_geometry.contains_point(pos))
+            return child_window.get_window_at_position_recursive(sub_geometry, pos);
+    }
+    return self;
+}
+
 pub const Attributes = struct {
     geometry: phx.Geometry, // Position is relative to parent
     class: x11.Class,

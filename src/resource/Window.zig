@@ -496,6 +496,7 @@ fn validate_event_exclusivity(self: *Self, event_mask: phx.core.EventMask) bool 
 }
 
 pub fn write_core_event_to_event_listeners(self: *const Self, event: *phx.event.Event) void {
+    std.debug.assert(event.any.code != .map_request and event.any.code != .configure_request);
     event.set_event_window(self.id);
 
     for (self.core_event_listeners.items) |*event_listener| {

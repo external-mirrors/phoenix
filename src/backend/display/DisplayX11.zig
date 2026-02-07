@@ -283,6 +283,7 @@ pub fn get_keyboard_map(self: *Self, params: *const phx.Xkb.Request.GetMap, aren
         .key_types = if (key_types_opt) |key_types| .{ .types_return = .{ .items = key_types } } else null,
         .key_syms = if (key_syms_opt) |key_syms| .{ .syms_return = .{ .items = key_syms } } else null,
         .key_actions = if (key_actions_opt) |key_actions| key_actions else null,
+        // TODO: These need to be set since its set in present
         .key_behaviors = null, // TODO: Set
         .virtual_mods = null, // TODO: Set
         .explicit_components = null, // TODO: Set

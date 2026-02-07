@@ -499,7 +499,7 @@ fn validate_event_exclusivity(self: *Self, event_mask: phx.core.EventMask) bool 
 // TODO: If window has override-redirect set then map and configure requests on the window should override a SubstructureRedirect on parents.
 pub fn write_core_event_to_event_listeners(self: *const Self, event: *phx.event.Event) void {
     for (self.core_event_listeners.items) |*event_listener| {
-        if (!core_event_mask_matches_event_code(event_listener.event_mask, event.any.code))
+        if (!core_event_mask_matches_event_code(event_listener.event_mask, event.any.code, event))
             continue;
 
         event_listener.client.write_event(event) catch |err| {
@@ -549,23 +549,41 @@ pub fn get_substructure_redirect_listener_parent_window(self: *const Self) ?*con
     return null;
 }
 
-inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, event_code: phx.event.EventCode) bool {
-    return switch (event_code) {
-        .key_press => event_mask.key_press,
-        .key_release => event_mask.key_release,
-        .button_press => event_mask.button_press,
-        .button_release => event_mask.button_release,
-        .focus_in => event_mask.focus_change,
-        .focus_out => event_mask.focus_change,
-        .create_notify => false, // This only applies to parents
-        .map_notify => event_mask.structure_notify,
-        .map_request => false, // This only applies to parents
-        .configure_notify => event_mask.structure_notify,
-        .property_notify => event_mask.property_change,
-        .selection_clear => false, // Clients cant select to listen to this, they always listen to it and it's only sent to a single client
-        .colormap_notify => event_mask.colormap_change,
-        .generic_event_extension => false, // TODO:
-    };
+inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, event_code: phx.event.EventCode, event: *const phx.event.Event) bool {
+    switch (event_code) {
+        .key_press => return event_mask.key_press,
+        .key_release => return event_mask.key_release,
+        .button_press => return event_mask.button_press,
+        .button_release => return event_mask.button_release,
+        .motion_notify => {
+            // XXX: Respect pointer motion hint
+            if (event_mask.pointer_motion or event_mask.pointer_motion_hint) {
+                return true;
+            } else if ((event_mask.button1_motion or event_mask.button_motion) and event.motion_notify.state.button1) {
+                return true;
+            } else if ((event_mask.button2_motion or event_mask.button_motion) and event.motion_notify.state.button2) {
+                return true;
+            } else if ((event_mask.button3_motion or event_mask.button_motion) and event.motion_notify.state.button3) {
+                return true;
+            } else if ((event_mask.button4_motion or event_mask.button_motion) and event.motion_notify.state.button4) {
+                return true;
+            } else if ((event_mask.button5_motion or event_mask.button_motion) and event.motion_notify.state.button5) {
+                return true;
+            } else {
+                return false;
+            }
+        },
+        .focus_in => return event_mask.focus_change,
+        .focus_out => return event_mask.focus_change,
+        .create_notify => return false, // This only applies to parents
+        .map_notify => return event_mask.structure_notify,
+        .map_request => return false, // This only applies to parents
+        .configure_notify => return event_mask.structure_notify,
+        .property_notify => return event_mask.property_change,
+        .selection_clear => return false, // Clients cant select to listen to this, they always listen to it and it's only sent to a single client
+        .colormap_notify => return event_mask.colormap_change,
+        .generic_event_extension => return false, // TODO:
+    }
 }
 
 inline fn core_event_should_propagate_to_parent_substructure_notify(event_code: phx.event.EventCode) bool {
@@ -574,6 +592,7 @@ inline fn core_event_should_propagate_to_parent_substructure_notify(event_code: 
         .key_release => false,
         .button_press => false,
         .button_release => false,
+        .motion_notify => false,
         .focus_in => false,
         .focus_out => false,
         .create_notify => true,
@@ -812,15 +831,13 @@ fn map_internal(self: *Self, map_target_window: *const phx.Window, substructure_
 }
 
 /// Returns |root_window| if no window matches
-pub fn get_window_at_position(root_window: *phx.Window, pos: @Vector(2, i32)) *phx.Window {
-    return root_window.get_window_at_position_recursive(root_window.attributes.geometry, pos);
+pub fn get_window_at_position(root_window: *phx.Window, pos: @Vector(2, i32), relative_pos: *@Vector(2, i32)) *phx.Window {
+    return root_window.get_window_at_position_recursive(root_window.attributes.geometry, pos, relative_pos);
 }
 
-fn get_window_at_position_recursive(self: *phx.Window, geometry: phx.Geometry, pos: @Vector(2, i32)) *phx.Window {
-    if (self.children.items.len == 0)
-        return self;
-
-    var i: isize = @intCast(self.children.items.len - 1);
+fn get_window_at_position_recursive(self: *phx.Window, geometry: phx.Geometry, pos: @Vector(2, i32), relative_pos: *@Vector(2, i32)) *phx.Window {
+    const child_len: isize = @intCast(self.children.items.len);
+    var i: isize = child_len - 1;
     while (i >= 0) : (i -= 1) {
         var child_window = self.children.items[@intCast(i)];
         if (!child_window.attributes.mapped)
@@ -828,8 +845,10 @@ fn get_window_at_position_recursive(self: *phx.Window, geometry: phx.Geometry, p
 
         const sub_geometry = child_window.attributes.geometry.get_sub_geometry(geometry);
         if (sub_geometry.contains_point(pos))
-            return child_window.get_window_at_position_recursive(sub_geometry, pos);
+            return child_window.get_window_at_position_recursive(sub_geometry, pos, relative_pos);
     }
+
+    relative_pos.* = pos - @Vector(2, i32){ geometry.x, geometry.y };
     return self;
 }
 

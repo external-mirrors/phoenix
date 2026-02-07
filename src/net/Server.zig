@@ -54,6 +54,9 @@ cursor_y: i32,
 running: bool = false,
 
 current_pending_client_flushes: std.ArrayListUnmanaged(*phx.Client) = .empty,
+// TODO: Initialize with the current state right when the server starts because the user might hold down a button when the server starts.
+// TODO: Update with key states as well when keys are handled.
+current_key_but_mask: phx.event.KeyButMask = .{},
 
 /// The server will catch sigint and close down (if |run| has been executed)
 pub fn create(allocator: std.mem.Allocator) !*Self {
@@ -510,39 +513,116 @@ fn handle_events(self: *Self) void {
                 _ = vsync_finished;
                 // TODO: trigger PresentCompleteNotify or whatever
             },
-            .mouse_move => |mouse_move| {
-                self.cursor_x = mouse_move.x;
-                self.cursor_y = mouse_move.y;
-                // TODO: trigger MotionNotify
-            },
-            .mouse_click => |mouse_click| {
-                self.cursor_x = mouse_click.x;
-                self.cursor_y = mouse_click.y;
-
-                if (mouse_click.button == .left and mouse_click.state == .press) {
-                    const prev_focus = self.input_focus.focus;
-                    const cursor_pos = @Vector(2, i32){ mouse_click.x, mouse_click.y };
-                    const cursor_window = phx.Window.get_window_at_position(self.root_window, cursor_pos);
-
-                    const prev_window = switch (prev_focus) {
-                        .none => null,
-                        .pointer_root => self.root_window,
-                        .window => |window| window,
-                    };
-
-                    if (prev_window != cursor_window) {
-                        self.input_focus.focus = .{ .window = cursor_window };
-                        self.input_focus.revert_to = .pointer_root;
-                        phx.Window.on_input_focus_changed(self, prev_focus, self.input_focus.focus);
-                        self.input_focus.last_focus_change_time = self.get_timestamp_milliseconds();
-                    }
-                }
-
-                // TODO: trigger ButtonPress/ButtonRelease
-            },
+            .mouse_move => |mouse_move| self.handle_mouse_move(mouse_move),
+            .mouse_click => |mouse_click| self.handle_mouse_click(mouse_click),
         }
     }
     self.events.clearRetainingCapacity();
+}
+
+fn handle_mouse_move(self: *Self, mouse_move: MouseMoveEvent) void {
+    self.cursor_x = mouse_move.x;
+    self.cursor_y = mouse_move.y;
+
+    const current_server_time = self.get_timestamp_milliseconds();
+    const cursor_pos_root = @Vector(2, i32){ self.cursor_x, self.cursor_y };
+    var cursor_pos_relative_to_window = @Vector(2, i32){ 0, 0 };
+    // XXX: Optimize this. Maybe we dont want to do this on every mouse move
+    var cursor_window = phx.Window.get_window_at_position(self.root_window, cursor_pos_root, &cursor_pos_relative_to_window);
+
+    var motion_notify_event = phx.event.Event{
+        .motion_notify = .{
+            .detail = .normal, // XXX: Respect pointer motion hint
+            .time = current_server_time,
+            .root_window = self.root_window.id,
+            .event_window = cursor_window.id,
+            .child_window = .none, // XXX: Is there any case where we dont want this to be .none?
+            .root_x = @intCast(cursor_pos_root[0]),
+            .root_y = @intCast(cursor_pos_root[1]),
+            .event_x = @intCast(cursor_pos_relative_to_window[0]),
+            .event_y = @intCast(cursor_pos_relative_to_window[1]),
+            .state = self.current_key_but_mask,
+            .same_screen = true,
+        },
+    };
+    cursor_window.write_core_event_to_event_listeners(&motion_notify_event);
+}
+
+fn handle_mouse_click(self: *Self, mouse_click: MouseClickEvent) void {
+    self.cursor_x = mouse_click.x;
+    self.cursor_y = mouse_click.y;
+
+    const current_server_time = self.get_timestamp_milliseconds();
+    const cursor_pos_root = @Vector(2, i32){ self.cursor_x, self.cursor_y };
+    var cursor_pos_relative_to_window = @Vector(2, i32){ 0, 0 };
+    var cursor_window = phx.Window.get_window_at_position(self.root_window, cursor_pos_root, &cursor_pos_relative_to_window);
+
+    switch (mouse_click.button) {
+        .any => {},
+        .left => self.current_key_but_mask.button1 = mouse_click.state == .press,
+        .middle => self.current_key_but_mask.button2 = mouse_click.state == .press,
+        .right => self.current_key_but_mask.button3 = mouse_click.state == .press,
+        .scroll_up => self.current_key_but_mask.button4 = mouse_click.state == .press,
+        .scroll_down => self.current_key_but_mask.button5 = mouse_click.state == .press,
+        .navigate_back => {},
+        .navigate_forward => {},
+    }
+
+    if (mouse_click.button == .left and mouse_click.state == .press) {
+        const prev_focus = self.input_focus.focus;
+
+        const prev_window = switch (prev_focus) {
+            .none => null,
+            .pointer_root => self.root_window,
+            .window => |window| window,
+        };
+
+        if (prev_window != cursor_window) {
+            self.input_focus.focus = .{ .window = cursor_window };
+            self.input_focus.revert_to = .pointer_root;
+            phx.Window.on_input_focus_changed(self, prev_focus, self.input_focus.focus);
+            self.input_focus.last_focus_change_time = current_server_time;
+        }
+    }
+
+    switch (mouse_click.state) {
+        .press => {
+            var button_press_event = phx.event.Event{
+                .button_press = .{
+                    .button = mouse_click.button,
+                    .time = current_server_time,
+                    .root_window = self.root_window.id,
+                    .event_window = cursor_window.id,
+                    .child_window = .none, // XXX: Is there any case where we dont want this to be .none?
+                    .root_x = @intCast(cursor_pos_root[0]),
+                    .root_y = @intCast(cursor_pos_root[1]),
+                    .event_x = @intCast(cursor_pos_relative_to_window[0]),
+                    .event_y = @intCast(cursor_pos_relative_to_window[1]),
+                    .state = self.current_key_but_mask,
+                    .same_screen = true,
+                },
+            };
+            cursor_window.write_core_event_to_event_listeners(&button_press_event);
+        },
+        .release => {
+            var button_release_event = phx.event.Event{
+                .button_release = .{
+                    .button = mouse_click.button,
+                    .time = current_server_time,
+                    .root_window = self.root_window.id,
+                    .event_window = cursor_window.id,
+                    .child_window = .none, // XXX: Is there any case where we dont want this to be .none?
+                    .root_x = @intCast(cursor_pos_root[0]),
+                    .root_y = @intCast(cursor_pos_root[1]),
+                    .event_x = @intCast(cursor_pos_relative_to_window[0]),
+                    .event_y = @intCast(cursor_pos_relative_to_window[1]),
+                    .state = self.current_key_but_mask,
+                    .same_screen = true,
+                },
+            };
+            cursor_window.write_core_event_to_event_listeners(&button_release_event);
+        },
+    }
 }
 
 /// Thread-safe
@@ -600,14 +680,8 @@ pub const MouseMoveEvent = struct {
 pub const MouseClickEvent = struct {
     x: i32,
     y: i32,
-    button: MouseClickButton,
+    button: phx.event.Button,
     state: MouseClickState,
-};
-
-pub const MouseClickButton = enum {
-    left,
-    middle,
-    right,
 };
 
 pub const MouseClickState = enum {

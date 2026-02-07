@@ -612,11 +612,15 @@ fn signal_server_shutdown(self: *Self) void {
     };
 }
 
-fn x11_button_to_phx_event_button(detail: u8) ?phx.Server.MouseClickButton {
+fn x11_button_to_phx_event_button(detail: u8) ?phx.event.Button {
     return switch (detail) {
         c.XCB_BUTTON_INDEX_1 => .left,
         c.XCB_BUTTON_INDEX_2 => .middle,
         c.XCB_BUTTON_INDEX_3 => .right,
+        c.XCB_BUTTON_INDEX_4 => .scroll_up,
+        c.XCB_BUTTON_INDEX_5 => .scroll_down,
+        8 => .navigate_back,
+        9 => .navigate_forward,
         else => null,
     };
 }

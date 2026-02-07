@@ -7,6 +7,7 @@ pub const EventCode = enum(x11.Card8) {
     key_release = 3,
     button_press = 4,
     button_release = 5,
+    motion_notify = 6,
     focus_in = 9,
     focus_out = 10,
     create_notify = 16,
@@ -42,6 +43,17 @@ pub const FocusMode = enum(x11.Card8) {
     grab = 1,
     ungrab = 2,
     while_grabbed = 3,
+};
+
+pub const Button = enum(x11.Card8) {
+    any = 0,
+    left = 1,
+    middle = 2,
+    right = 3,
+    scroll_up = 4,
+    scroll_down = 5,
+    navigate_back = 8,
+    navigate_forward = 9,
 };
 
 pub const AnyEvent = extern struct {
@@ -130,12 +142,12 @@ pub const KeyReleaseEvent = KeyEvent(.key_release);
 fn ButtonEvent(comptime code: EventCode) type {
     return extern struct {
         code: EventCode = code,
-        button: x11.Button,
+        button: Button,
         sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
         time: x11.Timestamp,
-        root: x11.WindowId,
-        event: x11.WindowId,
-        child: x11.WindowId,
+        root_window: x11.WindowId,
+        event_window: x11.WindowId,
+        child_window: x11.WindowId,
         root_x: i16,
         root_y: i16,
         event_x: i16,
@@ -152,6 +164,30 @@ fn ButtonEvent(comptime code: EventCode) type {
 
 pub const ButtonPressEvent = ButtonEvent(.button_press);
 pub const ButtonReleaseEvent = ButtonEvent(.button_release);
+
+pub const MotionNotifyEvent = extern struct {
+    code: EventCode = .motion_notify,
+    detail: enum(x11.Card8) {
+        normal = 0,
+        hint = 1,
+    },
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+    time: x11.Timestamp,
+    root_window: x11.WindowId,
+    event_window: x11.WindowId,
+    child_window: x11.WindowId,
+    root_x: i16,
+    root_y: i16,
+    event_x: i16,
+    event_y: i16,
+    state: KeyButMask,
+    same_screen: bool,
+    pad1: x11.Card8 = 0,
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
 
 pub const FocusInEvent = extern struct {
     code: EventCode = .focus_in,
@@ -318,6 +354,7 @@ pub const Event = extern union {
     key_release: KeyReleaseEvent,
     button_press: ButtonPressEvent,
     button_release: ButtonReleaseEvent,
+    motion_notify: MotionNotifyEvent,
     focus_in: FocusInEvent,
     focus_out: FocusOutEvent,
     create_notify: CreateNotifyEvent,

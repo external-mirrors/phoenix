@@ -141,10 +141,6 @@ pub const KeySym = enum(Card32) {
     _,
 };
 
-pub const Button = enum(Card8) {
-    _,
-};
-
 pub const Class = enum(Card16) {
     input_output = 1,
     input_only = 2,

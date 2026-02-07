@@ -53,6 +53,8 @@ cursor_y: i32,
 
 running: bool = false,
 
+current_pending_client_flushes: std.ArrayListUnmanaged(*phx.Client) = .empty,
+
 /// The server will catch sigint and close down (if |run| has been executed)
 pub fn create(allocator: std.mem.Allocator) !*Self {
     var self = try allocator.create(Self);
@@ -171,6 +173,7 @@ pub fn destroy(self: *Self) void {
     self.display.destroy();
     self.input.deinit();
     self.events.deinit(self.allocator);
+    self.current_pending_client_flushes.deinit(self.allocator);
     std.posix.close(self.epoll_fd);
     std.posix.close(self.signal_fd);
     std.posix.close(self.event_fd);
@@ -239,6 +242,7 @@ pub fn run(self: *Self) !void {
             const epoll_event = &self.epoll_events[event_index];
 
             if (epoll_event.data.fd == self.event_fd) {
+                self.handle_pending_client_flushes();
                 self.handle_events();
             } else if (epoll_event.data.fd == self.signal_fd) {
                 std.log.info("Received SIGINT signal, stopping " ++ vendor, .{});
@@ -401,10 +405,6 @@ fn handle_client_request(self: *Self, client: *phx.Client) !bool {
             error.InvalidRequestLength,
             => try request_context.client.write_error(request_context, .length, 0),
             error.InvalidEnumTag => try request_context.client.write_error(request_context, .value, 0), // TODO: Return the correct value
-            else => {
-                std.log.err("TODO: phx.core.handle_request: Handle error better: {s}", .{@errorName(err)});
-                return error.UnhandledProtocolError;
-            },
         };
     } else if (request_header.major_opcode >= phx.opcode.extension_opcode_min and request_header.major_opcode <= phx.opcode.extension_opcode_max) {
         phx.extension.handle_request(request_context) catch |err| switch (err) {
@@ -492,7 +492,7 @@ pub fn get_glx_context(self: *Self, glx_context_id: phx.Glx.ContextId) ?phx.GlxC
     return self.client_manager.get_resource_of_type(glx_context_id.to_id(), .glx_context);
 }
 
-pub fn handle_events(self: *Self) void {
+fn handle_events(self: *Self) void {
     self.events_mutex.lock();
     defer self.events_mutex.unlock();
 
@@ -519,8 +519,34 @@ pub fn append_event(self: *Self, event: *const Event) !void {
     defer self.events_mutex.unlock();
 
     try self.events.append(self.allocator, event.*);
-    const value: u64 = 1;
-    _ = std.posix.write(self.event_fd, std.mem.bytesAsSlice(u8, std.mem.asBytes(&value))) catch unreachable;
+    if (self.events.items.len == 1) {
+        const value: u64 = 1;
+        _ = std.posix.write(self.event_fd, std.mem.bytesAsSlice(u8, std.mem.asBytes(&value))) catch unreachable;
+    }
+}
+
+fn handle_pending_client_flushes(self: *Self) void {
+    for (self.current_pending_client_flushes.items) |pending_client| {
+        pending_client.flush_write_buffer() catch |err| {
+            std.log.err("Failed to write data to client: {d}, disconnecting client. Error: {s}", .{ pending_client.connection.stream.handle, @errorName(err) });
+            remove_client(self, pending_client.connection.stream.handle);
+            continue;
+        };
+    }
+    self.current_pending_client_flushes.clearRetainingCapacity();
+}
+
+pub fn set_client_has_pending_flush(self: *Self, client: *phx.Client) !void {
+    for (self.current_pending_client_flushes.items) |pending_client| {
+        if (pending_client == client)
+            return;
+    }
+
+    try self.current_pending_client_flushes.append(self.allocator, client);
+    if (self.current_pending_client_flushes.items.len == 1) {
+        const value: u64 = 1;
+        _ = std.posix.write(self.event_fd, std.mem.bytesAsSlice(u8, std.mem.asBytes(&value))) catch unreachable;
+    }
 }
 
 pub const Event = union(enum) {

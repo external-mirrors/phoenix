@@ -242,7 +242,7 @@ pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const phx.m
     std.debug.assert(self.write_buffer.count - num_bytes_written_before >= 32);
     // TODO: If this fails but not the above then we need to discard data from the write end, how?
     try self.write_buffer_fds.write(fds);
-    try self.flush_write_buffer();
+    try self.server.set_client_has_pending_flush(self);
 }
 
 /// Also flushes the write buffer
@@ -256,7 +256,7 @@ pub fn write_error(self: *Self, request_context: phx.RequestContext, error_type:
     };
     std.log.err("Replying with error: {s}", .{x11.stringify_fmt(err_reply)});
     try self.write_buffer.write(std.mem.asBytes(&err_reply));
-    try self.flush_write_buffer();
+    try self.server.set_client_has_pending_flush(self);
 }
 
 /// Also flushes the write buffer
@@ -264,7 +264,7 @@ pub fn write_event(self: *Self, ev: *phx.event.Event) !void {
     ev.any.sequence_number = self.sequence_number;
     std.log.debug("Replying with event: {s}", .{x11.stringify_fmt(ev)});
     try self.write_buffer.write(std.mem.asBytes(ev));
-    try self.flush_write_buffer();
+    try self.server.set_client_has_pending_flush(self);
 }
 
 /// Also flushes the write buffer
@@ -275,7 +275,7 @@ pub fn write_event_extension(self: *Self, ev: anytype) !void {
     ev.sequence_number = self.sequence_number;
     std.log.debug("Replying with event: {s}", .{x11.stringify_fmt(ev)});
     try self.write_reply(ev);
-    try self.flush_write_buffer();
+    try self.server.set_client_has_pending_flush(self);
 }
 
 pub fn write_event_static_size(self: *Self, ev: anytype) !void {
@@ -285,7 +285,7 @@ pub fn write_event_static_size(self: *Self, ev: anytype) !void {
     ev.sequence_number = self.sequence_number;
     std.log.debug("Replying with event: {s}", .{x11.stringify_fmt(ev)});
     try self.write_buffer.write(std.mem.asBytes(ev));
-    try self.flush_write_buffer();
+    try self.server.set_client_has_pending_flush(self);
 }
 
 pub fn next_sequence_number(self: *Self) u16 {

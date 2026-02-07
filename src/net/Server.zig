@@ -535,7 +535,7 @@ fn handle_mouse_move(self: *Self, mouse_move: MouseMoveEvent) void {
             .detail = .normal, // XXX: Respect pointer motion hint
             .time = current_server_time,
             .root_window = self.root_window.id,
-            .event_window = cursor_window.id,
+            .event = cursor_window.id,
             .child_window = .none, // XXX: Is there any case where we dont want this to be .none?
             .root_x = @intCast(cursor_pos_root[0]),
             .root_y = @intCast(cursor_pos_root[1]),
@@ -592,7 +592,7 @@ fn handle_mouse_click(self: *Self, mouse_click: MouseClickEvent) void {
                     .button = mouse_click.button,
                     .time = current_server_time,
                     .root_window = self.root_window.id,
-                    .event_window = cursor_window.id,
+                    .event = cursor_window.id,
                     .child_window = .none, // XXX: Is there any case where we dont want this to be .none?
                     .root_x = @intCast(cursor_pos_root[0]),
                     .root_y = @intCast(cursor_pos_root[1]),
@@ -610,7 +610,7 @@ fn handle_mouse_click(self: *Self, mouse_click: MouseClickEvent) void {
                     .button = mouse_click.button,
                     .time = current_server_time,
                     .root_window = self.root_window.id,
-                    .event_window = cursor_window.id,
+                    .event = cursor_window.id,
                     .child_window = .none, // XXX: Is there any case where we dont want this to be .none?
                     .root_x = @intCast(cursor_pos_root[0]),
                     .root_y = @intCast(cursor_pos_root[1]),

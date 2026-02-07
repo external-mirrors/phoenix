@@ -14,6 +14,8 @@ pub const EventCode = enum(x11.Card8) {
     map_notify = 19,
     map_request = 20,
     configure_notify = 22,
+    configure_request = 23,
+    resize_request = 25,
     property_notify = 28,
     selection_clear = 29,
     //selection_request = 30,
@@ -146,7 +148,7 @@ fn ButtonEvent(comptime code: EventCode) type {
         sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
         time: x11.Timestamp,
         root_window: x11.WindowId,
-        event_window: x11.WindowId,
+        event: x11.WindowId,
         child_window: x11.WindowId,
         root_x: i16,
         root_y: i16,
@@ -174,7 +176,7 @@ pub const MotionNotifyEvent = extern struct {
     sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
     time: x11.Timestamp,
     root_window: x11.WindowId,
-    event_window: x11.WindowId,
+    event: x11.WindowId,
     child_window: x11.WindowId,
     root_x: i16,
     root_y: i16,
@@ -281,6 +283,46 @@ pub const ConfigureNotifyEvent = extern struct {
     }
 };
 
+pub const ConfigureRequestEvent = extern struct {
+    code: EventCode = .configure_request,
+    stack_mode: enum(x11.Card8) {
+        above = 0,
+        below = 1,
+        top_if = 2,
+        bottom_if = 3,
+        opposite = 4,
+    },
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+    parent_window: x11.WindowId,
+    window: x11.WindowId,
+    sibling: x11.WindowId,
+    x: i16,
+    y: i16,
+    width: x11.Card16,
+    height: x11.Card16,
+    border_width: x11.Card16,
+    value_mask: phx.core.ConfigureWindowValueMask,
+    pad1: [4]x11.Card8 = @splat(0),
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
+
+pub const ResizeRequestEvent = extern struct {
+    code: EventCode = .configure_request,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+    window: x11.WindowId,
+    width: x11.Card16,
+    height: x11.Card16,
+    pad2: [20]x11.Card8 = @splat(0),
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
+
 pub const PropertyNotifyEvent = extern struct {
     code: EventCode = .property_notify,
     pad1: x11.Card8 = 0,
@@ -361,10 +403,25 @@ pub const Event = extern union {
     map_notify: MapNotifyEvent,
     map_request: MapRequestEvent,
     configure_notify: ConfigureNotifyEvent,
+    configure_request: ConfigureRequestEvent,
+    resize_request: ResizeRequestEvent,
     property_notify: PropertyNotifyEvent,
     selection_clear: SelectionClearEvent,
     //selection_request: SelectionRequestEvent,
     colormap_notify: ColormapNotifyEvent,
+
+    pub fn set_event_window(self: *Event, event: x11.WindowId) void {
+        switch (self.any.code) {
+            .key_press => self.key_press.event = event,
+            .key_release => self.key_release.event = event,
+            .button_press => self.button_press.event = event,
+            .button_release => self.button_release.event = event,
+            .motion_notify => self.motion_notify.event = event,
+            .map_notify => self.map_notify.event = event,
+            .configure_notify => self.configure_notify.event = event,
+            else => {},
+        }
+    }
 
     comptime {
         std.debug.assert(@sizeOf(@This()) == 32);

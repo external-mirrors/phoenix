@@ -523,41 +523,98 @@ fn configure_window(request_context: phx.RequestContext) !void {
     };
 
     var modified: bool = false;
+    var size_modified: bool = false;
 
     // TODO: Check other attributes as well
     // TODO: Use sibling and stack-mode
+    var new_window_attributes = window.attributes;
 
     if (req.request.get_value(i16, "x")) |x| {
         if (x != window.attributes.geometry.x) {
-            window.attributes.geometry.x = x;
+            new_window_attributes.geometry.x = x;
             modified = true;
         }
     }
 
     if (req.request.get_value(i16, "y")) |y| {
         if (y != window.attributes.geometry.y) {
-            window.attributes.geometry.y = y;
+            new_window_attributes.geometry.y = y;
             modified = true;
         }
     }
 
     if (req.request.get_value(x11.Card16, "width")) |width| {
         if (width != window.attributes.geometry.width) {
-            window.attributes.geometry.width = width;
+            new_window_attributes.geometry.width = width;
             modified = true;
+            size_modified = true;
         }
     }
 
     if (req.request.get_value(x11.Card16, "height")) |height| {
         if (height != window.attributes.geometry.height) {
-            window.attributes.geometry.height = height;
+            new_window_attributes.geometry.height = height;
             modified = true;
+            size_modified = true;
+        }
+    }
+
+    if (!window.attributes.override_redirect) {
+        if (window.get_substructure_redirect_listener_parent_window()) |substruct_redirect_listener| {
+            if (substruct_redirect_listener.client != request_context.client) {
+                var configure_request_event = phx.event.Event{
+                    .configure_request = .{
+                        .stack_mode = .above, // TODO: Use correct value, right now we dont care
+                        .parent_window = substruct_redirect_listener.window.id,
+                        .window = window.id,
+                        .sibling = .none, // XXX: Right now we dont care. Will we ever care?
+                        .x = @intCast(new_window_attributes.geometry.x),
+                        .y = @intCast(new_window_attributes.geometry.y),
+                        .width = @intCast(new_window_attributes.geometry.width),
+                        .height = @intCast(new_window_attributes.geometry.height),
+                        .border_width = 1, // TODO:
+                        .value_mask = req.request.value_mask,
+                    },
+                };
+
+                substruct_redirect_listener.client.write_event(&configure_request_event) catch |err| {
+                    // TODO: What should be done if this happens? disconnect the client?
+                    std.log.err(
+                        "Failed to write (buffer) core event of type \"{s}\" to client {d}, error: {s}",
+                        .{ @tagName(configure_request_event.any.code), substruct_redirect_listener.client.connection.stream.handle, @errorName(err) },
+                    );
+                };
+                return;
+            }
+        }
+    }
+
+    if (size_modified) {
+        if (window.get_resize_redirect_listener_client()) |resize_redirect_client| {
+            if (resize_redirect_client != request_context.client) {
+                var resize_request_event = phx.event.Event{
+                    .resize_request = .{
+                        .window = window.id,
+                        .width = @intCast(new_window_attributes.geometry.width),
+                        .height = @intCast(new_window_attributes.geometry.height),
+                    },
+                };
+
+                resize_redirect_client.write_event(&resize_request_event) catch |err| {
+                    // TODO: What should be done if this happens? disconnect the client?
+                    std.log.err(
+                        "Failed to write (buffer) core event of type \"{s}\" to client {d}, error: {s}",
+                        .{ @tagName(resize_request_event.any.code), resize_redirect_client.connection.stream.handle, @errorName(err) },
+                    );
+                };
+
+                new_window_attributes.geometry.width = window.attributes.geometry.width;
+                new_window_attributes.geometry.height = window.attributes.geometry.height;
+            }
         }
     }
 
     if (modified) {
-        // TODO: Handle this correctly according to the protocol when it comes to SubstructureRedirect and ResizeRedirect:
-        // https://www.x.org/releases/X11R7.7/doc/xproto/x11protocol.html#requests:ConfigureWindow
         var configure_notify_event = phx.event.Event{
             .configure_notify = .{
                 .event = req.request.window,
@@ -572,6 +629,8 @@ fn configure_window(request_context: phx.RequestContext) !void {
             },
         };
         window.write_core_event_to_event_listeners(&configure_notify_event);
+
+        window.attributes = new_window_attributes;
     }
 }
 
@@ -1378,7 +1437,7 @@ fn get_window_children_reverse(window: *const phx.Window, allocator: std.mem.All
     return children;
 }
 
-const ConfigureWindowValueMask = packed struct(x11.Card16) {
+pub const ConfigureWindowValueMask = packed struct(x11.Card16) {
     x: bool,
     y: bool,
     width: bool,

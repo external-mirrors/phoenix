@@ -495,9 +495,9 @@ fn validate_event_exclusivity(self: *Self, event_mask: phx.core.EventMask) bool 
     return true;
 }
 
-// TODO: parents should be checked for clients with redirect event mask, to only send the event to that client.
-// TODO: If window has override-redirect set then map and configure requests on the window should override a SubstructureRedirect on parents.
 pub fn write_core_event_to_event_listeners(self: *const Self, event: *phx.event.Event) void {
+    event.set_event_window(self.id);
+
     for (self.core_event_listeners.items) |*event_listener| {
         if (!core_event_mask_matches_event_code(event_listener.event_mask, event.any.code, event))
             continue;
@@ -519,6 +519,8 @@ pub fn write_core_event_to_event_listeners(self: *const Self, event: *phx.event.
 }
 
 fn write_core_event_to_substructure_notify_listeners(self: *const Self, event: *phx.event.Event) void {
+    event.set_event_window(self.id);
+
     for (self.core_event_listeners.items) |*event_listener| {
         if (!event_listener.event_mask.substructure_notify)
             continue;
@@ -537,19 +539,32 @@ fn write_core_event_to_substructure_notify_listeners(self: *const Self, event: *
         parent.write_core_event_to_substructure_notify_listeners(event);
 }
 
-pub fn get_substructure_redirect_listener_parent_window(self: *const Self) ?*const phx.Window {
-    for (self.core_event_listeners.items) |*event_listener| {
-        if (event_listener.event_mask.substructure_redirect)
-            return self;
+const RedirectListener = struct {
+    client: *phx.Client,
+    window: *phx.Window,
+};
+
+pub fn get_substructure_redirect_listener_parent_window(self: *const Self) ?RedirectListener {
+    var parent = self.parent;
+    while (parent) |par| {
+        for (par.core_event_listeners.items) |*event_listener| {
+            if (event_listener.event_mask.substructure_redirect)
+                return .{ .client = event_listener.client, .window = par };
+        }
+        parent = par.parent;
     }
-
-    if (self.parent) |parent|
-        return parent.get_substructure_redirect_listener_parent_window();
-
     return null;
 }
 
-inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, event_code: phx.event.EventCode, event: *const phx.event.Event) bool {
+pub fn get_resize_redirect_listener_client(self: *const Self) ?*phx.Client {
+    for (self.core_event_listeners.items) |*event_listener| {
+        if (event_listener.event_mask.resize_redirect)
+            return event_listener.client;
+    }
+    return null;
+}
+
+fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, event_code: phx.event.EventCode, event: *const phx.event.Event) bool {
     switch (event_code) {
         .key_press => return event_mask.key_press,
         .key_release => return event_mask.key_release,
@@ -577,8 +592,10 @@ inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, eve
         .focus_out => return event_mask.focus_change,
         .create_notify => return false, // This only applies to parents
         .map_notify => return event_mask.structure_notify,
-        .map_request => return false, // This only applies to parents
+        .map_request => return false, // This only applies to the substructure redirect parent (client)
         .configure_notify => return event_mask.structure_notify,
+        .configure_request => return false, // This only applies to the substructure redirect parent (client)
+        .resize_request => return event_mask.resize_redirect,
         .property_notify => return event_mask.property_change,
         .selection_clear => return false, // Clients cant select to listen to this, they always listen to it and it's only sent to a single client
         .colormap_notify => return event_mask.colormap_change,
@@ -599,6 +616,8 @@ inline fn core_event_should_propagate_to_parent_substructure_notify(event_code: 
         .map_notify => true,
         .map_request => false,
         .configure_notify => true,
+        .configure_request => false,
+        .resize_request => false,
         .property_notify => false,
         .selection_clear => false,
         .colormap_notify => false,
@@ -790,44 +809,39 @@ pub fn get_absolute_position(self: *const Self) @Vector(2, i32) {
 }
 
 pub fn map(self: *Self) void {
-    const substructure_redirect_parent_window =
-        if (self.parent) |parent|
-            parent.get_substructure_redirect_listener_parent_window()
-        else
-            null;
-
-    self.map_internal(self, substructure_redirect_parent_window);
-}
-
-fn map_internal(self: *Self, map_target_window: *const phx.Window, substructure_redirect_parent_window: ?*const phx.Window) void {
-    for (self.children.items) |child_window| {
-        child_window.map_internal(map_target_window, substructure_redirect_parent_window);
-    }
-
     if (self.attributes.mapped)
         return;
 
-    if (!self.attributes.override_redirect and substructure_redirect_parent_window != null) {
-        var map_notify_event = phx.event.Event{
-            .map_request = .{
-                .parent = substructure_redirect_parent_window.?.id,
-                .window = self.id,
-            },
-        };
-        self.write_core_event_to_event_listeners(&map_notify_event);
-    } else {
-        self.attributes.mapped = true;
-        self.graphics_window.mapped = true; // Technically a race condition, but who cares
-
-        var map_notify_event = phx.event.Event{
-            .map_notify = .{
-                .event = map_target_window.id,
-                .window = self.id,
-                .override_redirect = self.attributes.override_redirect, // TODO: Is this correct? should it be event_window instead?
-            },
-        };
-        self.write_core_event_to_event_listeners(&map_notify_event);
+    if (!self.attributes.override_redirect) {
+        if (self.get_substructure_redirect_listener_parent_window()) |substruct_redirect_listener| {
+            var map_notify_event = phx.event.Event{
+                .map_request = .{
+                    .parent = substruct_redirect_listener.window.id,
+                    .window = self.id,
+                },
+            };
+            substruct_redirect_listener.client.write_event(&map_notify_event) catch |err| {
+                // TODO: What should be done if this happens? disconnect the client?
+                std.log.err(
+                    "Failed to write (buffer) core event of type \"{s}\" to client {d}, error: {s}",
+                    .{ @tagName(map_notify_event.any.code), substruct_redirect_listener.client.connection.stream.handle, @errorName(err) },
+                );
+            };
+            return;
+        }
     }
+
+    self.attributes.mapped = true;
+    self.graphics_window.mapped = true; // XXX: Technically a race condition, but who cares
+
+    var map_notify_event = phx.event.Event{
+        .map_notify = .{
+            .event = .none,
+            .window = self.id,
+            .override_redirect = self.attributes.override_redirect,
+        },
+    };
+    self.write_core_event_to_event_listeners(&map_notify_event);
 }
 
 /// Returns |root_window| if no window matches

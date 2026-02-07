@@ -20,12 +20,11 @@ pub const EventCode = enum(x11.Card8) {
     // TODO: Clients need support for this (Generic Event Extension), but clients like mesa with opengl graphics expect present events
     // with this even when they dont tell the server it supports this
     generic_event_extension = 35,
-
-    randr_screen_change_notify = randr_first_event + 0,
-    randr_notify = randr_first_event + 1,
 };
 
 pub const randr_first_event: x11.Card8 = 50;
+pub const randr_screen_change_notify: x11.Card8 = randr_first_event + 0;
+pub const randr_notify: x11.Card8 = randr_first_event + 1;
 
 pub const FocusDetail = enum(x11.Card8) {
     ancestor = 0,

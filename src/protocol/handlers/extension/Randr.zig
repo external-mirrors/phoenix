@@ -1219,7 +1219,7 @@ const NotifySubCode = enum(x11.Card8) {
 
 pub const Event = struct {
     pub const ScreenChangeNotify = extern struct {
-        code: phx.event.EventCode = .randr_screen_change_notify,
+        code: x11.Card8 = phx.event.randr_screen_change_notify,
         rotation: phx.Randr.Rotation(x11.Card8),
         sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
         screen_changed_timestamp: x11.Timestamp,
@@ -1251,7 +1251,7 @@ pub const Event = struct {
     };
 
     pub const CrtcChangeNotify = extern struct {
-        code: phx.event.EventCode = .randr_notify,
+        code: x11.Card8 = phx.event.randr_notify,
         subcode: NotifySubCode = .crtc_change,
         sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
         crtc_changed_timestamp: x11.Timestamp,
@@ -1283,7 +1283,7 @@ pub const Event = struct {
     };
 
     pub const OutputChangeNotify = extern struct {
-        code: phx.event.EventCode = .randr_notify,
+        code: x11.Card8 = phx.event.randr_notify,
         subcode: NotifySubCode = .output_change,
         sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
         output_changed_timestamp: x11.Timestamp,
@@ -1314,7 +1314,7 @@ pub const Event = struct {
     };
 
     pub const OutputPropertyNotify = extern struct {
-        code: phx.event.EventCode = .randr_notify,
+        code: x11.Card8 = phx.event.randr_notify,
         subcode: NotifySubCode = .output_property,
         sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
         window: x11.WindowId,

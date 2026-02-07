@@ -75,6 +75,9 @@ pub fn destroy(self: *Self) void {
         property.deinit();
     }
 
+    self.server.selection_owner_manager.clear_selections_by_window(self);
+    self.revert_input_focus();
+
     self.remove_event_listeners_from_clients();
     self.client_owner.remove_resource(self.id.to_id());
 
@@ -83,9 +86,6 @@ pub fn destroy(self: *Self) void {
     self.properties.deinit(self.allocator);
     self.children.deinit();
     self.allocator.destroy(self);
-
-    self.server.selection_owner_manager.clear_selections_by_window(self);
-    self.revert_input_focus();
 }
 
 fn revert_input_focus(self: *Self) void {
@@ -555,6 +555,8 @@ inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, eve
         .key_release => event_mask.key_release,
         .button_press => event_mask.button_press,
         .button_release => event_mask.button_release,
+        .focus_in => event_mask.focus_change,
+        .focus_out => event_mask.focus_change,
         .create_notify => false, // This only applies to parents
         .map_notify => event_mask.structure_notify,
         .map_request => false, // This only applies to parents
@@ -563,7 +565,6 @@ inline fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, eve
         .selection_clear => false, // Clients cant select to listen to this, they always listen to it and it's only sent to a single client
         .colormap_notify => event_mask.colormap_change,
         .generic_event_extension => false, // TODO:
-        else => false,
     };
 }
 
@@ -573,6 +574,8 @@ inline fn core_event_should_propagate_to_parent_substructure_notify(event_code: 
         .key_release => false,
         .button_press => false,
         .button_release => false,
+        .focus_in => false,
+        .focus_out => false,
         .create_notify => true,
         .map_notify => true,
         .map_request => false,
@@ -581,7 +584,6 @@ inline fn core_event_should_propagate_to_parent_substructure_notify(event_code: 
         .selection_clear => false,
         .colormap_notify => false,
         .generic_event_extension => false, // TODO:
-        else => false,
     };
 }
 
@@ -667,7 +669,7 @@ pub fn write_extension_event_to_event_listeners(self: *const Self, ev: anytype) 
                 // TODO: What should be done if this happens? disconnect the client?
                 std.log.err(
                     "Failed to write event {d} to client {d}, error: {s}",
-                    .{ @intFromEnum(ev.code), event_listener.client.connection.stream.handle, @errorName(err) },
+                    .{ ev.code, event_listener.client.connection.stream.handle, @errorName(err) },
                 );
                 continue;
             };

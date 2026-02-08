@@ -25,6 +25,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .intern_atom => intern_atom(request_context),
         .get_atom_name => get_atom_name(request_context),
         .change_property => change_property(request_context),
+        .delete_property => delete_property(request_context),
         .get_property => get_property(request_context),
         .set_selection_owner => set_selection_owner(request_context),
         .get_selection_owner => get_selection_owner(request_context),
@@ -756,11 +757,37 @@ fn change_property(request_context: phx.RequestContext) !void {
     window.write_core_event_to_event_listeners(&property_notify_event);
 }
 
+fn delete_property(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.DeleteProperty, request_context.allocator);
+    defer req.deinit();
+
+    const window = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in DeleteProperty request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+
+    const property_atom = request_context.server.atom_manager.get_atom_by_id(req.request.property) orelse {
+        std.log.err("Received invalid property atom {d} in DeleteProperty request", .{req.request.property});
+        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.property));
+    };
+
+    if (window.delete_property(property_atom)) {
+        var property_notify_event = phx.event.Event{
+            .property_notify = .{
+                .window = req.request.window,
+                .property_name = property_atom.id,
+                .time = request_context.server.get_timestamp_milliseconds(),
+                .state = .deleted,
+            },
+        };
+        window.write_core_event_to_event_listeners(&property_notify_event);
+    }
+}
+
 fn get_property(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetProperty, request_context.allocator);
     defer req.deinit();
 
-    // TODO: Error if running in security mode and the window is not owned by the client
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in GetProperty request", .{req.request.window});
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
@@ -926,8 +953,6 @@ fn query_pointer(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryPointer, request_context.allocator);
     defer req.deinit();
 
-    std.log.err("TODO: Implement QueryPointer properly", .{});
-
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in QueryPointer request", .{req.request.window});
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
@@ -947,8 +972,7 @@ fn query_pointer(request_context: phx.RequestContext) !void {
         .root_y = @intCast(request_context.server.cursor_y),
         .win_x = @intCast(offset_x),
         .win_y = @intCast(offset_y),
-        // TODO: Set these when input is properly supported
-        .mask = .{},
+        .mask = request_context.server.current_key_but_mask,
     };
     try request_context.client.write_reply(&rep);
 }
@@ -1742,7 +1766,7 @@ pub const Request = struct {
 
     pub const GetAtomName = struct {
         opcode: phx.opcode.Major = .get_atom_name,
-        pad: x11.Card8,
+        pad1: x11.Card8,
         length: x11.Card16,
         atom: x11.AtomId,
     };
@@ -1769,6 +1793,14 @@ pub const Request = struct {
             format32: []x11.Card32,
         }, .{ .type_field = "format", .length_field = "data_length" }),
         pad3: x11.AlignmentPadding,
+    };
+
+    pub const DeleteProperty = struct {
+        opcode: phx.opcode.Major = .delete_property,
+        pad: x11.Card8,
+        length: x11.Card16,
+        window: x11.WindowId,
+        property: x11.AtomId,
     };
 
     pub const GetProperty = struct {

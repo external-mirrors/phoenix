@@ -13,6 +13,7 @@ pub const Major = enum(x11.Card8) {
     intern_atom = 16,
     get_atom_name = 17,
     change_property = 18,
+    delete_property = 19,
     get_property = 20,
     set_selection_owner = 22,
     get_selection_owner = 23,

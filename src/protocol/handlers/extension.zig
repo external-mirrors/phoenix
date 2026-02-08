@@ -16,6 +16,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
         .render => phx.Render.handle_request(request_context),
         .randr => phx.Randr.handle_request(request_context),
         .generic_event_extension => phx.GenericEvent.handle_request(request_context),
+        .mit_shm => phx.MitShm.handle_request(request_context),
         else => unreachable,
     };
 }

@@ -100,7 +100,7 @@ fn reply_set_length_fields_root(comptime T: type, reply: *T) void {
     };
     const struct_length_without_header = @max(0, calculated_reply_size - header_size);
     const unit_size: u32 = 4;
-    std.debug.assert(struct_length_without_header % unit_size == 0);
+    std.debug.assert(struct_length_without_header % unit_size == 0); // Reply is malformed (incorrect length)
     reply.length = @intCast(struct_length_without_header / unit_size);
 }
 

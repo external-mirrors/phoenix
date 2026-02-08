@@ -37,6 +37,7 @@ pub const Xkb = @import("protocol/handlers/extension/Xkb.zig");
 pub const Xwayland = @import("protocol/handlers/extension/Xwayland.zig");
 pub const Render = @import("protocol/handlers/extension/Render.zig");
 pub const GenericEvent = @import("protocol/handlers/extension/GenericEvent.zig");
+pub const MitShm = @import("protocol/handlers/extension/MitShm.zig");
 
 pub const Colormap = @import("resource/Colormap.zig");
 pub const Cursor = @import("resource/Cursor.zig");

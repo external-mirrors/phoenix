@@ -37,6 +37,7 @@ extension_versions: ExtensionVersions = .{
     .render = .{ .major = 0, .minor = 0 },
     .randr = .{ .major = 0, .minor = 0 },
     .generic_event = .{ .major = 0, .minor = 0 },
+    .mit_shm = .{ .major = 0, .minor = 0 },
 },
 
 xkb_initialized: bool = false,
@@ -379,4 +380,5 @@ const ExtensionVersions = struct {
     render: phx.Version,
     randr: phx.Version,
     generic_event: phx.Version,
+    mit_shm: phx.Version,
 };

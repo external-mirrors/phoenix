@@ -24,12 +24,12 @@ fn query_version(request_context: phx.RequestContext) !void {
 
     const server_version = phx.Version{ .major = 1, .minor = 0 };
     const client_version = phx.Version{ .major = req.request.major_version, .minor = req.request.minor_version };
-    request_context.client.extension_versions.render = phx.Version.min(server_version, client_version);
+    request_context.client.extension_versions.generic_event = phx.Version.min(server_version, client_version);
 
     var rep = Reply.QueryVersion{
         .sequence_number = request_context.sequence_number,
-        .major_version = @truncate(request_context.client.extension_versions.render.major),
-        .minor_version = @truncate(request_context.client.extension_versions.render.minor),
+        .major_version = @truncate(request_context.client.extension_versions.generic_event.major),
+        .minor_version = @truncate(request_context.client.extension_versions.generic_event.minor),
     };
     try request_context.client.write_reply(&rep);
 }

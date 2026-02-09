@@ -1,7 +1,6 @@
 const std = @import("std");
 const phx = @import("../phoenix.zig");
 const x11 = phx.x11;
-const netutils = @import("utils.zig");
 
 const Self = @This();
 
@@ -130,7 +129,7 @@ pub fn read_client_data_to_buffer(self: *Self) !void {
     // TODO: Write directly to read_buffer instead from connection.stream
     var read_buffer: [4096]u8 = undefined;
     while (true) {
-        var recv_result = netutils.recvmsg(self.connection.stream.handle, &read_buffer) catch |err| switch (err) {
+        var recv_result = phx.netutils.recvmsg(self.connection.stream.handle, &read_buffer) catch |err| switch (err) {
             error.WouldBlock => return,
             else => return err,
         };
@@ -148,7 +147,7 @@ pub fn read_client_data_to_buffer(self: *Self) !void {
 }
 
 pub fn flush_write_buffer(self: *Self) !void {
-    var fd_buf: [netutils.max_fds]std.posix.fd_t = undefined;
+    var fd_buf: [phx.netutils.max_fds]std.posix.fd_t = undefined;
     while (self.write_buffer.readableLength() > 0) {
         const write_buffer = self.write_buffer.readableSliceOfLen(self.write_buffer.readableLength());
         const reply_fds = self.write_buffer_fds.readableSliceOfLen(@min(self.write_buffer_fds.readableLength(), fd_buf.len));
@@ -157,7 +156,7 @@ pub fn flush_write_buffer(self: *Self) !void {
         }
         const fds = fd_buf[0..reply_fds.len];
 
-        const bytes_written = netutils.sendmsg(self.connection.stream.handle, write_buffer, fds) catch |err| switch (err) {
+        const bytes_written = phx.netutils.sendmsg(self.connection.stream.handle, write_buffer, fds) catch |err| switch (err) {
             error.WouldBlock => return,
             else => return err,
         };

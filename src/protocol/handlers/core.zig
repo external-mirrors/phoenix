@@ -1226,6 +1226,7 @@ fn query_extension(request_context: phx.RequestContext) !void {
     } else if (std.mem.eql(u8, req.request.name.items, "MIT-SHM")) {
         rep.present = true;
         rep.major_opcode = @intFromEnum(phx.opcode.Major.mit_shm);
+        rep.first_error = phx.err.mit_shm_first_error;
     } else {
         std.log.err("QueryExtension: unsupported extension: {s}", .{req.request.name.items});
     }

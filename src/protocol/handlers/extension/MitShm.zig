@@ -100,7 +100,7 @@ fn attach(request_context: phx.RequestContext) !void {
 fn shm_access(request_context: phx.RequestContext, shm_perm: *const phx.c.ipc_perm, read_only: bool) bool {
     var peercred: phx.c.ucred = undefined;
     comptime std.debug.assert(builtin.os.tag == .linux);
-    std.posix.getsockopt(request_context.client.connection.stream.handle, std.posix.SOL.SOCKET, std.posix.SO.PEERCRED, std.mem.asBytes(&peercred)) catch {
+    phx.netutils.getsockopt(request_context.client.connection.stream.handle, std.posix.SOL.SOCKET, std.posix.SO.PEERCRED, std.mem.asBytes(&peercred)) catch {
         const mask: std.posix.mode_t = std.posix.S.IROTH | if (read_only) @as(std.posix.mode_t, 0) else std.posix.S.IWOTH;
         return (shm_perm.mode & mask) == mask;
     };

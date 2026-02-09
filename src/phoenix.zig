@@ -11,6 +11,7 @@ pub const SelectionOwner = SelectionOwnerManager.SelectionOwner;
 pub const Client = @import("net/Client.zig");
 pub const message = @import("net/message.zig");
 pub const Server = @import("net/Server.zig");
+pub const netutils = @import("net/utils.zig");
 
 pub const err = @import("protocol/error.zig");
 pub const Error = err.Error;

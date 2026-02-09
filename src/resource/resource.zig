@@ -9,12 +9,14 @@ pub const Resource = union(enum) {
     event_context: phx.EventContext,
     colormap: phx.Colormap,
     glx_context: phx.GlxContext,
+    shm_segment: phx.ShmSegment,
 
     pub fn deinit(self: Resource) void {
         switch (self) {
             .window => |item| item.destroy(),
             .pixmap => |item| item.destroy(),
             .fence => |item| item.destroy(),
+            .shm_segment => |item| item.deinit(),
             .event_context, .colormap, .glx_context => {},
         }
     }

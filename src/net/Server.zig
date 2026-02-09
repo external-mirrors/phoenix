@@ -58,6 +58,8 @@ current_pending_client_flushes: std.ArrayListUnmanaged(*phx.Client) = .empty,
 // TODO: Update with key states as well when keys are handled.
 current_key_but_mask: phx.event.KeyButMask = .{},
 
+all_shm_segments: std.ArrayListUnmanaged(phx.ShmSegment) = .empty,
+
 /// The server will catch sigint and close down (if |run| has been executed)
 pub fn create(allocator: std.mem.Allocator) !*Self {
     var self = try allocator.create(Self);
@@ -177,6 +179,7 @@ pub fn destroy(self: *Self) void {
     self.input.deinit();
     self.events.deinit(self.allocator);
     self.current_pending_client_flushes.deinit(self.allocator);
+    self.all_shm_segments.deinit(self.allocator);
     std.posix.close(self.epoll_fd);
     std.posix.close(self.signal_fd);
     std.posix.close(self.event_fd);
@@ -499,6 +502,10 @@ pub fn get_glx_context(self: *Self, glx_context_id: phx.Glx.ContextId) ?phx.GlxC
     return self.client_manager.get_resource_of_type(glx_context_id.to_id(), .glx_context);
 }
 
+pub fn get_shm_segment(self: *Self, shm_seg_id: phx.MitShm.SegId) ?phx.ShmSegment {
+    return self.client_manager.get_resource_of_type(shm_seg_id.to_id(), .shm_segment);
+}
+
 fn handle_events(self: *Self) void {
     self.events_mutex.lock();
     defer self.events_mutex.unlock();
@@ -659,6 +666,18 @@ pub fn set_client_has_pending_flush(self: *Self, client: *phx.Client) !void {
         const value: u64 = 1;
         _ = std.posix.write(self.event_fd, std.mem.bytesAsSlice(u8, std.mem.asBytes(&value))) catch unreachable;
     }
+}
+
+pub fn append_shm_segment(self: *Self, shm_segment: *const phx.ShmSegment) !void {
+    try self.all_shm_segments.append(self.allocator, shm_segment.*);
+}
+
+pub fn get_shm_segment_by_shmid(self: *Self, shmid: c_int) ?*phx.ShmSegment {
+    for (self.all_shm_segments.items) |*shm_segment| {
+        if (shm_segment.shmid == shmid)
+            return shm_segment;
+    }
+    return null;
 }
 
 pub const Event = union(enum) {

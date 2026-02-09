@@ -331,6 +331,10 @@ pub fn add_glx_context(self: *Self, glx_context: phx.GlxContext) !void {
     return self.add_resource(glx_context.id.to_id(), .{ .glx_context = glx_context });
 }
 
+pub fn add_shm_segment(self: *Self, shm_segment: *const phx.ShmSegment) !void {
+    return self.add_resource(shm_segment.id.to_id(), .{ .shm_segment = shm_segment.* });
+}
+
 pub fn remove_resource(self: *Self, id: x11.ResourceId) void {
     _ = self.resources.remove(id);
 }

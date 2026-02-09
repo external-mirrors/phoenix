@@ -48,6 +48,7 @@ pub const Fence = @import("resource/Fence.zig");
 pub const EventContext = @import("resource/EventContext.zig");
 pub const GlxContext = @import("resource/GlxContext.zig");
 pub const GlxDrawable = @import("resource/GlxDrawable.zig");
+pub const ShmSegment = @import("resource/ShmSegment.zig");
 pub const resource = @import("resource/resource.zig");
 pub const Resource = resource.Resource;
 pub const ResourceHashMap = resource.ResourceHashMap;
@@ -61,6 +62,7 @@ pub const fixed = @import("misc/fixed.zig");
 pub const time = @import("misc/time.zig");
 pub const pattern = @import("misc/pattern.zig");
 pub const InputFocus = @import("misc/InputFocus.zig");
+pub const Rc = @import("misc/rc.zig").Rc;
 
 pub const keysym = @import("keyboard/keysym.zig");
 pub const KeySym = keysym.KeySym;

@@ -1,7 +1,7 @@
 const config = @import("config");
 
 pub usingnamespace @cImport({
-    @cDefine("GL_GLEXT_PROTOTYPES", "1");
+    @cDefine("GL_GLEXT_PROTOTYPES", {});
     @cInclude("GL/gl.h");
     @cInclude("GL/glext.h");
 
@@ -25,6 +25,11 @@ pub usingnamespace @cImport({
         @cInclude("drm_fourcc.h");
         @cInclude("gbm.h");
     }
+
+    @cDefine("_GNU_SOURCE", {});
+    @cDefine("__USE_GNU", {});
+    @cInclude("sys/shm.h");
+    @cInclude("sys/socket.h");
 });
 
 pub const KeySym = @cImport(@cInclude("xkbcommon/xkbcommon-keysyms.h"));

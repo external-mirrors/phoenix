@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const phx = @import("../../../phoenix.zig");
 const x11 = phx.x11;
 
@@ -38,17 +39,101 @@ fn query_version(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+const SHMAT_INVALID_ADDR: *anyopaque = @ptrFromInt(std.math.maxInt(usize));
+
 fn attach(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.Attach, request_context.allocator);
     defer req.deinit();
 
-    std.log.err("TODO: Implement MitShmAttach", .{});
-    //std.c.shm_open(name: [*:0]const u8, flag: c_int, mode: mode_t)
+    if (request_context.server.get_shm_segment(req.request.shmseg)) |_| {
+        std.log.err("MitShmAttach: shmseg {d} is already attached", .{req.request.shmseg});
+        return request_context.client.write_error(request_context, .mit_shm_bad_seg, req.request.shmseg.to_id().to_int());
+    }
+
+    const shmid: c_int = @bitCast(req.request.shmid);
+
+    if (request_context.server.get_shm_segment_by_shmid(shmid)) |shm_segment| {
+        if (!req.request.read_only and shm_segment.read_only) {
+            std.log.err("MitShmAttach: shmid {d} is already attached, but the client attempted to attach it in read-write mode when it was previous attached in read-only mode", .{shmid});
+            return request_context.client.write_error(request_context, .access, 0);
+        }
+
+        var new_shm_segment = phx.ShmSegment.init_ref_data(shm_segment, req.request.shmseg);
+        errdefer new_shm_segment.deinit();
+
+        try request_context.client.add_shm_segment(&new_shm_segment);
+        return;
+    }
+
+    var shmctl_buf: phx.c.shmid_ds = undefined;
+    const addr = phx.c.shmat(shmid, null, if (req.request.read_only) phx.c.SHM_RDONLY else 0);
+    if (addr == null or addr.? == SHMAT_INVALID_ADDR) {
+        std.log.err("MitShmAttach: shmtat failed for shmid {d}", .{shmid});
+        return request_context.client.write_error(request_context, .access, 0);
+    }
+    var cleanup_addr = true;
+    defer {
+        if (cleanup_addr)
+            _ = phx.c.shmdt(addr);
+    }
+
+    if (phx.c.shmctl(shmid, phx.c.IPC_STAT, &shmctl_buf) != 0) {
+        std.log.err("MitShmAttach: shmctl failed for shmid {d}", .{shmid});
+        return request_context.client.write_error(request_context, .access, 0);
+    }
+
+    if (!shm_access(request_context, &shmctl_buf.shm_perm, req.request.read_only)) {
+        std.log.err("MitShmAttach: client {d} doesn't have access to shmid {d}", .{ request_context.client.connection.stream.handle, shmid });
+        return request_context.client.write_error(request_context, .access, 0);
+    }
+
+    var shm_segment = try phx.ShmSegment.init(req.request.shmseg, shmid, addr.?, req.request.read_only, request_context.allocator);
+    cleanup_addr = false;
+    errdefer shm_segment.deinit();
+
+    try request_context.client.add_shm_segment(&shm_segment);
+    errdefer request_context.client.remove_resource(shm_segment.id.to_id());
+
+    try request_context.server.append_shm_segment(&shm_segment);
+}
+
+fn shm_access(request_context: phx.RequestContext, shm_perm: *const phx.c.ipc_perm, read_only: bool) bool {
+    var peercred: phx.c.ucred = undefined;
+    comptime std.debug.assert(builtin.os.tag == .linux);
+    std.posix.getsockopt(request_context.client.connection.stream.handle, std.posix.SOL.SOCKET, std.posix.SO.PEERCRED, std.mem.asBytes(&peercred)) catch {
+        const mask: std.posix.mode_t = std.posix.S.IROTH | if (read_only) @as(std.posix.mode_t, 0) else std.posix.S.IWOTH;
+        return (shm_perm.mode & mask) == mask;
+    };
+
+    if (peercred.uid == 0) {
+        return true;
+    }
+
+    if (shm_perm.uid == peercred.uid or shm_perm.cuid == peercred.uid) {
+        const mask: std.posix.mode_t = std.posix.S.IRUSR | if (read_only) @as(std.posix.mode_t, 0) else std.posix.S.IWUSR;
+        return (shm_perm.mode & mask) == mask;
+    }
+
+    if (shm_perm.gid == peercred.gid or shm_perm.cgid == peercred.gid) {
+        const mask: std.posix.mode_t = std.posix.S.IRGRP | if (read_only) @as(std.posix.mode_t, 0) else std.posix.S.IWGRP;
+        return (shm_perm.mode & mask) == mask;
+    }
+
+    const mask: std.posix.mode_t = std.posix.S.IROTH | if (read_only) @as(std.posix.mode_t, 0) else std.posix.S.IWOTH;
+    return (shm_perm.mode & mask) == mask;
 }
 
 const MinorOpcode = enum(x11.Card8) {
     query_version = 0,
     attach = 1,
+};
+
+pub const SegId = enum(x11.Card32) {
+    _,
+
+    pub fn to_id(self: SegId) x11.ResourceId {
+        return @enumFromInt(@intFromEnum(self));
+    }
 };
 
 pub const Request = struct {
@@ -62,7 +147,7 @@ pub const Request = struct {
         major_opcode: phx.opcode.Major = .mit_shm,
         minor_opcode: MinorOpcode = .attach,
         length: x11.Card16,
-        shmseg: x11.Card32,
+        shmseg: SegId,
         shmid: x11.Card32,
         read_only: bool,
         pad1: x11.Card8,

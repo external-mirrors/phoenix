@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const phx = @import("../phoenix.zig");
 const x11 = phx.x11;
 
@@ -368,6 +369,19 @@ pub fn unregister_as_window_event_listener(self: *Self, window: *const phx.Windo
     }
 }
 
+pub fn get_credentials(self: *Self) ?Credentials {
+    var peercred: phx.c.ucred = undefined;
+    comptime std.debug.assert(builtin.os.tag == .linux);
+    phx.netutils.getsockopt(self.connection.stream.handle, std.posix.SOL.SOCKET, std.posix.SO.PEERCRED, std.mem.asBytes(&peercred)) catch {
+        return null;
+    };
+    return .{
+        .process_id = peercred.pid,
+        .user_id = peercred.uid,
+        .group_id = peercred.gid,
+    };
+}
+
 // TODO: Use this
 //const max_read_buffer_size: usize = 1 * 1024 * 1024; // 1mb. If the server doesn't dont manage to read the data fast enough then the client is forcefully disconnected
 // TODO: Use this
@@ -393,4 +407,10 @@ const ExtensionVersions = struct {
     randr: phx.Version,
     generic_event: phx.Version,
     mit_shm: phx.Version,
+};
+
+pub const Credentials = struct {
+    process_id: std.posix.pid_t,
+    user_id: std.posix.uid_t,
+    group_id: std.posix.gid_t,
 };

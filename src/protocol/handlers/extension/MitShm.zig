@@ -1,5 +1,4 @@
 const std = @import("std");
-const builtin = @import("builtin");
 const phx = @import("../../../phoenix.zig");
 const x11 = phx.x11;
 
@@ -117,23 +116,21 @@ fn detach(request_context: *phx.RequestContext) !void {
 }
 
 fn shm_access(request_context: *phx.RequestContext, shm_perm: *const phx.c.ipc_perm, read_only: bool) bool {
-    var peercred: phx.c.ucred = undefined;
-    comptime std.debug.assert(builtin.os.tag == .linux);
-    phx.netutils.getsockopt(request_context.client.connection.stream.handle, std.posix.SOL.SOCKET, std.posix.SO.PEERCRED, std.mem.asBytes(&peercred)) catch {
+    const credentials = request_context.client.get_credentials() orelse {
         const mask: std.posix.mode_t = std.posix.S.IROTH | if (read_only) @as(std.posix.mode_t, 0) else std.posix.S.IWOTH;
         return (shm_perm.mode & mask) == mask;
     };
 
-    if (peercred.uid == 0) {
+    if (credentials.user_id == 0) {
         return true;
     }
 
-    if (shm_perm.uid == peercred.uid or shm_perm.cuid == peercred.uid) {
+    if (shm_perm.uid == credentials.user_id or shm_perm.cuid == credentials.user_id) {
         const mask: std.posix.mode_t = std.posix.S.IRUSR | if (read_only) @as(std.posix.mode_t, 0) else std.posix.S.IWUSR;
         return (shm_perm.mode & mask) == mask;
     }
 
-    if (shm_perm.gid == peercred.gid or shm_perm.cgid == peercred.gid) {
+    if (shm_perm.gid == credentials.group_id or shm_perm.cgid == credentials.group_id) {
         const mask: std.posix.mode_t = std.posix.S.IRGRP | if (read_only) @as(std.posix.mode_t, 0) else std.posix.S.IWGRP;
         return (shm_perm.mode & mask) == mask;
     }

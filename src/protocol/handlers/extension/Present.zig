@@ -4,7 +4,7 @@ const Xfixes = @import("Xfixes.zig");
 const Randr = @import("Randr.zig");
 const x11 = phx.x11;
 
-pub fn handle_request(request_context: phx.RequestContext) !void {
+pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling present request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
@@ -22,7 +22,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
     };
 }
 
-fn query_version(request_context: phx.RequestContext) !void {
+fn query_version(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryVersion, request_context.allocator);
     defer req.deinit();
 
@@ -38,7 +38,7 @@ fn query_version(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn present_pixmap(request_context: phx.RequestContext) !void {
+fn present_pixmap(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.Pixmap, request_context.allocator);
     defer req.deinit();
 
@@ -105,7 +105,7 @@ fn present_pixmap(request_context: phx.RequestContext) !void {
     window.write_extension_event_to_event_listeners(&complete_event);
 }
 
-fn select_input(request_context: phx.RequestContext) !void {
+fn select_input(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.SelectInput, request_context.allocator);
     defer req.deinit();
 
@@ -135,19 +135,7 @@ fn select_input(request_context: phx.RequestContext) !void {
 
         const event_context = phx.EventContext{ .id = event_id, .window = window };
 
-        request_context.client.add_event_context(event_context) catch |err| switch (err) {
-            error.ResourceNotOwnedByClient => {
-                std.log.err("Received event id {d} in PresentSelectInput request which doesn't belong to the client", .{req.request.event_id});
-                return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.event_id));
-            },
-            error.ResourceAlreadyExists => {
-                std.log.err("Received event id {d} in PresentSelectInput request which already exists", .{req.request.event_id});
-                return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.event_id));
-            },
-            error.OutOfMemory => {
-                return request_context.client.write_error(request_context, .alloc, 0);
-            },
-        };
+        try request_context.client.add_event_context(event_context);
         errdefer request_context.client.remove_resource(event_context.id);
 
         try window.add_extension_event_listener(request_context.client, event_context.id, .present, @bitCast(req.request.event_mask));

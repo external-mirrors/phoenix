@@ -3,7 +3,7 @@ const phx = @import("../../../phoenix.zig");
 const x11 = phx.x11;
 const c = phx.c;
 
-pub fn handle_request(request_context: phx.RequestContext) !void {
+pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling dri3 request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
@@ -24,7 +24,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
     };
 }
 
-fn query_version(request_context: phx.RequestContext) !void {
+fn query_version(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryExtension, request_context.allocator);
     defer req.deinit();
 
@@ -72,7 +72,7 @@ fn validate_drm_auth(card_fd: std.posix.fd_t, render_fd: std.posix.fd_t) bool {
     return true;
 }
 
-fn open(request_context: phx.RequestContext) !void {
+fn open(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.Open, request_context.allocator);
     defer req.deinit();
 
@@ -104,7 +104,7 @@ fn open(request_context: phx.RequestContext) !void {
     });
 }
 
-fn pixmap_from_buffer(request_context: phx.RequestContext) !void {
+fn pixmap_from_buffer(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.PixmapFromBuffer, request_context.allocator);
     defer req.deinit();
     std.log.info("DRI3PixmapFromBuffer request: {s}, fd: {d}", .{ x11.stringify_fmt(req.request), request_context.client.get_read_fds() });
@@ -146,29 +146,17 @@ fn pixmap_from_buffer(request_context: phx.RequestContext) !void {
         .num_items = 1,
     };
 
-    var pixmap = phx.Pixmap.create(
+    var pixmap = try phx.Pixmap.create(
         req.request.pixmap,
         &import_dmabuf,
         request_context.server,
         request_context.client,
         request_context.allocator,
-    ) catch |err| switch (err) {
-        error.ResourceNotOwnedByClient => {
-            std.log.err("Received pixmap id {d} in DRI3PixmapFromBuffer request which doesn't belong to the client", .{req.request.pixmap});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.pixmap));
-        },
-        error.ResourceAlreadyExists => {
-            std.log.err("Received pixmap id {d} in DRI3PixmapFromBuffer request which already exists", .{req.request.pixmap});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.pixmap));
-        },
-        error.OutOfMemory => {
-            return request_context.client.write_error(request_context, .alloc, 0);
-        },
-    };
+    );
     errdefer pixmap.destroy();
 }
 
-fn fence_from_fd(request_context: phx.RequestContext) !void {
+fn fence_from_fd(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.FenceFromFd, request_context.allocator);
     defer req.deinit();
     std.log.info("Dri3FenceFromFd request: {s}, fd: {d}", .{ x11.stringify_fmt(req.request), request_context.client.get_read_fds() });
@@ -183,20 +171,7 @@ fn fence_from_fd(request_context: phx.RequestContext) !void {
     const fence_fd = read_fds[0];
     defer request_context.client.discard_read_fds(1);
 
-    var fence = phx.Fence.create_from_fd(req.request.fence, fence_fd, request_context.client, request_context.allocator) catch |err| switch (err) {
-        error.ResourceNotOwnedByClient => {
-            std.log.err("Received fence {d} in Dri3FenceFromFd request which doesn't belong to the client", .{req.request.fence});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.fence));
-        },
-        error.ResourceAlreadyExists => {
-            std.log.err("Received fence {d} in Dri3FenceFromFd request which already exists", .{req.request.fence});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.fence));
-        },
-        error.OutOfMemory => {
-            return request_context.client.write_error(request_context, .alloc, 0);
-        },
-        else => return err,
-    };
+    var fence = try phx.Fence.create_from_fd(req.request.fence, fence_fd, request_context.client, request_context.allocator);
     errdefer fence.destroy();
 
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
@@ -207,7 +182,7 @@ fn fence_from_fd(request_context: phx.RequestContext) !void {
     std.log.info("fence: {d}: {s}", .{ fence_fd, resolved_path });
 }
 
-fn get_supported_modifiers(request_context: phx.RequestContext) !void {
+fn get_supported_modifiers(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetSupportedModifiers, request_context.allocator);
     defer req.deinit();
 
@@ -235,7 +210,7 @@ fn get_supported_modifiers(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn pixmap_from_buffers(request_context: phx.RequestContext) !void {
+fn pixmap_from_buffers(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.PixmapFromBuffers, request_context.allocator);
     defer req.deinit();
     std.log.info("Dri3PixmapFromBuffers request: {s}, fd: {d}", .{ x11.stringify_fmt(req.request), request_context.client.get_read_fds() });
@@ -291,25 +266,13 @@ fn pixmap_from_buffers(request_context: phx.RequestContext) !void {
         import_dmabuf.modifier[i] = req.request.modifier;
     }
 
-    var pixmap = phx.Pixmap.create(
+    var pixmap = try phx.Pixmap.create(
         req.request.pixmap,
         &import_dmabuf,
         request_context.server,
         request_context.client,
         request_context.allocator,
-    ) catch |err| switch (err) {
-        error.ResourceNotOwnedByClient => {
-            std.log.err("Received pixmap id {d} in Dri3PixmapFromBuffers request which doesn't belong to the client", .{req.request.pixmap});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.pixmap));
-        },
-        error.ResourceAlreadyExists => {
-            std.log.err("Received pixmap id {d} in Dri3PixmapFromBuffers request which already exists", .{req.request.pixmap});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.pixmap));
-        },
-        error.OutOfMemory => {
-            return request_context.client.write_error(request_context, .alloc, 0);
-        },
-    };
+    );
     errdefer pixmap.destroy();
 }
 

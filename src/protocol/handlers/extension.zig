@@ -2,7 +2,7 @@ const std = @import("std");
 const phx = @import("../../phoenix.zig");
 const x11 = phx.x11;
 
-pub fn handle_request(request_context: phx.RequestContext) !void {
+pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling extension request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
     const major_opcode: phx.opcode.Major = @enumFromInt(request_context.header.major_opcode);
     return switch (major_opcode) {

@@ -2,7 +2,7 @@ const std = @import("std");
 const phx = @import("../../../phoenix.zig");
 const x11 = phx.x11;
 
-pub fn handle_request(request_context: phx.RequestContext) !void {
+pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling render request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
@@ -19,7 +19,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
     };
 }
 
-fn query_version(request_context: phx.RequestContext) !void {
+fn query_version(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryVersion, request_context.allocator);
     defer req.deinit();
 
@@ -35,7 +35,7 @@ fn query_version(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn query_pict_formats(request_context: phx.RequestContext) !void {
+fn query_pict_formats(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryPictFormats, request_context.allocator);
     defer req.deinit();
 

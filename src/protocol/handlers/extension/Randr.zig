@@ -2,7 +2,7 @@ const std = @import("std");
 const phx = @import("../../../phoenix.zig");
 const x11 = phx.x11;
 
-pub fn handle_request(request_context: phx.RequestContext) !void {
+pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling randr request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Replace with minor opcode range check after all minor opcodes are implemented (same in other extensions)
@@ -30,7 +30,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
     };
 }
 
-fn query_version(request_context: phx.RequestContext) !void {
+fn query_version(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryVersion, request_context.allocator);
     defer req.deinit();
 
@@ -46,7 +46,7 @@ fn query_version(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn select_input(request_context: phx.RequestContext) !void {
+fn select_input(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.SelectInput, request_context.allocator);
     defer req.deinit();
 
@@ -148,7 +148,7 @@ fn select_input(request_context: phx.RequestContext) !void {
     }
 }
 
-fn get_screen_resources(comptime RequestType: type, comptime ReplyType: type, request_context: phx.RequestContext) !void {
+fn get_screen_resources(comptime RequestType: type, comptime ReplyType: type, request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(RequestType, request_context.allocator);
     defer req.deinit();
 
@@ -178,7 +178,7 @@ fn get_screen_resources(comptime RequestType: type, comptime ReplyType: type, re
     try request_context.client.write_reply(&rep);
 }
 
-fn get_output_info(request_context: phx.RequestContext) !void {
+fn get_output_info(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetOutputInfo, request_context.allocator);
     defer req.deinit();
 
@@ -238,7 +238,7 @@ fn get_output_info(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn list_output_properties(request_context: phx.RequestContext) !void {
+fn list_output_properties(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.ListOutputProperties, request_context.allocator);
     defer req.deinit();
 
@@ -265,7 +265,7 @@ fn list_output_properties(request_context: phx.RequestContext) !void {
 }
 
 // Pending property in request is currently ignored since there are not pending properties
-fn get_output_property(request_context: phx.RequestContext) !void {
+fn get_output_property(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetOutputProperty, request_context.allocator);
     defer req.deinit();
 
@@ -366,7 +366,7 @@ fn get_output_property(request_context: phx.RequestContext) !void {
     }
 }
 
-fn get_crtc_info(request_context: phx.RequestContext) !void {
+fn get_crtc_info(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetCrtcInfo, request_context.allocator);
     defer req.deinit();
 
@@ -420,7 +420,7 @@ fn get_crtc_info(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn get_crtc_gamma_size(request_context: phx.RequestContext) !void {
+fn get_crtc_gamma_size(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetCrtcGammaSize, request_context.allocator);
     defer req.deinit();
 
@@ -436,7 +436,7 @@ fn get_crtc_gamma_size(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn get_crtc_gamma(request_context: phx.RequestContext) !void {
+fn get_crtc_gamma(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetCrtcGamma, request_context.allocator);
     defer req.deinit();
 
@@ -454,7 +454,7 @@ fn get_crtc_gamma(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn get_crtc_transform(request_context: phx.RequestContext) !void {
+fn get_crtc_transform(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetCrtcTransform, request_context.allocator);
     defer req.deinit();
 
@@ -476,7 +476,7 @@ fn get_crtc_transform(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn get_output_primary(request_context: phx.RequestContext) !void {
+fn get_output_primary(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetOutputPrimary, request_context.allocator);
     defer req.deinit();
 
@@ -494,7 +494,7 @@ fn get_output_primary(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn get_monitors(request_context: phx.RequestContext) !void {
+fn get_monitors(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetMonitors, request_context.allocator);
     defer req.deinit();
 

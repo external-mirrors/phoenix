@@ -2,7 +2,7 @@ const std = @import("std");
 const phx = @import("../../phoenix.zig");
 const x11 = phx.x11;
 
-pub fn handle_request(request_context: phx.RequestContext) !void {
+pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling core request: {d}", .{request_context.header.major_opcode});
 
     // TODO: Remove
@@ -66,7 +66,7 @@ fn window_class_validate_attributes(class: x11.Class, req: *const Request.Create
 
 // TODO: Handle all params properly
 // TODO: Only one client at a time should be allowed to use redirect event mask and buttonpress on a window (or its parent)
-fn create_window(request_context: phx.RequestContext) !void {
+fn create_window(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateWindow, request_context.allocator);
     defer req.deinit();
 
@@ -179,26 +179,14 @@ fn create_window(request_context: phx.RequestContext) !void {
         .override_redirect = override_redirect,
     };
 
-    var window = if (phx.Window.create(
+    var window = try phx.Window.create(
         parent_window,
         req.request.window,
         &window_attributes,
         request_context.server,
         request_context.client,
         request_context.allocator,
-    )) |window| window else |err| switch (err) {
-        error.ResourceNotOwnedByClient => {
-            std.log.err("Received invalid window {d} in CreateWindow request which doesn't belong to the client", .{req.request.window});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.window));
-        },
-        error.ResourceAlreadyExists => {
-            std.log.err("Received window {d} in CreateWindow request which already exists", .{req.request.window});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.window));
-        },
-        error.OutOfMemory => {
-            return request_context.client.write_error(request_context, .alloc, 0);
-        },
-    };
+    );
     errdefer window.destroy();
 
     if (!event_mask.is_empty()) {
@@ -229,7 +217,7 @@ fn create_window(request_context: phx.RequestContext) !void {
 }
 
 // TODO: Handle cursor change
-fn change_window_attributes(request_context: phx.RequestContext) !void {
+fn change_window_attributes(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.ChangeWindowAttributes, request_context.allocator);
     defer req.deinit();
 
@@ -449,7 +437,7 @@ fn change_window_attributes(request_context: phx.RequestContext) !void {
     window.attributes = new_window_attributes;
 }
 
-fn get_window_attributes(request_context: phx.RequestContext) !void {
+fn get_window_attributes(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetWindowAttributes, request_context.allocator);
     defer req.deinit();
 
@@ -479,7 +467,7 @@ fn get_window_attributes(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn destroy_window(request_context: phx.RequestContext) !void {
+fn destroy_window(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.DestroyWindow, request_context.allocator);
     defer req.deinit();
 
@@ -497,7 +485,7 @@ fn destroy_window(request_context: phx.RequestContext) !void {
 }
 
 // TODO: Implement properly
-fn map_window(request_context: phx.RequestContext) !void {
+fn map_window(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.MapWindow, request_context.allocator);
     defer req.deinit();
 
@@ -512,7 +500,7 @@ fn map_window(request_context: phx.RequestContext) !void {
 }
 
 // TODO: Implement properly
-fn configure_window(request_context: phx.RequestContext) !void {
+fn configure_window(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.ConfigureWindow, request_context.allocator);
     defer req.deinit();
 
@@ -635,7 +623,7 @@ fn configure_window(request_context: phx.RequestContext) !void {
     }
 }
 
-fn get_geometry(request_context: phx.RequestContext) !void {
+fn get_geometry(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetGeometry, request_context.allocator);
     defer req.deinit();
 
@@ -658,7 +646,7 @@ fn get_geometry(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn query_tree(request_context: phx.RequestContext) !void {
+fn query_tree(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryTree, request_context.allocator);
     defer req.deinit();
 
@@ -679,7 +667,7 @@ fn query_tree(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn intern_atom(request_context: phx.RequestContext) !void {
+fn intern_atom(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.InternAtom, request_context.allocator);
     defer req.deinit();
 
@@ -700,7 +688,7 @@ fn intern_atom(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn get_atom_name(request_context: phx.RequestContext) !void {
+fn get_atom_name(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetAtomName, request_context.allocator);
     defer req.deinit();
 
@@ -716,7 +704,7 @@ fn get_atom_name(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn change_property(request_context: phx.RequestContext) !void {
+fn change_property(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.ChangeProperty, request_context.allocator);
     defer req.deinit();
 
@@ -757,7 +745,7 @@ fn change_property(request_context: phx.RequestContext) !void {
     window.write_core_event_to_event_listeners(&property_notify_event);
 }
 
-fn delete_property(request_context: phx.RequestContext) !void {
+fn delete_property(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.DeleteProperty, request_context.allocator);
     defer req.deinit();
 
@@ -784,7 +772,7 @@ fn delete_property(request_context: phx.RequestContext) !void {
     }
 }
 
-fn get_property(request_context: phx.RequestContext) !void {
+fn get_property(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetProperty, request_context.allocator);
     defer req.deinit();
 
@@ -886,7 +874,7 @@ fn get_property(request_context: phx.RequestContext) !void {
     }
 }
 
-fn set_selection_owner(request_context: phx.RequestContext) !void {
+fn set_selection_owner(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.SetSelectionOwner, request_context.allocator);
     defer req.deinit();
 
@@ -912,7 +900,7 @@ fn set_selection_owner(request_context: phx.RequestContext) !void {
     );
 }
 
-fn get_selection_owner(request_context: phx.RequestContext) !void {
+fn get_selection_owner(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetSelectionOwner, request_context.allocator);
     defer req.deinit();
 
@@ -937,19 +925,19 @@ fn get_selection_owner(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn grab_server(request_context: phx.RequestContext) !void {
+fn grab_server(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GrabServer, request_context.allocator);
     defer req.deinit();
     std.log.err("Received GrabServer request from client {d}, ignoring...", .{request_context.client.connection.stream.handle});
 }
 
-fn ungrab_server(request_context: phx.RequestContext) !void {
+fn ungrab_server(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.UngrabServer, request_context.allocator);
     defer req.deinit();
     std.log.err("Received UngrabServer request from client {d}, ignoring...", .{request_context.client.connection.stream.handle});
 }
 
-fn query_pointer(request_context: phx.RequestContext) !void {
+fn query_pointer(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryPointer, request_context.allocator);
     defer req.deinit();
 
@@ -977,7 +965,7 @@ fn query_pointer(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn set_input_focus(request_context: phx.RequestContext) !void {
+fn set_input_focus(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.SetInputFocus, request_context.allocator);
     defer req.deinit();
 
@@ -1019,7 +1007,7 @@ fn set_input_focus(request_context: phx.RequestContext) !void {
     request_context.server.input_focus.last_focus_change_time = current_server_timestamp;
 }
 
-fn get_input_focus(request_context: phx.RequestContext) !void {
+fn get_input_focus(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetInputFocus, request_context.allocator);
     defer req.deinit();
 
@@ -1037,14 +1025,14 @@ fn get_input_focus(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn open_font(request_context: phx.RequestContext) !void {
+fn open_font(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.OpenFont, request_context.allocator);
     defer req.deinit();
 
     std.log.err("TODO: Implement OpenFont", .{});
 }
 
-fn list_fonts(request_context: phx.RequestContext) !void {
+fn list_fonts(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.ListFonts, request_context.allocator);
     defer req.deinit();
 
@@ -1072,7 +1060,7 @@ fn list_fonts(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn create_pixmap(request_context: phx.RequestContext) !void {
+fn create_pixmap(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreatePixmap, request_context.allocator);
     defer req.deinit();
 
@@ -1093,29 +1081,17 @@ fn create_pixmap(request_context: phx.RequestContext) !void {
     import_dmabuf.bpp = drawable.get_bpp();
     import_dmabuf.num_items = 0;
 
-    var pixmap = phx.Pixmap.create(
+    var pixmap = try phx.Pixmap.create(
         req.request.pixmap,
         &import_dmabuf,
         request_context.server,
         request_context.client,
         request_context.allocator,
-    ) catch |err| switch (err) {
-        error.ResourceNotOwnedByClient => {
-            std.log.err("Received pixmap id {d} in CreatePixmap request which doesn't belong to the client", .{req.request.pixmap});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.pixmap));
-        },
-        error.ResourceAlreadyExists => {
-            std.log.err("Received pixmap id {d} in CreatePixmap request which already exists", .{req.request.pixmap});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.pixmap));
-        },
-        error.OutOfMemory => {
-            return request_context.client.write_error(request_context, .alloc, 0);
-        },
-    };
+    );
     errdefer pixmap.destroy();
 }
 
-fn free_pixmap(request_context: phx.RequestContext) !void {
+fn free_pixmap(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.FreePixmap, request_context.allocator);
     defer req.deinit();
 
@@ -1129,21 +1105,21 @@ fn free_pixmap(request_context: phx.RequestContext) !void {
     pixmap.destroy();
 }
 
-fn create_gc(request_context: phx.RequestContext) !void {
+fn create_gc(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateGC, request_context.allocator);
     defer req.deinit();
 
     std.log.err("TODO: Implement CreateGC", .{});
 }
 
-fn free_gc(request_context: phx.RequestContext) !void {
+fn free_gc(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.FreeGC, request_context.allocator);
     defer req.deinit();
 
     std.log.err("TODO: Implement FreeGC", .{});
 }
 
-fn create_colormap(request_context: phx.RequestContext) !void {
+fn create_colormap(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateColormap, request_context.allocator);
     defer req.deinit();
 
@@ -1162,22 +1138,10 @@ fn create_colormap(request_context: phx.RequestContext) !void {
     };
 
     const colormap = phx.Colormap{ .id = req.request.colormap, .visual = visual };
-    request_context.client.add_colormap(colormap) catch |err| switch (err) {
-        error.ResourceNotOwnedByClient => {
-            std.log.err("Received colormap id {d} in CreateColormap request which doesn't belong to the client", .{req.request.colormap});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.colormap));
-        },
-        error.ResourceAlreadyExists => {
-            std.log.err("Received colormap id {d} in CreateColormap request which already exists", .{req.request.colormap});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.colormap));
-        },
-        error.OutOfMemory => {
-            return request_context.client.write_error(request_context, .alloc, 0);
-        },
-    };
+    try request_context.client.add_colormap(colormap);
 }
 
-fn query_extension(request_context: phx.RequestContext) !void {
+fn query_extension(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryExtension, request_context.allocator);
     defer req.deinit();
 
@@ -1234,7 +1198,7 @@ fn query_extension(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn get_keyboard_mapping(request_context: phx.RequestContext) !void {
+fn get_keyboard_mapping(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetKeyboardMapping, request_context.allocator);
     defer req.deinit();
 
@@ -1271,7 +1235,7 @@ fn get_keyboard_mapping(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn get_modifier_mapping(request_context: phx.RequestContext) !void {
+fn get_modifier_mapping(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetModifierMapping, request_context.allocator);
     defer req.deinit();
 

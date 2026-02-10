@@ -9,7 +9,7 @@ const server_vendor_name = "SGI";
 const server_version_str = "1.4";
 const glvnd = "mesa"; // TODO: gbm_device_get_backend_name
 
-pub fn handle_request(request_context: phx.RequestContext) !void {
+pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling glx request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
@@ -34,7 +34,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
     };
 }
 
-fn create_context(request_context: phx.RequestContext) !void {
+fn create_context(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateContext, request_context.allocator);
     defer req.deinit();
 
@@ -62,22 +62,10 @@ fn create_context(request_context: phx.RequestContext) !void {
         .is_direct = req.request.is_direct,
         .client_owner = request_context.client,
     };
-    request_context.client.add_glx_context(glx_context) catch |err| switch (err) {
-        error.ResourceNotOwnedByClient => {
-            std.log.err("Received glx context id {d} in GlxCreateContext request which doesn't belong to the client", .{req.request.context});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.context));
-        },
-        error.ResourceAlreadyExists => {
-            std.log.err("Received glx context id {d} in GlxCreateContext request which already exists", .{req.request.context});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.context));
-        },
-        error.OutOfMemory => {
-            return request_context.client.write_error(request_context, .alloc, 0);
-        },
-    };
+    try request_context.client.add_glx_context(glx_context);
 }
 
-fn destroy_context(request_context: phx.RequestContext) !void {
+fn destroy_context(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.DestroyContext, request_context.allocator);
     defer req.deinit();
 
@@ -88,7 +76,7 @@ fn destroy_context(request_context: phx.RequestContext) !void {
     glx_context.client_owner.remove_resource(glx_context.id.to_id());
 }
 
-fn is_direct(request_context: phx.RequestContext) !void {
+fn is_direct(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.IsDirect, request_context.allocator);
     defer req.deinit();
 
@@ -104,7 +92,7 @@ fn is_direct(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn query_version(request_context: phx.RequestContext) !void {
+fn query_version(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryVersion, request_context.allocator);
     defer req.deinit();
 
@@ -120,7 +108,7 @@ fn query_version(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn get_visual_configs(request_context: phx.RequestContext) !void {
+fn get_visual_configs(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetVisualConfigs, request_context.allocator);
     defer req.deinit();
 
@@ -193,7 +181,7 @@ fn get_visual_configs(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn query_server_string(request_context: phx.RequestContext) !void {
+fn query_server_string(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryServerString, request_context.allocator);
     defer req.deinit();
 
@@ -228,7 +216,7 @@ fn query_server_string(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn get_fb_configs(request_context: phx.RequestContext) !void {
+fn get_fb_configs(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetFbConfigs, request_context.allocator);
     defer req.deinit();
 
@@ -321,7 +309,7 @@ fn get_fb_configs(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn get_drawable_attributes(request_context: phx.RequestContext) !void {
+fn get_drawable_attributes(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetDrawableAttributes, request_context.allocator);
     defer req.deinit();
 
@@ -354,7 +342,7 @@ fn get_drawable_attributes(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn set_client_info_arb(request_context: phx.RequestContext) !void {
+fn set_client_info_arb(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.SetClientInfoArb, request_context.allocator);
     defer req.deinit();
 
@@ -364,7 +352,7 @@ fn set_client_info_arb(request_context: phx.RequestContext) !void {
     // TODO: Do something with the data, see https://registry.khronos.org/OpenGL/extensions/ARB/GLX_ARB_create_context.txt
 }
 
-fn set_client_info2_arb(request_context: phx.RequestContext) !void {
+fn set_client_info2_arb(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.SetClientInfo2Arb, request_context.allocator);
     defer req.deinit();
 

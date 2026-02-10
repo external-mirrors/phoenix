@@ -395,7 +395,7 @@ fn handle_client_request(self: *Self, client: *phx.Client) !bool {
     if (client.read_buffer_data_size() < request_length)
         return false;
 
-    const request_context = phx.RequestContext{
+    var request_context = phx.RequestContext{
         .allocator = self.allocator,
         .client = client,
         .server = self,
@@ -403,30 +403,36 @@ fn handle_client_request(self: *Self, client: *phx.Client) !bool {
         .sequence_number = client.next_sequence_number(),
     };
 
+    client.last_error_value = 0;
+
     const bytes_available_to_read_before = client.read_buffer_data_size();
 
     if (request_header.major_opcode >= 1 and request_header.major_opcode <= phx.opcode.core_opcode_max) {
-        phx.core.handle_request(request_context) catch |err| switch (err) {
-            error.PropertyTypeMismatch => try request_context.client.write_error(request_context, .match, 0),
-            error.OutOfMemory => try request_context.client.write_error(request_context, .alloc, 0),
+        phx.core.handle_request(&request_context) catch |err| switch (err) {
+            error.PropertyTypeMismatch => try request_context.client.write_error(&request_context, .match, 0),
+            error.OutOfMemory => try request_context.client.write_error(&request_context, .alloc, 0),
             error.EndOfStream,
             error.RequestBadLength,
             error.RequestDataNotAvailableYet,
             error.InvalidRequestLength,
-            => try request_context.client.write_error(request_context, .length, 0),
-            error.InvalidEnumTag => try request_context.client.write_error(request_context, .value, 0), // TODO: Return the correct value
+            => try request_context.client.write_error(&request_context, .length, 0),
+            error.InvalidEnumTag => try request_context.client.write_error(&request_context, .value, 0), // TODO: Return the correct value
+            error.ResourceNotOwnedByClient => try request_context.client.write_error(&request_context, .id_choice, client.last_error_value),
+            error.ResourceAlreadyExists => try request_context.client.write_error(&request_context, .id_choice, client.last_error_value),
         };
     } else if (request_header.major_opcode >= phx.opcode.extension_opcode_min and request_header.major_opcode <= phx.opcode.extension_opcode_max) {
-        phx.extension.handle_request(request_context) catch |err| switch (err) {
-            error.OutOfMemory => try request_context.client.write_error(request_context, .alloc, 0),
+        phx.extension.handle_request(&request_context) catch |err| switch (err) {
+            error.OutOfMemory => try request_context.client.write_error(&request_context, .alloc, 0),
             error.EndOfStream,
             error.RequestBadLength,
             error.RequestDataNotAvailableYet,
-            => try request_context.client.write_error(request_context, .length, 0),
-            error.InvalidEnumTag => try request_context.client.write_error(request_context, .value, 0), // TODO: Return the correct value
+            => try request_context.client.write_error(&request_context, .length, 0),
+            error.InvalidEnumTag => try request_context.client.write_error(&request_context, .value, 0), // TODO: Return the correct value
+            error.ResourceNotOwnedByClient => try request_context.client.write_error(&request_context, .id_choice, client.last_error_value),
+            error.ResourceAlreadyExists => try request_context.client.write_error(&request_context, .id_choice, client.last_error_value),
             else => {
                 std.log.err("TODO: phx.extension.handle_request: Handle error better: {s}", .{@errorName(err)});
-                return error.UnhandledProtocolError;
+                try request_context.client.write_error(&request_context, .alloc, 0);
             },
         };
     } else {
@@ -434,7 +440,7 @@ fn handle_client_request(self: *Self, client: *phx.Client) !bool {
             "Received invalid request from client (major opcode {d}). Sequence number: {d}, header: {s}",
             .{ request_header.major_opcode, request_context.sequence_number, x11.stringify_fmt(request_header) },
         );
-        try request_context.client.write_error(request_context, .request, 0);
+        try request_context.client.write_error(&request_context, .request, 0);
     }
 
     const bytes_available_to_read_after = client.read_buffer_data_size();

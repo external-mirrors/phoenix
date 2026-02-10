@@ -2,7 +2,7 @@ const std = @import("std");
 const phx = @import("../../../phoenix.zig");
 const x11 = phx.x11;
 
-pub fn handle_request(request_context: phx.RequestContext) !void {
+pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling xkb request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
@@ -23,7 +23,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
     };
 }
 
-fn use_extension(request_context: phx.RequestContext) !void {
+fn use_extension(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.UseExtension, request_context.allocator);
     defer req.deinit();
 
@@ -40,7 +40,7 @@ fn use_extension(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn get_state(request_context: phx.RequestContext) !void {
+fn get_state(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetState, request_context.allocator);
     defer req.deinit();
 
@@ -62,7 +62,7 @@ fn get_state(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&reply);
 }
 
-fn get_map(request_context: phx.RequestContext) !void {
+fn get_map(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetMap, request_context.allocator);
     defer req.deinit();
 
@@ -84,7 +84,7 @@ fn get_map(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&reply);
 }
 
-fn get_names(request_context: phx.RequestContext) !void {
+fn get_names(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetNames, request_context.allocator);
     defer req.deinit();
 
@@ -106,7 +106,7 @@ fn get_names(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&reply);
 }
 
-fn per_client_flags(request_context: phx.RequestContext) !void {
+fn per_client_flags(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.PerClientFlags, request_context.allocator);
     defer req.deinit();
 
@@ -129,7 +129,7 @@ fn per_client_flags(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn get_device_info(request_context: phx.RequestContext) !void {
+fn get_device_info(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GetDeviceInfo, request_context.allocator);
     defer req.deinit();
 

@@ -2,7 +2,7 @@ const std = @import("std");
 const phx = @import("../../../phoenix.zig");
 const x11 = phx.x11;
 
-pub fn handle_request(request_context: phx.RequestContext) !void {
+pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.err(
         "Received invalid xwayland request from client (opcode {d}:{d}). Sequence number: {d}, header: {s}",
         .{

@@ -3,7 +3,7 @@ const builtin = @import("builtin");
 const phx = @import("../../../phoenix.zig");
 const x11 = phx.x11;
 
-pub fn handle_request(request_context: phx.RequestContext) !void {
+pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling mit-shm request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Replace with minor opcode range check after all minor opcodes are implemented (same in other extensions)
@@ -21,7 +21,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
     };
 }
 
-fn query_version(request_context: phx.RequestContext) !void {
+fn query_version(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.QueryVersion, request_context.allocator);
     defer req.deinit();
 
@@ -42,7 +42,7 @@ fn query_version(request_context: phx.RequestContext) !void {
 
 const SHMAT_INVALID_ADDR: *anyopaque = @ptrFromInt(std.math.maxInt(usize));
 
-fn attach(request_context: phx.RequestContext) !void {
+fn attach(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.Attach, request_context.allocator);
     defer req.deinit();
 
@@ -59,19 +59,7 @@ fn attach(request_context: phx.RequestContext) !void {
             return request_context.client.write_error(request_context, .access, 0);
         }
 
-        var shm_segment_copy = phx.ShmSegment.init_ref_data(shm_segment, req.request.shmseg, request_context.client) catch |err| switch (err) {
-            error.ResourceNotOwnedByClient => {
-                std.log.err("Received shmseg {d} in MitShmAttach request which doesn't belong to the client", .{req.request.shmseg});
-                return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.shmseg));
-            },
-            error.ResourceAlreadyExists => {
-                std.log.err("Received shmseg {d} in MitShmAttach request which already exists", .{req.request.shmseg});
-                return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.shmseg));
-            },
-            error.OutOfMemory => {
-                return request_context.client.write_error(request_context, .alloc, 0);
-            },
-        };
+        var shm_segment_copy = try phx.ShmSegment.init_ref_data(shm_segment, req.request.shmseg, request_context.client);
         errdefer shm_segment_copy.deinit();
 
         try request_context.server.append_shm_segment(&shm_segment_copy);
@@ -101,33 +89,21 @@ fn attach(request_context: phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .access, 0);
     }
 
-    const shm_segment = phx.ShmSegment.init(
+    const shm_segment = try phx.ShmSegment.init(
         req.request.shmseg,
         shmid,
         addr.?,
         req.request.read_only,
         request_context.client,
         request_context.allocator,
-    ) catch |err| switch (err) {
-        error.ResourceNotOwnedByClient => {
-            std.log.err("Received shmseg {d} in MitShmAttach request which doesn't belong to the client", .{req.request.shmseg});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.shmseg));
-        },
-        error.ResourceAlreadyExists => {
-            std.log.err("Received shmseg {d} in MitShmAttach request which already exists", .{req.request.shmseg});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.shmseg));
-        },
-        error.OutOfMemory => {
-            return request_context.client.write_error(request_context, .alloc, 0);
-        },
-    };
+    );
     cleanup_addr = false;
     errdefer shm_segment.deinit();
 
     try request_context.server.append_shm_segment(&shm_segment);
 }
 
-fn detach(request_context: phx.RequestContext) !void {
+fn detach(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.Detach, request_context.allocator);
     defer req.deinit();
 
@@ -140,7 +116,7 @@ fn detach(request_context: phx.RequestContext) !void {
     request_context.server.remove_shm_segment_by_id(req.request.shmseg);
 }
 
-fn shm_access(request_context: phx.RequestContext, shm_perm: *const phx.c.ipc_perm, read_only: bool) bool {
+fn shm_access(request_context: *phx.RequestContext, shm_perm: *const phx.c.ipc_perm, read_only: bool) bool {
     var peercred: phx.c.ucred = undefined;
     comptime std.debug.assert(builtin.os.tag == .linux);
     phx.netutils.getsockopt(request_context.client.connection.stream.handle, std.posix.SOL.SOCKET, std.posix.SO.PEERCRED, std.mem.asBytes(&peercred)) catch {

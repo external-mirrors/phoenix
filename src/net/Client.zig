@@ -41,6 +41,8 @@ extension_versions: ExtensionVersions = .{
 
 xkb_initialized: bool = false,
 
+last_error_value: u32 = 0,
+
 pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, server: *phx.Server, allocator: std.mem.Allocator) Self {
     return .{
         .allocator = allocator,
@@ -246,7 +248,7 @@ pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const phx.m
 }
 
 /// Also flushes the write buffer
-pub fn write_error(self: *Self, request_context: phx.RequestContext, error_type: phx.ErrorType, value: x11.Card32) !void {
+pub fn write_error(self: *Self, request_context: *phx.RequestContext, error_type: phx.ErrorType, value: x11.Card32) !void {
     const err_reply = phx.Error{
         .code = error_type,
         .sequence_number = request_context.sequence_number,
@@ -295,15 +297,18 @@ pub fn next_sequence_number(self: *Self) u16 {
 }
 
 fn add_resource(self: *Self, resource_id: x11.ResourceId, resource: phx.Resource) !void {
-    if (!self.is_owner_of_resource(resource_id))
+    if (!self.is_owner_of_resource(resource_id)) {
+        self.last_error_value = resource_id.to_int();
         return error.ResourceNotOwnedByClient;
+    }
 
     const result = try self.resources.getOrPut(resource_id);
-    if (result.found_existing)
+    if (result.found_existing) {
+        self.last_error_value = resource_id.to_int();
         return error.ResourceAlreadyExists;
+    }
 
     result.value_ptr.* = resource;
-    errdefer _ = self.resources.remove(resource_id);
 }
 
 pub fn add_window(self: *Self, window: *phx.Window) !void {

@@ -2,7 +2,7 @@ const std = @import("std");
 const phx = @import("../../../phoenix.zig");
 const x11 = phx.x11;
 
-pub fn handle_request(request_context: phx.RequestContext) !void {
+pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling sync request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
@@ -20,7 +20,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
     };
 }
 
-fn initialize(request_context: phx.RequestContext) !void {
+fn initialize(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.Initialize, request_context.allocator);
     defer req.deinit();
 
@@ -36,26 +36,14 @@ fn initialize(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn create_counter(request_context: phx.RequestContext) !void {
+fn create_counter(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateCounter, request_context.allocator);
     defer req.deinit();
 
-    request_context.client.add_counter(.{ .id = req.request.counter, .value = req.request.initial_value }) catch |err| switch (err) {
-        error.ResourceNotOwnedByClient => {
-            std.log.err("Received counter {d} in SyncCreateCounter request which doesn't belong to the client", .{req.request.counter});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.counter));
-        },
-        error.ResourceAlreadyExists => {
-            std.log.err("Received shmseg {d} in SyncCreateCounter request which already exists", .{req.request.counter});
-            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.counter));
-        },
-        error.OutOfMemory => {
-            return request_context.client.write_error(request_context, .alloc, 0);
-        },
-    };
+    try request_context.client.add_counter(.{ .id = req.request.counter, .value = req.request.initial_value });
 }
 
-fn destroy_fence(request_context: phx.RequestContext) !void {
+fn destroy_fence(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.DestroyFence, request_context.allocator);
     defer req.deinit();
 

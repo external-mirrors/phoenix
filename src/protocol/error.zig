@@ -20,6 +20,7 @@ pub const ErrorType = enum(x11.Card8) {
     length = 16,
     implementation = 17,
 
+    sync_counter = sync_first_error + 0,
     sync_fence = sync_first_error + 2,
 
     glx_context = glx_first_error + 0,

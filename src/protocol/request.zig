@@ -61,8 +61,7 @@ fn read_request_field(
                 const list_of_field = &@field(request, field_name);
                 list_of_field.* = try read_request_list_of(T, request, @TypeOf(list_of_field.*), ReaderType, reader_context);
             } else {
-                @compileError("Only AlignmentPadding, packed struct, UnionList and ListOf are supported as structs in requests right now, got: " ++
-                    @typeName(FieldType) ++ " which is a regular struct");
+                @field(request, field_name) = try read_request_with_context(FieldType, ReaderType, reader_context);
             }
         },
         else => @compileError("Only enum, integer and struct types are supported in requests right now, got: " ++

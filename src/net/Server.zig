@@ -16,6 +16,8 @@ const screen_true_color_colormap = phx.Colormap{
     .visual = &screen_true_color_visual,
 };
 
+pub const servertime_counter_id: phx.Sync.CounterId = @enumFromInt(0x30);
+
 const unix_domain_socket_path = "/tmp/.X11-unix/X1";
 
 screen: x11.ScreenId = @enumFromInt(0),
@@ -166,6 +168,13 @@ pub fn create(allocator: std.mem.Allocator) !*Self {
     try self.root_client.add_colormap(screen_true_color_colormap);
     self.root_window = try self.create_root_window();
 
+    try self.root_client.add_counter(.{
+        .id = servertime_counter_id,
+        .value = 0,
+        .resolution = phx.time.get_resolution(),
+        .type = .system,
+    });
+
     return self;
 }
 
@@ -197,6 +206,12 @@ pub fn get_timestamp_milliseconds(self: *Self) x11.Timestamp {
     if (timestamp_milliseconds == 0)
         timestamp_milliseconds = 1;
     return @enumFromInt(timestamp_milliseconds);
+}
+
+pub fn get_timestamp_milliseconds_i64(self: *Self) i64 {
+    const now = phx.time.clock_get_monotonic_seconds();
+    const elapsed_time_milliseconds: i64 = @intFromFloat((now - self.started_time_seconds) * 1000.0);
+    return elapsed_time_milliseconds;
 }
 
 fn create_root_window(self: *Self) !*phx.Window {
@@ -510,6 +525,10 @@ pub fn get_glx_context(self: *Self, glx_context_id: phx.Glx.ContextId) ?phx.GlxC
 
 pub fn get_shm_segment(self: *Self, shm_seg_id: phx.MitShm.SegId) ?phx.ShmSegment {
     return self.client_manager.get_resource_of_type(shm_seg_id.to_id(), .shm_segment);
+}
+
+pub fn get_counter(self: *Self, counter_id: phx.Sync.CounterId) ?phx.Counter {
+    return self.client_manager.get_resource_of_type(counter_id.to_id(), .counter);
 }
 
 fn handle_events(self: *Self) void {

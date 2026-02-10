@@ -60,3 +60,4 @@ Implement a screen recording x11 extension (zero copy) and use it in gpu screen 
 When TILE support is added consider this: https://gitlab.freedesktop.org/wlroots/wlroots/-/merge_requests/4154#note_3249071 SRC_X drm property doesn't work on nvidia.
 When damage/expose tracking is added have a keybind to toggle showing updated regions (flash red rectangle).
 Trigger KeymapNotify (for FocusIn).
+Support reading/writing file descriptors automatically in request/reply parsing. If field type is std.posix.fd_t then handle it as a file descriptor instead. fd_t may not work as its just an alias to an integer type. May need to create a custom Fd type.

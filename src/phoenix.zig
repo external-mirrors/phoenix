@@ -50,6 +50,7 @@ pub const EventContext = @import("resource/EventContext.zig");
 pub const GlxContext = @import("resource/GlxContext.zig");
 pub const GlxDrawable = @import("resource/GlxDrawable.zig");
 pub const ShmSegment = @import("resource/ShmSegment.zig");
+pub const Counter = @import("resource/Counter.zig");
 pub const resource = @import("resource/resource.zig");
 pub const Resource = resource.Resource;
 pub const ResourceHashMap = resource.ResourceHashMap;

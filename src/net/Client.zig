@@ -334,6 +334,10 @@ pub fn add_shm_segment(self: *Self, shm_segment: *const phx.ShmSegment) !void {
     return self.add_resource(shm_segment.id.to_id(), .{ .shm_segment = shm_segment.* });
 }
 
+pub fn add_counter(self: *Self, counter: phx.Counter) !void {
+    return self.add_resource(counter.id.to_id(), .{ .counter = counter });
+}
+
 pub fn remove_resource(self: *Self, id: x11.ResourceId) void {
     _ = self.resources.remove(id);
 }

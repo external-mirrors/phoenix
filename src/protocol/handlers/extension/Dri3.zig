@@ -183,7 +183,20 @@ fn fence_from_fd(request_context: phx.RequestContext) !void {
     const fence_fd = read_fds[0];
     defer request_context.client.discard_read_fds(1);
 
-    var fence = try phx.Fence.create_from_fd(req.request.fence, fence_fd, request_context.client, request_context.allocator);
+    var fence = phx.Fence.create_from_fd(req.request.fence, fence_fd, request_context.client, request_context.allocator) catch |err| switch (err) {
+        error.ResourceNotOwnedByClient => {
+            std.log.err("Received fence {d} in Dri3FenceFromFd request which doesn't belong to the client", .{req.request.fence});
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.fence));
+        },
+        error.ResourceAlreadyExists => {
+            std.log.err("Received fence {d} in Dri3FenceFromFd request which already exists", .{req.request.fence});
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.fence));
+        },
+        error.OutOfMemory => {
+            return request_context.client.write_error(request_context, .alloc, 0);
+        },
+        else => return err,
+    };
     errdefer fence.destroy();
 
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;

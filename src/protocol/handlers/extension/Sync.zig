@@ -15,6 +15,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
 
     return switch (minor_opcode) {
         .initialize => initialize(request_context),
+        .create_counter => create_counter(request_context),
         .destroy_fence => destroy_fence(request_context),
     };
 }
@@ -35,6 +36,25 @@ fn initialize(request_context: phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn create_counter(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.CreateCounter, request_context.allocator);
+    defer req.deinit();
+
+    request_context.client.add_counter(.{ .id = req.request.counter, .value = req.request.initial_value }) catch |err| switch (err) {
+        error.ResourceNotOwnedByClient => {
+            std.log.err("Received counter {d} in SyncCreateCounter request which doesn't belong to the client", .{req.request.counter});
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.counter));
+        },
+        error.ResourceAlreadyExists => {
+            std.log.err("Received shmseg {d} in SyncCreateCounter request which already exists", .{req.request.counter});
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.counter));
+        },
+        error.OutOfMemory => {
+            return request_context.client.write_error(request_context, .alloc, 0);
+        },
+    };
+}
+
 fn destroy_fence(request_context: phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.DestroyFence, request_context.allocator);
     defer req.deinit();
@@ -48,7 +68,16 @@ fn destroy_fence(request_context: phx.RequestContext) !void {
 
 const MinorOpcode = enum(x11.Card8) {
     initialize = 0,
+    create_counter = 2,
     destroy_fence = 17,
+};
+
+pub const CounterId = enum(x11.Card32) {
+    _,
+
+    pub fn to_id(self: CounterId) x11.ResourceId {
+        return @enumFromInt(@intFromEnum(self));
+    }
 };
 
 pub const FenceId = enum(x11.Card32) {
@@ -67,6 +96,14 @@ pub const Request = struct {
         major_version: x11.Card8,
         minor_version: x11.Card8,
         pad1: x11.Card16,
+    };
+
+    pub const CreateCounter = struct {
+        major_opcode: phx.opcode.Major = .sync,
+        minor_opcode: MinorOpcode = .create_counter,
+        length: x11.Card16,
+        counter: CounterId,
+        initial_value: i64,
     };
 
     pub const DestroyFence = struct {

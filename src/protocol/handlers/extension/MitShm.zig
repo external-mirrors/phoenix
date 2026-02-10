@@ -59,7 +59,19 @@ fn attach(request_context: phx.RequestContext) !void {
             return request_context.client.write_error(request_context, .access, 0);
         }
 
-        var shm_segment_copy = try phx.ShmSegment.init_ref_data(shm_segment, req.request.shmseg, request_context.client);
+        var shm_segment_copy = phx.ShmSegment.init_ref_data(shm_segment, req.request.shmseg, request_context.client) catch |err| switch (err) {
+            error.ResourceNotOwnedByClient => {
+                std.log.err("Received shmseg {d} in MitShmAttach request which doesn't belong to the client", .{req.request.shmseg});
+                return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.shmseg));
+            },
+            error.ResourceAlreadyExists => {
+                std.log.err("Received shmseg {d} in MitShmAttach request which already exists", .{req.request.shmseg});
+                return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.shmseg));
+            },
+            error.OutOfMemory => {
+                return request_context.client.write_error(request_context, .alloc, 0);
+            },
+        };
         errdefer shm_segment_copy.deinit();
 
         try request_context.server.append_shm_segment(&shm_segment_copy);
@@ -69,7 +81,8 @@ fn attach(request_context: phx.RequestContext) !void {
     var shmctl_buf: phx.c.shmid_ds = undefined;
     const addr = phx.c.shmat(shmid, null, if (req.request.read_only) phx.c.SHM_RDONLY else 0);
     if (addr == null or addr.? == SHMAT_INVALID_ADDR) {
-        std.log.err("MitShmAttach: shmtat failed for shmid {d}", .{shmid});
+        const err: std.posix.E = @enumFromInt(std.c._errno().*);
+        std.log.err("MitShmAttach: shmtat failed for shmid {d}, error: {s}", .{ shmid, @tagName(err) });
         return request_context.client.write_error(request_context, .access, 0);
     }
     var cleanup_addr = true;
@@ -88,14 +101,26 @@ fn attach(request_context: phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .access, 0);
     }
 
-    const shm_segment = try phx.ShmSegment.init(
+    const shm_segment = phx.ShmSegment.init(
         req.request.shmseg,
         shmid,
         addr.?,
         req.request.read_only,
         request_context.client,
         request_context.allocator,
-    );
+    ) catch |err| switch (err) {
+        error.ResourceNotOwnedByClient => {
+            std.log.err("Received shmseg {d} in MitShmAttach request which doesn't belong to the client", .{req.request.shmseg});
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.shmseg));
+        },
+        error.ResourceAlreadyExists => {
+            std.log.err("Received shmseg {d} in MitShmAttach request which already exists", .{req.request.shmseg});
+            return request_context.client.write_error(request_context, .id_choice, @intFromEnum(req.request.shmseg));
+        },
+        error.OutOfMemory => {
+            return request_context.client.write_error(request_context, .alloc, 0);
+        },
+    };
     cleanup_addr = false;
     errdefer shm_segment.deinit();
 

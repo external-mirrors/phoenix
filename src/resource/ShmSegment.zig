@@ -24,7 +24,7 @@ pub fn init(
         .client_owner = client_owner,
         .data = try phx.Rc(ShmData).init(&.{ .addr = addr }, allocator),
     };
-    errdefer self.deinit();
+    errdefer _ = self.data.unref();
 
     try self.client_owner.add_shm_segment(&self);
     return self;
@@ -38,7 +38,7 @@ pub fn init_ref_data(self: *Self, id: phx.MitShm.SegId, client_owner: *phx.Clien
         .client_owner = client_owner,
         .data = self.data.ref(),
     };
-    errdefer copied.deinit();
+    errdefer _ = copied.data.unref();
 
     try client_owner.add_shm_segment(&copied);
     return copied;

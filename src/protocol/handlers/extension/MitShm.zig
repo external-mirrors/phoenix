@@ -17,6 +17,7 @@ pub fn handle_request(request_context: phx.RequestContext) !void {
     return switch (minor_opcode) {
         .query_version => query_version(request_context),
         .attach => attach(request_context),
+        .detach => detach(request_context),
     };
 }
 
@@ -58,10 +59,10 @@ fn attach(request_context: phx.RequestContext) !void {
             return request_context.client.write_error(request_context, .access, 0);
         }
 
-        var new_shm_segment = phx.ShmSegment.init_ref_data(shm_segment, req.request.shmseg);
-        errdefer new_shm_segment.deinit();
+        var shm_segment_copy = try phx.ShmSegment.init_ref_data(shm_segment, req.request.shmseg, request_context.client);
+        errdefer shm_segment_copy.deinit();
 
-        try request_context.client.add_shm_segment(&new_shm_segment);
+        try request_context.server.append_shm_segment(&shm_segment_copy);
         return;
     }
 
@@ -87,14 +88,31 @@ fn attach(request_context: phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .access, 0);
     }
 
-    var shm_segment = try phx.ShmSegment.init(req.request.shmseg, shmid, addr.?, req.request.read_only, request_context.allocator);
+    const shm_segment = try phx.ShmSegment.init(
+        req.request.shmseg,
+        shmid,
+        addr.?,
+        req.request.read_only,
+        request_context.client,
+        request_context.allocator,
+    );
     cleanup_addr = false;
     errdefer shm_segment.deinit();
 
-    try request_context.client.add_shm_segment(&shm_segment);
-    errdefer request_context.client.remove_resource(shm_segment.id.to_id());
-
     try request_context.server.append_shm_segment(&shm_segment);
+}
+
+fn detach(request_context: phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.Detach, request_context.allocator);
+    defer req.deinit();
+
+    var shm_segment = request_context.server.get_shm_segment(req.request.shmseg) orelse {
+        std.log.err("MitShmDetach: invalid shmseg {d}", .{req.request.shmseg});
+        return request_context.client.write_error(request_context, .mit_shm_bad_seg, req.request.shmseg.to_id().to_int());
+    };
+
+    shm_segment.deinit();
+    request_context.server.remove_shm_segment_by_id(req.request.shmseg);
 }
 
 fn shm_access(request_context: phx.RequestContext, shm_perm: *const phx.c.ipc_perm, read_only: bool) bool {
@@ -126,6 +144,7 @@ fn shm_access(request_context: phx.RequestContext, shm_perm: *const phx.c.ipc_pe
 const MinorOpcode = enum(x11.Card8) {
     query_version = 0,
     attach = 1,
+    detach = 2,
 };
 
 pub const SegId = enum(x11.Card32) {
@@ -152,6 +171,13 @@ pub const Request = struct {
         read_only: bool,
         pad1: x11.Card8,
         pad2: x11.Card16,
+    };
+
+    pub const Detach = struct {
+        major_opcode: phx.opcode.Major = .mit_shm,
+        minor_opcode: MinorOpcode = .detach,
+        length: x11.Card16,
+        shmseg: SegId,
     };
 };
 

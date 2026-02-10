@@ -680,6 +680,15 @@ pub fn get_shm_segment_by_shmid(self: *Self, shmid: c_int) ?*phx.ShmSegment {
     return null;
 }
 
+pub fn remove_shm_segment_by_id(self: *Self, seg_id: phx.MitShm.SegId) void {
+    for (self.all_shm_segments.items, 0..) |*shm_segment, i| {
+        if (shm_segment.id == seg_id) {
+            _ = self.all_shm_segments.swapRemove(i);
+            return;
+        }
+    }
+}
+
 pub const Event = union(enum) {
     shutdown: void,
     vsync_finished: VsyncFinishedEvent,

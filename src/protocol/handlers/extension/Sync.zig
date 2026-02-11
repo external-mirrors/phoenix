@@ -17,7 +17,10 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .initialize => initialize(request_context),
         .list_system_counter => list_system_counters(request_context),
         .create_counter => create_counter(request_context),
+        .set_counter => set_counter(request_context),
+        .change_counter => change_counter(request_context),
         .query_counter => query_counter(request_context),
+        .destroy_counter => destroy_counter(request_context),
         .destroy_fence => destroy_fence(request_context),
     };
 }
@@ -67,7 +70,51 @@ fn create_counter(request_context: *phx.RequestContext) !void {
         .value = req.request.initial_value.to_i64(),
         .resolution = phx.time.get_resolution(),
         .type = .regular,
+        .owner_client = request_context.client,
     });
+}
+
+fn set_counter(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.SetCounter, request_context.allocator);
+    defer req.deinit();
+
+    var counter = request_context.server.get_counter(req.request.counter) orelse {
+        std.log.err("Received invalid counter {d} in SyncSetCounter request", .{req.request.counter});
+        return request_context.client.write_error(request_context, .sync_counter, req.request.counter.to_id().to_int());
+    };
+
+    if (counter.type == .system) {
+        std.log.err("Tried to modify a system counter {d} in SyncSetCounter request", .{req.request.counter});
+        return request_context.client.write_error(request_context, .access, req.request.counter.to_id().to_int());
+    }
+
+    counter.value = req.request.value.to_i64();
+    std.log.warn("TODO: SyncSetCounter: trigger CounterNotify and AlarmNotify when waiting for counter and alarm is implemented (if needed) and unblock clients", .{});
+}
+
+fn change_counter(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.ChangeCounter, request_context.allocator);
+    defer req.deinit();
+
+    var counter = request_context.server.get_counter(req.request.counter) orelse {
+        std.log.err("Received invalid counter {d} in SyncChangeCounter request", .{req.request.counter});
+        return request_context.client.write_error(request_context, .sync_counter, req.request.counter.to_id().to_int());
+    };
+
+    if (counter.type == .system) {
+        std.log.err("Tried to modify a system counter {d} in SyncChangeCounter request", .{req.request.counter});
+        return request_context.client.write_error(request_context, .access, req.request.counter.to_id().to_int());
+    }
+
+    const new_counter_value, const overflow = @addWithOverflow(counter.value, req.request.add_value.to_i64());
+    if (overflow == 1) {
+        std.log.err("Tried to modify a counter {d} in SyncChangeCounter request but the result overflowed ({d} + {d})", .{ req.request.counter, counter.value, req.request.add_value.to_i64() });
+        // Can't fit whole 64-bit value in error, do the best we can. This is also what the Xorg server does
+        return request_context.client.write_error(request_context, .value, @bitCast(req.request.add_value.high));
+    }
+
+    counter.value = new_counter_value;
+    std.log.warn("TODO: SyncChangeCounter: trigger CounterNotify and AlarmNotify when waiting for counter and alarm is implemented (if needed) and unblock clients", .{});
 }
 
 fn query_counter(request_context: *phx.RequestContext) !void {
@@ -91,6 +138,25 @@ fn query_counter(request_context: *phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn destroy_counter(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.DestroyCounter, request_context.allocator);
+    defer req.deinit();
+
+    const counter = request_context.server.get_counter(req.request.counter) orelse {
+        std.log.err("Received invalid counter {d} in SyncDestroyCounter request", .{req.request.counter});
+        return request_context.client.write_error(request_context, .sync_counter, req.request.counter.to_id().to_int());
+    };
+
+    if (counter.type == .system) {
+        std.log.err("Tried to delete a system counter {d} in SyncDestroyCounter request", .{req.request.counter});
+        return request_context.client.write_error(request_context, .access, req.request.counter.to_id().to_int());
+    }
+
+    counter.owner_client.remove_resource(counter.id.to_id());
+
+    std.log.warn("TODO: SyncDestroyCounter: trigger CounterNotify and AlarmNotify when waiting for counter and alarm is implemented (if needed) and unblock clients", .{});
+}
+
 fn destroy_fence(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.DestroyFence, request_context.allocator);
     defer req.deinit();
@@ -106,7 +172,10 @@ const MinorOpcode = enum(x11.Card8) {
     initialize = 0,
     list_system_counter = 1,
     create_counter = 2,
+    set_counter = 3,
+    change_counter = 4,
     query_counter = 5,
+    destroy_counter = 6,
     destroy_fence = 17,
 };
 
@@ -152,6 +221,30 @@ const SystemCounter = struct {
     pad1: x11.AlignmentPadding = .{},
 };
 
+const ValueType = enum(x11.Card32) {
+    absolute = 0,
+    relative = 1,
+};
+
+const TestType = enum(x11.Card32) {
+    positive_transition = 0,
+    negative_transition = 1,
+    positive_comparison = 2,
+    negative_comparison = 3,
+};
+
+const Trigger = struct {
+    counter: CounterId,
+    wait_type: ValueType,
+    wait_value: SyncValue,
+    test_type: TestType,
+};
+
+const WaitCondition = struct {
+    trigger: Trigger,
+    event_threshold: SyncValue,
+};
+
 pub const Request = struct {
     pub const Initialize = struct {
         major_opcode: phx.opcode.Major = .sync,
@@ -176,9 +269,32 @@ pub const Request = struct {
         initial_value: SyncValue,
     };
 
+    pub const SetCounter = struct {
+        major_opcode: phx.opcode.Major = .sync,
+        minor_opcode: MinorOpcode = .set_counter,
+        length: x11.Card16,
+        counter: CounterId,
+        value: SyncValue,
+    };
+
+    pub const ChangeCounter = struct {
+        major_opcode: phx.opcode.Major = .sync,
+        minor_opcode: MinorOpcode = .change_counter,
+        length: x11.Card16,
+        counter: CounterId,
+        add_value: SyncValue,
+    };
+
     pub const QueryCounter = struct {
         major_opcode: phx.opcode.Major = .sync,
         minor_opcode: MinorOpcode = .query_counter,
+        length: x11.Card16,
+        counter: CounterId,
+    };
+
+    pub const DestroyCounter = struct {
+        major_opcode: phx.opcode.Major = .sync,
+        minor_opcode: MinorOpcode = .destroy_counter,
         length: x11.Card16,
         counter: CounterId,
     };

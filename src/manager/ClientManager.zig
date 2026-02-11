@@ -73,7 +73,7 @@ pub fn get_client_by_fd(self: *Self, client_fd: std.posix.socket_t) ?*phx.Client
     return if (self.clients_by_fd.get(client_fd)) |client_index| self.clients[client_index] else null;
 }
 
-pub fn get_resource(self: *Self, resource_id: x11.ResourceId) ?phx.Resource {
+pub fn get_resource(self: *Self, resource_id: x11.ResourceId) ?*phx.Resource {
     const client_index = phx.ResourceIdBaseManager.resource_id_get_base_index(resource_id.to_int());
     if (client_index >= self.clients.len) {
         return null;
@@ -88,10 +88,10 @@ pub fn get_resource_of_type(
     self: *Self,
     resource_id: x11.ResourceId,
     comptime resource_tag: std.meta.Tag(phx.Resource),
-) ?std.meta.TagPayload(phx.Resource, resource_tag) {
+) ?*std.meta.TagPayload(phx.Resource, resource_tag) {
     const resource = self.get_resource(resource_id) orelse return null;
-    return if (std.meta.activeTag(resource) == resource_tag)
-        @field(resource, @tagName(resource_tag))
+    return if (std.meta.activeTag(resource.*) == resource_tag)
+        &@field(resource.*, @tagName(resource_tag))
     else
         null;
 }

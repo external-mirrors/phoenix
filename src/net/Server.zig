@@ -173,6 +173,7 @@ pub fn create(allocator: std.mem.Allocator) !*Self {
         .value = 0,
         .resolution = phx.time.get_resolution(),
         .type = .system,
+        .owner_client = self.root_client,
     });
 
     return self;
@@ -357,7 +358,7 @@ fn add_client(self: *Self, connection: std.net.Server.Connection) !*phx.Client {
     try std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_ADD, connection.stream.handle, &new_client_epoll_event);
     errdefer std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_DEL, connection.stream.handle, null) catch {};
 
-    return self.client_manager.add_client(phx.Client.init(connection, resource_id_base, self, self.allocator));
+    return self.client_manager.add_client(phx.Client.init(connection, resource_id_base, self, new_client_epoll_event.events, self.allocator));
 }
 
 fn remove_client(self: *Self, client_fd: std.posix.socket_t) void {
@@ -369,6 +370,30 @@ fn remove_client(self: *Self, client_fd: std.posix.socket_t) void {
         self.resource_id_base_manager.free(client.resource_id_base);
         _ = self.client_manager.remove_client(client_fd);
     }
+}
+
+pub fn set_client_muted(self: *Self, client: *phx.Client, muted: bool, read_write: struct { read: bool, write: bool }) void {
+    var epoll_event = std.os.linux.epoll_event{
+        .events = client.poll_flags,
+        .data = .{ .fd = client.connection.stream.handle },
+    };
+
+    if (muted) {
+        if (read_write.read)
+            epoll_event.events &= ~std.os.linux.EPOLL.IN;
+
+        if (read_write.write)
+            epoll_event.events &= ~std.os.linux.EPOLL.OUT;
+    } else {
+        if (read_write.read)
+            epoll_event.events |= std.os.linux.EPOLL.IN;
+
+        if (read_write.write)
+            epoll_event.events |= std.os.linux.EPOLL.OUT;
+    }
+
+    try std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_MOD, client.connection.stream.handle, &epoll_event);
+    client.poll_flags = epoll_event.events;
 }
 
 fn process_all_client_requests(self: *Self, client: *phx.Client) bool {
@@ -486,16 +511,16 @@ pub fn get_visual_by_id(self: *Self, visual_id: x11.VisualId) ?*const phx.Visual
 }
 
 pub fn get_window(self: *Self, window_id: x11.WindowId) ?*phx.Window {
-    return self.client_manager.get_resource_of_type(window_id.to_id(), .window);
+    return if (self.client_manager.get_resource_of_type(window_id.to_id(), .window)) |window| window.* else null;
 }
 
 pub fn get_pixmap(self: *Self, pixmap_id: x11.PixmapId) ?*phx.Pixmap {
-    return self.client_manager.get_resource_of_type(pixmap_id.to_id(), .pixmap);
+    return if (self.client_manager.get_resource_of_type(pixmap_id.to_id(), .pixmap)) |pixmap| pixmap.* else null;
 }
 
 pub fn get_drawable(self: *Self, drawable_id: x11.DrawableId) ?phx.Drawable {
     const resource = self.client_manager.get_resource(drawable_id.to_id()) orelse return null;
-    return switch (resource) {
+    return switch (resource.*) {
         .window => |window| phx.Drawable.init_window(window),
         .pixmap => |pixmap| phx.Drawable.init_pixmap(pixmap),
         else => null,
@@ -504,7 +529,7 @@ pub fn get_drawable(self: *Self, drawable_id: x11.DrawableId) ?phx.Drawable {
 
 pub fn get_glx_drawable(self: *Self, drawable_id: phx.Glx.DrawableId) ?phx.GlxDrawable {
     const resource = self.client_manager.get_resource(drawable_id.to_id()) orelse return null;
-    return switch (resource) {
+    return switch (resource.*) {
         .window => |window| phx.GlxDrawable.init_window(window),
         // TODO: add more items here once they are implemented
         else => null,
@@ -512,22 +537,22 @@ pub fn get_glx_drawable(self: *Self, drawable_id: phx.Glx.DrawableId) ?phx.GlxDr
 }
 
 pub fn get_fence(self: *Self, fence_id: phx.Sync.FenceId) ?*phx.Fence {
-    return self.client_manager.get_resource_of_type(fence_id.to_id(), .fence);
+    return if (self.client_manager.get_resource_of_type(fence_id.to_id(), .fence)) |fence| fence.* else null;
 }
 
-pub fn get_colormap(self: *Self, colormap_id: x11.ColormapId) ?phx.Colormap {
+pub fn get_colormap(self: *Self, colormap_id: x11.ColormapId) ?*phx.Colormap {
     return self.client_manager.get_resource_of_type(colormap_id.to_id(), .colormap);
 }
 
-pub fn get_glx_context(self: *Self, glx_context_id: phx.Glx.ContextId) ?phx.GlxContext {
+pub fn get_glx_context(self: *Self, glx_context_id: phx.Glx.ContextId) ?*phx.GlxContext {
     return self.client_manager.get_resource_of_type(glx_context_id.to_id(), .glx_context);
 }
 
-pub fn get_shm_segment(self: *Self, shm_seg_id: phx.MitShm.SegId) ?phx.ShmSegment {
+pub fn get_shm_segment(self: *Self, shm_seg_id: phx.MitShm.SegId) ?*phx.ShmSegment {
     return self.client_manager.get_resource_of_type(shm_seg_id.to_id(), .shm_segment);
 }
 
-pub fn get_counter(self: *Self, counter_id: phx.Sync.CounterId) ?phx.Counter {
+pub fn get_counter(self: *Self, counter_id: phx.Sync.CounterId) ?*phx.Counter {
     return self.client_manager.get_resource_of_type(counter_id.to_id(), .counter);
 }
 

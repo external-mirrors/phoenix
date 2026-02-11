@@ -112,8 +112,8 @@ fn create_window(request_context: *phx.RequestContext) !void {
     };
 
     const colormap_arg = req.request.get_value(x11.Card32, "colormap") orelse copy_from_parent;
-    const colormap: phx.Colormap = switch (colormap_arg) {
-        copy_from_parent => parent_window.attributes.colormap,
+    const colormap: *phx.Colormap = switch (colormap_arg) {
+        copy_from_parent => &parent_window.attributes.colormap,
         else => request_context.server.get_colormap(@enumFromInt(colormap_arg)) orelse {
             std.log.err("Received invalid colormap {d} in CreateWindow request", .{colormap_arg});
             return request_context.client.write_error(request_context, .colormap, colormap_arg);
@@ -167,7 +167,7 @@ fn create_window(request_context: *phx.RequestContext) !void {
         .backing_store = backing_store,
         .backing_planes = backing_planes,
         .backing_pixel = backing_pixel,
-        .colormap = colormap,
+        .colormap = colormap.*,
         .cursor = null, // TODO:
         .mapped = false,
         .background_pixmap = background_pixmap,
@@ -288,7 +288,7 @@ fn change_window_attributes(request_context: *phx.RequestContext) !void {
     }
 
     if (req.request.get_value(x11.Card32, "colormap")) |arg| {
-        const new_colormap: phx.Colormap = switch (arg) {
+        const new_colormap: *phx.Colormap = switch (arg) {
             copy_from_parent => blk: {
                 const parent = window.parent orelse {
                     std.log.err("CopyFromParent used on root window in ChangeWindowAttributes", .{});
@@ -298,7 +298,7 @@ fn change_window_attributes(request_context: *phx.RequestContext) !void {
                         @intFromEnum(window.id),
                     );
                 };
-                break :blk parent.attributes.colormap;
+                break :blk &parent.attributes.colormap;
             },
             else => request_context.server.get_colormap(@enumFromInt(arg)) orelse {
                 std.log.err(
@@ -313,7 +313,7 @@ fn change_window_attributes(request_context: *phx.RequestContext) !void {
             },
         };
 
-        new_window_attributes.colormap = new_colormap;
+        new_window_attributes.colormap = new_colormap.*;
     }
 
     if (req.request.get_value(x11.Card8, "bit_gravity")) |arg| {
@@ -797,7 +797,7 @@ fn get_property(request_context: *phx.RequestContext) !void {
 
     const property = window.get_property(property_atom) orelse {
         const property_atom_name = request_context.server.atom_manager.get_atom_name_by_id(req.request.property) orelse "Unknown";
-        std.log.err("GetProperty: the property atom {d} ({s}) doesn't exist in window {d}, returning empty data", .{ req.request.property, property_atom_name, window.id });
+        std.log.warn("GetProperty: the property atom {d} ({s}) doesn't exist in window {d}, returning empty data", .{ req.request.property, property_atom_name, window.id });
         var rep = Reply.GetPropertyNone{
             .sequence_number = request_context.sequence_number,
         };
@@ -809,7 +809,7 @@ fn get_property(request_context: *phx.RequestContext) !void {
 
     if (req.request.type != property.type and req.request.type != any_property_type) {
         const property_atom_name = request_context.server.atom_manager.get_atom_name_by_id(req.request.property) orelse "Unknown";
-        std.log.err(
+        std.log.warn(
             "GetProperty: the property atom {d} ({s}) exist in window {d} but it's of type {d}, not {d} ({s}) returning empty data",
             .{ req.request.property, property_atom_name, window.id, property.type, req.request.type, type_atom_name },
         );

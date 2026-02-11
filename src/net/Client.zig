@@ -43,8 +43,15 @@ extension_versions: ExtensionVersions = .{
 xkb_initialized: bool = false,
 
 last_error_value: u32 = 0,
+poll_flags: u32,
 
-pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, server: *phx.Server, allocator: std.mem.Allocator) Self {
+pub fn init(
+    connection: std.net.Server.Connection,
+    resource_id_base: u32,
+    server: *phx.Server,
+    poll_flags: u32,
+    allocator: std.mem.Allocator,
+) Self {
     return .{
         .allocator = allocator,
         .connection = connection,
@@ -65,6 +72,8 @@ pub fn init(connection: std.net.Server.Connection, resource_id_base: u32, server
         .listening_to_windows = .init(allocator),
 
         .server = server,
+
+        .poll_flags = poll_flags,
     };
 }
 
@@ -348,8 +357,8 @@ pub fn remove_resource(self: *Self, id: x11.ResourceId) void {
     _ = self.resources.remove(id);
 }
 
-pub fn get_resource(self: *Self, id: x11.ResourceId) ?phx.Resource {
-    return self.resources.get(id);
+pub fn get_resource(self: *Self, id: x11.ResourceId) ?*phx.Resource {
+    return self.resources.getPtr(id);
 }
 
 pub fn register_as_window_listener(self: *Self, window: *phx.Window) !void {

@@ -111,7 +111,7 @@ fn select_input(request_context: *phx.RequestContext) !void {
 
     const event_id = req.request.event_id.to_id();
     if (request_context.client.get_resource(event_id)) |resource| {
-        if (std.meta.activeTag(resource) != .event_context)
+        if (std.meta.activeTag(resource.*) != .event_context)
             return request_context.client.write_error(request_context, .value, event_id.to_int());
 
         if (req.request.window != resource.event_context.window.id)

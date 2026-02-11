@@ -290,7 +290,7 @@ fn get_output_property(request_context: *phx.RequestContext) !void {
 
     const property = crtc.get_property(property_atom) orelse {
         const property_atom_name = request_context.server.atom_manager.get_atom_name_by_id(req.request.property) orelse "Unknown";
-        std.log.err("RandrGetOutputProperty: the property atom {d} ({s}) doesn't exist in output {d}, returning empty data", .{ req.request.property, property_atom_name, req.request.output });
+        std.log.warn("RandrGetOutputProperty: the property atom {d} ({s}) doesn't exist in output {d}, returning empty data", .{ req.request.property, property_atom_name, req.request.output });
         var rep = Reply.GetOutputPropertyNone{
             .sequence_number = request_context.sequence_number,
         };
@@ -302,7 +302,7 @@ fn get_output_property(request_context: *phx.RequestContext) !void {
 
     if (req.request.type != property.type and req.request.type != any_property_type) {
         const property_atom_name = request_context.server.atom_manager.get_atom_name_by_id(req.request.property) orelse "Unknown";
-        std.log.err(
+        std.log.warn(
             "RandrGetOutputProperty: the property atom {d} ({s}) exist in output {d} but it's of type {d}, not {d} ({s}) returning empty data",
             .{ req.request.property, property_atom_name, req.request.output, property.type, req.request.type, type_atom_name },
         );

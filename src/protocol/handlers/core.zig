@@ -669,7 +669,7 @@ fn query_tree(request_context: *phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
 
-    const children = try get_window_children_reverse(window, request_context.allocator);
+    const children = try get_window_children_ids(window, request_context.allocator);
     defer request_context.allocator.free(children);
 
     var rep = Reply.QueryTree{
@@ -1442,12 +1442,12 @@ const CreateGCValueMask = packed struct(x11.Card32) {
     }
 };
 
-fn get_window_children_reverse(window: *const phx.Window, allocator: std.mem.Allocator) ![]x11.WindowId {
+fn get_window_children_ids(window: *const phx.Window, allocator: std.mem.Allocator) ![]x11.WindowId {
     var children = try allocator.alloc(x11.WindowId, window.children.items.len);
     errdefer allocator.free(children);
 
-    for (0..window.children.items.len) |i| {
-        children[i] = window.children.items[window.children.items.len - i - 1].id;
+    for (window.children.items, 0..) |child_window, i| {
+        children[i] = child_window.id;
     }
 
     return children;

@@ -384,11 +384,11 @@ fn perform_put_image_operations(self: *Self) void {
         if (op.src_x == 0 and op.src_y == 0 and op.src_width == op.total_width and op.src_height == op.total_height) {
             c.glTexSubImage2D(c.GL_TEXTURE_2D, 0, op.dst_x, op.dst_y, op.total_width, op.total_height, texture_format, c.GL_UNSIGNED_BYTE, op.shm_segment.addr);
         } else {
-            const depth_num_bytes: usize = @max(1, op.depth / 8);
+            const depth_bytes_per_pixel: usize = @max(1, op.depth / 8);
             for (0..op.src_height) |i| {
                 var addr_num = @intFromPtr(op.shm_segment.addr);
-                addr_num += @as(usize, op.src_x) * depth_num_bytes;
-                addr_num += (@as(usize, op.src_y) + i) * (depth_num_bytes * op.total_width);
+                addr_num += @as(usize, op.src_x) * depth_bytes_per_pixel;
+                addr_num += (@as(usize, op.src_y) + i) * (depth_bytes_per_pixel * op.total_width);
                 c.glTexSubImage2D(c.GL_TEXTURE_2D, 0, op.dst_x, op.dst_y + @as(i32, @intCast(i)), op.src_width, op.src_height, texture_format, c.GL_UNSIGNED_BYTE, @ptrFromInt(addr_num));
             }
         }

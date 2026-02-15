@@ -150,10 +150,11 @@ fn pixmap_from_buffer(request_context: *phx.RequestContext) !void {
         req.request.pixmap,
         &import_dmabuf,
         request_context.server,
-        request_context.client,
         request_context.allocator,
     );
-    errdefer pixmap.destroy();
+    errdefer pixmap.unref();
+
+    try request_context.client.add_pixmap(pixmap);
 }
 
 fn fence_from_fd(request_context: *phx.RequestContext) !void {
@@ -171,15 +172,25 @@ fn fence_from_fd(request_context: *phx.RequestContext) !void {
     const fence_fd = read_fds[0];
     defer request_context.client.discard_read_fds(1);
 
-    var fence = try phx.Fence.create_from_fd(req.request.fence, fence_fd, request_context.client, request_context.allocator);
-    errdefer fence.destroy();
+    var close_fds = true;
+    defer {
+        if (close_fds)
+            std.posix.close(fence_fd);
+    }
 
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
     var resolved_path_buf: [std.fs.max_path_bytes]u8 = undefined;
 
-    const path = try std.fmt.bufPrint(&path_buf, "/proc/self/fd/{d}", .{fence_fd});
-    const resolved_path = std.posix.readlink(path, &resolved_path_buf) catch "unknown";
-    std.log.info("fence: {d}: {s}", .{ fence_fd, resolved_path });
+    if (std.fmt.bufPrint(&path_buf, "/proc/self/fd/{d}", .{fence_fd})) |path| {
+        const resolved_path = std.posix.readlink(path, &resolved_path_buf) catch "unknown";
+        std.log.info("fence: {d}: {s}", .{ fence_fd, resolved_path });
+    } else |_| {}
+
+    var fence = try phx.Fence.init_from_fd(req.request.fence, fence_fd);
+    close_fds = false;
+    errdefer fence.deinit();
+
+    try request_context.client.add_fence(fence);
 }
 
 fn get_supported_modifiers(request_context: *phx.RequestContext) !void {
@@ -270,10 +281,11 @@ fn pixmap_from_buffers(request_context: *phx.RequestContext) !void {
         req.request.pixmap,
         &import_dmabuf,
         request_context.server,
-        request_context.client,
         request_context.allocator,
     );
-    errdefer pixmap.destroy();
+    errdefer pixmap.unref();
+
+    try request_context.client.add_pixmap(pixmap);
 }
 
 fn depth_is_supported(depth: u8) bool {

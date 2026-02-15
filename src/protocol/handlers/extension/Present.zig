@@ -39,7 +39,7 @@ fn query_version(request_context: *phx.RequestContext) !void {
 }
 
 fn present_pixmap(request_context: *phx.RequestContext) !void {
-    var req = try request_context.client.read_request(Request.Pixmap, request_context.allocator);
+    var req = try request_context.client.read_request(Request.PresentPixmap, request_context.allocator);
     defer req.deinit();
 
     for (req.request.notifies.items) |notify| {
@@ -231,7 +231,7 @@ pub const Request = struct {
         minor_version: x11.Card32,
     };
 
-    pub const Pixmap = struct {
+    pub const PresentPixmap = struct {
         major_opcode: phx.opcode.Major = .present,
         minor_opcode: MinorOpcode = .present_pixmap,
         length: x11.Card16,

@@ -4,7 +4,7 @@ const x11 = phx.x11;
 
 const Self = @This();
 
-// TODO: Optimize with hash map?
+// XXX: Optimize with hash map?
 selection_owners: std.ArrayList(SelectionOwner),
 
 pub fn init(allocator: std.mem.Allocator) Self {

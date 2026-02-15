@@ -70,7 +70,6 @@ fn create_counter(request_context: *phx.RequestContext) !void {
         .value = req.request.initial_value.to_i64(),
         .resolution = phx.time.get_resolution(),
         .type = .regular,
-        .owner_client = request_context.client,
     });
 }
 
@@ -152,7 +151,7 @@ fn destroy_counter(request_context: *phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .access, req.request.counter.to_id().to_int());
     }
 
-    counter.owner_client.remove_resource(counter.id.to_id());
+    request_context.server.remove_resource(counter.id.to_id());
 
     std.log.warn("TODO: SyncDestroyCounter: trigger CounterNotify and AlarmNotify when waiting for counter and alarm is implemented (if needed) and unblock clients", .{});
 }
@@ -165,7 +164,9 @@ fn destroy_fence(request_context: *phx.RequestContext) !void {
         std.log.err("Received invalid fence {d} in SyncDestroyFence request", .{req.request.fence});
         return request_context.client.write_error(request_context, .sync_fence, req.request.fence.to_id().to_int());
     };
-    fence.destroy();
+
+    fence.deinit();
+    request_context.server.remove_resource(req.request.fence.to_id());
 }
 
 const MinorOpcode = enum(x11.Card8) {

@@ -4,58 +4,52 @@ const x11 = phx.x11;
 
 const Self = @This();
 
-allocator: std.mem.Allocator,
-dmabuf_data: phx.Graphics.DmabufImport,
-server: *phx.Server,
-client_owner: *phx.Client,
-
 id: x11.PixmapId,
-graphics_backend_id: u32,
+dmabuf_data: phx.Graphics.DmabufImport,
+texture_id: u32 = 0,
+server: *phx.Server,
+refcount: phx.Refcount,
+allocator: std.mem.Allocator,
 
-/// The dmabuf fds are cleaned up if this fails
 pub fn create(
     id: x11.PixmapId,
     dmabuf_data: *const phx.Graphics.DmabufImport,
     server: *phx.Server,
-    client_owner: *phx.Client,
     allocator: std.mem.Allocator,
 ) !*Self {
-    var pixmap = allocator.create(Self) catch |err| {
-        for (dmabuf_data.fd[0..dmabuf_data.num_items]) |dmabuf_fd| {
-            if (dmabuf_fd > 0)
-                std.posix.close(dmabuf_fd);
-        }
-        return err;
-    };
-    errdefer pixmap.destroy();
+    const self = try allocator.create(Self);
+    errdefer allocator.destroy(self);
 
-    pixmap.* = .{
-        .allocator = allocator,
+    self.* = .{
+        .id = id,
         .dmabuf_data = dmabuf_data.*,
         .server = server,
-        .client_owner = client_owner,
-
-        .id = id,
-        .graphics_backend_id = 0,
+        .refcount = .init(),
+        .allocator = allocator,
     };
 
     // TODO: If import dmabuf fails then return match error
-    pixmap.graphics_backend_id = try server.display.create_texture_from_pixmap(pixmap);
-
-    try pixmap.client_owner.add_pixmap(pixmap);
-    return pixmap;
+    try server.display.create_pixmap(self);
+    return self;
 }
 
-pub fn destroy(self: *Self) void {
-    self.server.display.destroy_pixmap(self);
+pub fn ref(self: *Self) void {
+    self.refcount.ref();
+}
 
-    for (self.dmabuf_data.fd[0..self.dmabuf_data.num_items]) |dmabuf_fd| {
-        if (dmabuf_fd > 0)
-            std.posix.close(dmabuf_fd);
+pub fn unref(self: *Self) void {
+    if (self.refcount.unref() == 0) {
+        // XXX: Ugly hack
+        if (!self.server.shutting_down)
+            self.server.display.destroy_pixmap(self);
+
+        for (self.dmabuf_data.fd[0..self.dmabuf_data.num_items]) |dmabuf_fd| {
+            if (dmabuf_fd > 0)
+                std.posix.close(dmabuf_fd);
+        }
+
+        self.allocator.destroy(self);
     }
-
-    self.client_owner.remove_resource(self.id.to_id());
-    self.allocator.destroy(self);
 }
 
 pub fn get_geometry(self: *const Self) phx.Geometry {

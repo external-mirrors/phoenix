@@ -50,6 +50,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
 
 fn window_class_validate_attributes(class: x11.Class, req: *const Request.CreateWindow) bool {
     return switch (class) {
+        .copy_from_parent => unreachable,
         .input_output => true,
         .input_only => !req.value_mask.background_pixmap and
             !req.value_mask.background_pixel and
@@ -75,11 +76,20 @@ fn create_window(request_context: *phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.parent));
     };
 
-    const class: x11.Class =
-        if (req.request.class == copy_from_parent)
-            parent_window.attributes.class
-        else
-            @enumFromInt(req.request.class);
+    const class = switch (req.request.class) {
+        .copy_from_parent => parent_window.attributes.class,
+        else => req.request.class,
+    };
+
+    const depth = switch (@intFromEnum(class)) {
+        copy_from_parent => parent_window.attributes.depth,
+        else => req.request.depth,
+    };
+
+    if (!depth_is_supported(class, depth)) {
+        std.log.err("Received invalid depth {d} in CreateWindow request", .{req.request.depth});
+        return request_context.client.write_error(request_context, .value, req.request.depth);
+    }
 
     if (!window_class_validate_attributes(class, &req.request))
         return request_context.client.write_error(request_context, .match, 0);
@@ -154,6 +164,7 @@ fn create_window(request_context: *phx.RequestContext) !void {
     const do_not_propagate_mask: DeviceEventMask = @bitCast(req.request.get_value(x11.Card16, "do_not_propagate_mask") orelse 0);
 
     const window_attributes = phx.Window.Attributes{
+        .depth = depth,
         .geometry = .{
             .x = req.request.x,
             .y = req.request.y,
@@ -184,10 +195,12 @@ fn create_window(request_context: *phx.RequestContext) !void {
         req.request.window,
         &window_attributes,
         request_context.server,
-        request_context.client,
         request_context.allocator,
     );
     errdefer window.destroy();
+
+    try request_context.client.add_window(window);
+    errdefer request_context.client.remove_resource(window.id.to_id());
 
     if (!event_mask.is_empty()) {
         window.add_core_event_listener(request_context.client, event_mask) catch |err| switch (err) {
@@ -481,6 +494,7 @@ fn destroy_window(request_context: *phx.RequestContext) !void {
         return;
     }
 
+    window.remove_from_owner_recursive();
     window.destroy();
 }
 
@@ -499,7 +513,6 @@ fn map_window(request_context: *phx.RequestContext) !void {
     window.map();
 }
 
-// TODO: Implement properly
 fn configure_window(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.ConfigureWindow, request_context.allocator);
     defer req.deinit();
@@ -620,6 +633,7 @@ fn configure_window(request_context: *phx.RequestContext) !void {
         window.write_core_event_to_event_listeners(&configure_notify_event);
 
         window.attributes = new_window_attributes;
+        request_context.server.display.configure_window(window, window.attributes.geometry);
     }
 }
 
@@ -990,12 +1004,12 @@ fn set_input_focus(request_context: *phx.RequestContext) !void {
         else => {
             const focus_window = request_context.server.get_window(req.request.focus_window) orelse {
                 std.log.err("Received invalid window {d} in SetInputFocus request", .{req.request.focus_window});
-                return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.focus_window));
+                return request_context.client.write_error(request_context, .window, 0);
             };
 
             if (focus_window.get_map_state() == .unviewable) {
                 std.log.err("Received unviewable window {d} in SetInputFocus request", .{req.request.focus_window});
-                return request_context.client.write_error(request_context, .match, @intFromEnum(req.request.focus_window));
+                return request_context.client.write_error(request_context, .match, 0);
             }
 
             request_context.server.input_focus.focus = .{ .window = focus_window };
@@ -1064,7 +1078,7 @@ fn create_pixmap(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreatePixmap, request_context.allocator);
     defer req.deinit();
 
-    if (!depth_is_supported(req.request.depth)) {
+    if (!depth_is_supported(.input_output, req.request.depth)) {
         std.log.err("Received invalid depth {d} in CreatePixmap request", .{req.request.depth});
         return request_context.client.write_error(request_context, .value, req.request.depth);
     }
@@ -1074,49 +1088,54 @@ fn create_pixmap(request_context: *phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.drawable));
     };
 
-    var import_dmabuf: phx.Graphics.DmabufImport = undefined;
-    import_dmabuf.width = req.request.width;
-    import_dmabuf.height = req.request.height;
-    import_dmabuf.depth = req.request.depth;
-    import_dmabuf.bpp = drawable.get_bpp();
-    import_dmabuf.num_items = 0;
+    const import_dmabuf = phx.Graphics.DmabufImport{
+        .fd = undefined,
+        .stride = undefined,
+        .offset = undefined,
+        .modifier = undefined,
+        .width = req.request.width,
+        .height = req.request.height,
+        .depth = req.request.depth,
+        .bpp = drawable.get_bpp(),
+        .num_items = 0,
+    };
 
     var pixmap = try phx.Pixmap.create(
         req.request.pixmap,
         &import_dmabuf,
         request_context.server,
-        request_context.client,
         request_context.allocator,
     );
-    errdefer pixmap.destroy();
+    errdefer pixmap.unref();
+
+    try request_context.client.add_pixmap(pixmap);
 }
 
 fn free_pixmap(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.FreePixmap, request_context.allocator);
     defer req.deinit();
 
-    std.log.err("TODO: Implement FreePixmap properly, dont free pixmap immediately if there are references to it", .{});
-
-    // TODO: Dont free immediately if the pixmap still has references somewhere
-    const pixmap = request_context.server.get_pixmap(req.request.pixmap) orelse {
+    var pixmap = request_context.server.get_pixmap(req.request.pixmap) orelse {
         std.log.err("Received invalid pixmap {d} in FreePixmap request", .{req.request.pixmap});
         return request_context.client.write_error(request_context, .pixmap, @intFromEnum(req.request.pixmap));
     };
-    pixmap.destroy();
+
+    pixmap.unref();
+    request_context.server.remove_resource(req.request.pixmap.to_id());
 }
 
 fn create_gc(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateGC, request_context.allocator);
     defer req.deinit();
 
-    std.log.err("TODO: Implement CreateGC", .{});
+    std.log.err("TODO: Implement CreateGC (or maybe not)", .{});
 }
 
 fn free_gc(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.FreeGC, request_context.allocator);
     defer req.deinit();
 
-    std.log.err("TODO: Implement FreeGC", .{});
+    std.log.err("TODO: Implement FreeGC (or maybe not)", .{});
 }
 
 fn create_colormap(request_context: *phx.RequestContext) !void {
@@ -1134,7 +1153,7 @@ fn create_colormap(request_context: *phx.RequestContext) !void {
 
     const visual = request_context.server.get_visual_by_id(req.request.visual_id) orelse {
         std.log.err("Received invalid visual {d} in CreateColormap request", .{req.request.visual_id});
-        return request_context.client.write_error(request_context, .match, @intFromEnum(req.request.visual_id));
+        return request_context.client.write_error(request_context, .match, 0);
     };
 
     const colormap = phx.Colormap{ .id = req.request.colormap, .visual = visual };
@@ -1190,6 +1209,7 @@ fn query_extension(request_context: *phx.RequestContext) !void {
     } else if (std.mem.eql(u8, req.request.name.items, "MIT-SHM")) {
         rep.present = true;
         rep.major_opcode = @intFromEnum(phx.opcode.Major.mit_shm);
+        rep.first_event = phx.event.mit_shm_first_event;
         rep.first_error = phx.err.mit_shm_first_error;
     } else {
         std.log.err("QueryExtension: unsupported extension: {s}", .{req.request.name.items});
@@ -1291,10 +1311,14 @@ fn get_modifier_mapping(request_context: *phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
-fn depth_is_supported(depth: u8) bool {
-    return switch (depth) {
-        1, 4, 8, 16, 24, 30, 32 => true,
-        else => false,
+fn depth_is_supported(class: x11.Class, depth: u8) bool {
+    return switch (class) {
+        .copy_from_parent => unreachable,
+        .input_only => depth == 0,
+        .input_output => switch (depth) {
+            1, 4, 8, 16, 24, 30, 32 => true,
+            else => false,
+        },
     };
 }
 
@@ -1634,7 +1658,7 @@ pub const Request = struct {
         width: x11.Card16,
         height: x11.Card16,
         border_width: x11.Card16,
-        class: x11.Card16, // x11.Class, or 0 (Copy from parent)
+        class: x11.Class,
         visual: x11.VisualId,
         value_mask: CreateWindowValueMask,
         value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),

@@ -25,9 +25,14 @@ thread: std.Thread,
 thread_started: bool,
 running: bool,
 
+event_fd: std.posix.fd_t,
+
 // No need to explicitly cleanup all x11 resources on failure, xcb_disconnect will do that (server-side)
 
 pub fn init(server: *phx.Server, allocator: std.mem.Allocator) !Self {
+    const event_fd = try std.posix.eventfd(0, std.os.linux.EFD.CLOEXEC);
+    errdefer std.posix.close(event_fd);
+
     const connection = c.xcb_connect(null, null) orelse return error.FailedToConnectToXServer;
     errdefer c.xcb_disconnect(connection);
 
@@ -62,7 +67,17 @@ pub fn init(server: *phx.Server, allocator: std.mem.Allocator) !Self {
         return error.FailedToCreateRootWindow;
     }
 
-    var graphics = try phx.Graphics.create_egl(server, width, height, c.EGL_PLATFORM_XCB_EXT, c.EGL_PLATFORM_XCB_SCREEN_EXT, connection, window_id, gl_debug, allocator);
+    var graphics = try phx.Graphics.create_egl(
+        server,
+        width,
+        height,
+        c.EGL_PLATFORM_XCB_EXT,
+        c.EGL_PLATFORM_XCB_SCREEN_EXT,
+        connection,
+        window_id,
+        gl_debug,
+        allocator,
+    );
     errdefer graphics.destroy();
 
     const map_cookie = c.xcb_map_window_checked(connection, window_id);
@@ -96,12 +111,15 @@ pub fn init(server: *phx.Server, allocator: std.mem.Allocator) !Self {
         .thread = undefined,
         .thread_started = false,
         .running = true,
+
+        .event_fd = event_fd,
     };
 }
 
 pub fn deinit(self: *Self) void {
     if (self.thread_started) {
         self.running = false;
+        self.wakeup();
         self.thread.join();
     }
 
@@ -109,6 +127,8 @@ pub fn deinit(self: *Self) void {
     _ = c.xcb_destroy_window(self.connection, self.window);
     c.xcb_disconnect(self.connection);
     self.connection = undefined;
+
+    std.posix.close(self.event_fd);
 }
 
 pub fn run_update_thread(self: *Self) !void {
@@ -127,20 +147,23 @@ pub fn create_window(self: *Self, window: *const phx.Window) !*phx.Graphics.Grap
     return self.graphics.create_window(window);
 }
 
+pub fn configure_window(self: *Self, window: *phx.Window, geometry: phx.Geometry) void {
+    self.graphics.configure_window(window, geometry);
+}
+
 pub fn destroy_window(self: *Self, window: *phx.Window) void {
     self.graphics.destroy_window(window);
 }
 
-/// Returns a texture id. This will never return 0
-pub fn create_texture_from_pixmap(self: *Self, pixmap: *const phx.Pixmap) !u32 {
-    return self.graphics.create_texture_from_pixmap(pixmap);
+pub fn create_pixmap(self: *Self, pixmap: *phx.Pixmap) !void {
+    return self.graphics.create_pixmap(pixmap);
 }
 
-pub fn destroy_pixmap(self: *Self, pixmap: *const phx.Pixmap) void {
+pub fn destroy_pixmap(self: *Self, pixmap: *phx.Pixmap) void {
     self.graphics.destroy_pixmap(pixmap);
 }
 
-pub fn present_pixmap(self: *Self, pixmap: *const phx.Pixmap, window: *const phx.Window, target_msc: u64) !void {
+pub fn present_pixmap(self: *Self, pixmap: *phx.Pixmap, window: *const phx.Window, target_msc: u64) !void {
     return self.graphics.present_pixmap(pixmap, window, target_msc);
 }
 
@@ -148,6 +171,10 @@ pub fn get_supported_modifiers(self: *Self, window: *phx.Window, depth: u8, bpp:
     _ = window;
     // TODO: Do something with window
     return self.graphics.get_supported_modifiers(depth, bpp, modifiers);
+}
+
+pub fn put_image(self: *Self, op: *const phx.Graphics.PutImageArguments) !void {
+    return self.graphics.put_image(op);
 }
 
 pub fn get_keyboard_state(self: *Self, params: *const phx.Xkb.Request.GetState, _: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetState {
@@ -533,15 +560,83 @@ pub fn is_running(self: *Self) bool {
     return self.running;
 }
 
+pub fn wakeup(self: *Self) void {
+    const value: u64 = 1;
+    _ = std.posix.write(self.event_fd, std.mem.bytesAsSlice(u8, std.mem.asBytes(&value))) catch unreachable;
+}
+
 fn update_thread(self: *Self) !void {
     self.graphics.make_current_thread_active() catch |err| {
-        std.log.err("Failed to make current thread active for graphics!, error: {s}", .{@errorName(err)});
+        std.log.err("DisplayX11: Failed to make current thread active for graphics!, error: {s}", .{@errorName(err)});
         self.running = false;
         self.signal_server_shutdown();
         return;
     };
 
+    const timer_fd = std.posix.timerfd_create(.MONOTONIC, .{}) catch |err| {
+        std.log.err("DisplayX11: Failed to create timerfd!, error: {s}", .{@errorName(err)});
+        self.running = false;
+        self.signal_server_shutdown();
+        return;
+    };
+
+    // 16 milliseconds in nanoseconds
+    const frame_timeout: isize = 16 * 1000 * 1000;
+    const timer_value = std.posix.system.itimerspec{
+        .it_value = .{
+            .sec = 0,
+            .nsec = frame_timeout,
+        },
+        .it_interval = .{
+            .sec = 0,
+            .nsec = frame_timeout,
+        },
+    };
+    std.posix.timerfd_settime(timer_fd, .{}, &timer_value, null) catch unreachable;
+
+    const xcb_fd = c.xcb_get_file_descriptor(self.connection);
+    var poll_fds = [_]std.posix.pollfd{
+        .{
+            .fd = xcb_fd,
+            .events = std.posix.POLL.IN,
+            .revents = 0,
+        },
+        .{
+            .fd = self.event_fd,
+            .events = std.posix.POLL.IN,
+            .revents = 0,
+        },
+        .{
+            .fd = timer_fd,
+            .events = std.posix.POLL.IN,
+            .revents = 0,
+        },
+    };
+
     while (self.running) {
+        const num_fds_ready = std.posix.poll(&poll_fds, 0) catch |err| {
+            // TODO: What do?
+            std.log.err("DisplayX11: Failed to poll!, error: {s}", .{@errorName(err)});
+            continue;
+        };
+        if (num_fds_ready == 0)
+            continue;
+
+        var has_display_updates = false;
+        var render_timeout_hit = false;
+
+        for (poll_fds) |poll_fd| {
+            if (poll_fd.fd == self.event_fd and (poll_fd.revents & std.posix.POLL.IN) != 0) {
+                var buf: [@sizeOf(u64)]u8 = undefined;
+                _ = std.posix.read(self.event_fd, &buf) catch unreachable;
+                has_display_updates = true;
+            } else if (poll_fd.fd == timer_fd and (poll_fd.revents & std.posix.POLL.IN) != 0) {
+                var buf: [@sizeOf(u64)]u8 = undefined;
+                _ = std.posix.read(timer_fd, &buf) catch unreachable;
+                render_timeout_hit = true;
+            }
+        }
+
         while (c.xcb_poll_for_event(self.connection)) |event| {
             //std.log.info("got event: {d}", .{event.*.response_type & ~@as(u32, 0x80)});
             switch (event.*.response_type & ~@as(u32, 0x80)) {
@@ -564,14 +659,14 @@ fn update_thread(self: *Self) !void {
                 },
                 c.XCB_MOTION_NOTIFY => {
                     const motion_notify: *const c.xcb_motion_notify_event_t = @ptrCast(event);
-                    self.server.append_event(&.{ .mouse_move = .{ .x = motion_notify.event_x, .y = motion_notify.event_y } }) catch {
-                        std.log.err("Failed to add mouse move event to server", .{});
+                    self.server.append_message(&.{ .mouse_move = .{ .x = motion_notify.event_x, .y = motion_notify.event_y } }) catch {
+                        std.log.err("DisplayX11: Failed to add mouse move message to server", .{});
                     };
                 },
                 c.XCB_BUTTON_PRESS, c.XCB_BUTTON_RELEASE => |event_type| {
                     const button_press: *const c.xcb_button_press_event_t = @ptrCast(event);
                     if (x11_button_to_phx_event_button(button_press.detail)) |button| {
-                        self.server.append_event(&.{
+                        self.server.append_message(&.{
                             .mouse_click = .{
                                 .x = button_press.event_x,
                                 .y = button_press.event_y,
@@ -579,7 +674,7 @@ fn update_thread(self: *Self) !void {
                                 .state = if (event_type == c.XCB_BUTTON_PRESS) .press else .release,
                             },
                         }) catch {
-                            std.log.err("Failed to add button press/release event to server", .{});
+                            std.log.err("DisplayX11: Failed to add button press/release message to server", .{});
                         };
                     }
                 },
@@ -594,22 +689,38 @@ fn update_thread(self: *Self) !void {
             // TODO: Set root window size to self.width, self.height and trigger randr resize event
         }
 
-        self.graphics.render() catch |err| {
-            // TODO: What do?
-            std.log.err("Failed to render!, error: {s}", .{@errorName(err)});
-            continue;
-        };
+        if (has_display_updates) {
+            self.handle_messages();
+            self.graphics.update();
+        }
+
+        if (render_timeout_hit or self.size_updated) {
+            self.graphics.render();
+        }
     }
 
     self.graphics.make_current_thread_unactive() catch |err| {
-        std.log.err("Failed to make current thread unactive for graphics!, error: {s}", .{@errorName(err)});
+        std.log.err("DisplayX11: Failed to make current thread unactive for graphics!, error: {s}", .{@errorName(err)});
         return;
     };
 }
 
+fn handle_messages(self: *Self) void {
+    self.server.display.messages_mutex.lock();
+    defer self.server.display.messages_mutex.unlock();
+
+    for (self.server.display.messages.items) |*message| {
+        switch (message.*) {
+            .bla => {},
+        }
+    }
+
+    self.server.display.messages.clearRetainingCapacity();
+}
+
 fn signal_server_shutdown(self: *Self) void {
-    self.server.append_event(&.{ .shutdown = {} }) catch {
-        std.log.err("Failed to add shutdown event to server", .{});
+    self.server.append_message(&.{ .shutdown = {} }) catch {
+        std.log.err("DisplayX11: Failed to add shutdown message to server", .{});
     };
 }
 

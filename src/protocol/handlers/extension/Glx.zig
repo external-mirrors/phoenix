@@ -60,7 +60,6 @@ fn create_context(request_context: *phx.RequestContext) !void {
         .id = req.request.context,
         .visual = visual,
         .is_direct = req.request.is_direct,
-        .client_owner = request_context.client,
     };
     try request_context.client.add_glx_context(glx_context);
 }
@@ -73,7 +72,7 @@ fn destroy_context(request_context: *phx.RequestContext) !void {
         std.log.err("Received invalid glx context {d} in GlxDestroyContext request", .{req.request.context});
         return request_context.client.write_error(request_context, .glx_context, @intFromEnum(req.request.context));
     };
-    glx_context.client_owner.remove_resource(glx_context.id.to_id());
+    request_context.server.remove_resource(glx_context.id.to_id());
 }
 
 fn is_direct(request_context: *phx.RequestContext) !void {

@@ -30,8 +30,8 @@ epoll_fd: i32,
 epoll_events: [32]std.os.linux.epoll_event = undefined,
 signal_fd: std.posix.fd_t,
 event_fd: std.posix.fd_t,
-events: std.ArrayListUnmanaged(Event) = .empty,
-events_mutex: std.Thread.Mutex = .{},
+messages: std.ArrayListUnmanaged(Message) = .empty,
+messages_mutex: std.Thread.Mutex = .{},
 resource_id_base_manager: phx.ResourceIdBaseManager,
 atom_manager: phx.AtomManager,
 client_manager: phx.ClientManager,
@@ -54,6 +54,7 @@ cursor_x: i32,
 cursor_y: i32,
 
 running: bool = false,
+shutting_down: bool = false,
 
 current_pending_client_flushes: std.ArrayListUnmanaged(*phx.Client) = .empty,
 // TODO: Initialize with the current state right when the server starts because the user might hold down a button when the server starts.
@@ -173,13 +174,14 @@ pub fn create(allocator: std.mem.Allocator) !*Self {
         .value = 0,
         .resolution = phx.time.get_resolution(),
         .type = .system,
-        .owner_client = self.root_client,
     });
 
     return self;
 }
 
 pub fn destroy(self: *Self) void {
+    self.shutting_down = true;
+    self.cleanup_messages_resources();
     self.client_manager.deinit();
     self.atom_manager.deinit();
     self.selection_owner_manager.deinit();
@@ -187,7 +189,7 @@ pub fn destroy(self: *Self) void {
     self.screen_resources.deinit();
     self.display.destroy();
     self.input.deinit();
-    self.events.deinit(self.allocator);
+    self.messages.deinit(self.allocator);
     self.current_pending_client_flushes.deinit(self.allocator);
     self.all_shm_segments.deinit(self.allocator);
     std.posix.close(self.epoll_fd);
@@ -219,6 +221,7 @@ fn create_root_window(self: *Self) !*phx.Window {
     const screen_info = self.screen_resources.create_screen_info();
     const root_window_id: x11.WindowId = @enumFromInt(0x3b2 | self.root_client.resource_id_base);
     const window_attributes = phx.Window.Attributes{
+        .depth = 24,
         .geometry = .{
             .x = 0,
             .y = 0,
@@ -244,8 +247,11 @@ fn create_root_window(self: *Self) !*phx.Window {
         .override_redirect = false,
     };
 
-    var root_window = try phx.Window.create(null, root_window_id, &window_attributes, self, self.root_client, self.allocator);
+    var root_window = try phx.Window.create(null, root_window_id, &window_attributes, self, self.allocator);
     errdefer root_window.destroy();
+
+    try self.root_client.add_window(root_window);
+    errdefer self.root_client.remove_resource(root_window.id.to_id());
 
     try root_window.replace_property(u8, .{ .id = .RESOURCE_MANAGER }, .{ .id = .STRING }, "*background:\t#222222");
 
@@ -268,8 +274,11 @@ pub fn run(self: *Self) !void {
             const epoll_event = &self.epoll_events[event_index];
 
             if (epoll_event.data.fd == self.event_fd) {
+                var buf: [@sizeOf(u64)]u8 = undefined;
+                _ = std.posix.read(self.event_fd, &buf) catch unreachable;
+
                 self.handle_pending_client_flushes();
-                self.handle_events();
+                self.handle_messages();
             } else if (epoll_event.data.fd == self.signal_fd) {
                 std.log.info("Received SIGINT signal, stopping " ++ vendor, .{});
                 self.running = false;
@@ -500,6 +509,14 @@ fn handle_client_request(self: *Self, client: *phx.Client) !bool {
     return true;
 }
 
+pub fn get_resource_owner(self: *Self, resource_id: x11.ResourceId) ?*phx.Client {
+    return self.client_manager.get_resource_owner(resource_id);
+}
+
+pub fn remove_resource(self: *Self, resource_id: x11.ResourceId) void {
+    self.client_manager.remove_resource(resource_id);
+}
+
 // TODO: Consistent names for resource get
 pub fn get_visual_by_id(self: *Self, visual_id: x11.VisualId) ?*const phx.Visual {
     _ = self;
@@ -537,7 +554,7 @@ pub fn get_glx_drawable(self: *Self, drawable_id: phx.Glx.DrawableId) ?phx.GlxDr
 }
 
 pub fn get_fence(self: *Self, fence_id: phx.Sync.FenceId) ?*phx.Fence {
-    return if (self.client_manager.get_resource_of_type(fence_id.to_id(), .fence)) |fence| fence.* else null;
+    return self.client_manager.get_resource_of_type(fence_id.to_id(), .fence);
 }
 
 pub fn get_colormap(self: *Self, colormap_id: x11.ColormapId) ?*phx.Colormap {
@@ -556,15 +573,12 @@ pub fn get_counter(self: *Self, counter_id: phx.Sync.CounterId) ?*phx.Counter {
     return self.client_manager.get_resource_of_type(counter_id.to_id(), .counter);
 }
 
-fn handle_events(self: *Self) void {
-    self.events_mutex.lock();
-    defer self.events_mutex.unlock();
+fn handle_messages(self: *Self) void {
+    self.messages_mutex.lock();
+    defer self.messages_mutex.unlock();
 
-    var buf: [@sizeOf(u64)]u8 = undefined;
-    _ = std.posix.read(self.event_fd, &buf) catch unreachable;
-
-    for (self.events.items) |*event| {
-        switch (event.*) {
+    for (self.messages.items) |*message| {
+        switch (message.*) {
             .shutdown => self.running = false,
             .vsync_finished => |vsync_finished| {
                 _ = vsync_finished;
@@ -572,12 +586,56 @@ fn handle_events(self: *Self) void {
             },
             .mouse_move => |mouse_move| self.handle_mouse_move(mouse_move),
             .mouse_click => |mouse_click| self.handle_mouse_click(mouse_click),
+            .present_pixmap_finished => |*present_pixmap_finished| {
+                // TODO: trigger event
+                present_pixmap_finished.operation.unref();
+            },
+            .put_image_finished => |*put_image_finished| {
+                if (put_image_finished.operation.send_event) {
+                    if (self.get_resource_owner(put_image_finished.operation.shm_segment.id.to_id())) |client| {
+                        var mit_shm_put_image_completion_event = phx.MitShm.Event.PutImageCompletion{
+                            .drawable = put_image_finished.operation.drawable.get_id(),
+                            .shmseg = put_image_finished.operation.shm_segment.id,
+                            .offset = put_image_finished.operation.offset,
+                        };
+                        client.write_event_static_size(&mit_shm_put_image_completion_event) catch |err| {
+                            std.log.err("Server.handle_messages: failed to write MitShmPutImageCompletion event to client, error: {s}", .{@errorName(err)});
+                        };
+                    }
+                }
+                put_image_finished.operation.unref();
+            },
+            .present_pixmap_canceled => |*present_pixmap_canceled| {
+                // TODO: trigger event (idle only)
+                present_pixmap_canceled.operation.unref();
+            },
+            .put_image_canceled => |*put_image_canceled| {
+                // TODO: trigger event?
+                put_image_canceled.operation.unref();
+            },
         }
     }
-    self.events.clearRetainingCapacity();
+
+    self.messages.clearRetainingCapacity();
 }
 
-fn handle_mouse_move(self: *Self, mouse_move: MouseMoveEvent) void {
+fn cleanup_messages_resources(self: *Self) void {
+    for (self.messages.items) |*message| {
+        cleanup_message_resources(message);
+    }
+}
+
+fn cleanup_message_resources(message: *Message) void {
+    switch (message.*) {
+        .shutdown, .vsync_finished, .mouse_move, .mouse_click => {},
+        .present_pixmap_finished => |*present_pixmap_finished| present_pixmap_finished.operation.unref(),
+        .put_image_finished => |*put_image_finished| put_image_finished.operation.unref(),
+        .present_pixmap_canceled => |*present_pixmap_canceled| present_pixmap_canceled.operation.unref(),
+        .put_image_canceled => |*put_image_canceled| put_image_canceled.operation.unref(),
+    }
+}
+
+fn handle_mouse_move(self: *Self, mouse_move: MouseMoveMessage) void {
     self.cursor_x = mouse_move.x;
     self.cursor_y = mouse_move.y;
 
@@ -605,7 +663,7 @@ fn handle_mouse_move(self: *Self, mouse_move: MouseMoveEvent) void {
     cursor_window.write_core_event_to_event_listeners(&motion_notify_event);
 }
 
-fn handle_mouse_click(self: *Self, mouse_click: MouseClickEvent) void {
+fn handle_mouse_click(self: *Self, mouse_click: MouseClickMessage) void {
     self.cursor_x = mouse_click.x;
     self.cursor_y = mouse_click.y;
 
@@ -683,12 +741,17 @@ fn handle_mouse_click(self: *Self, mouse_click: MouseClickEvent) void {
 }
 
 /// Thread-safe
-pub fn append_event(self: *Self, event: *const Event) !void {
-    self.events_mutex.lock();
-    defer self.events_mutex.unlock();
+pub fn append_message(self: *Self, message: *const Message) !void {
+    self.messages_mutex.lock();
+    defer self.messages_mutex.unlock();
 
-    try self.events.append(self.allocator, event.*);
-    if (self.events.items.len == 1) {
+    if (self.shutting_down) {
+        cleanup_message_resources(@constCast(message));
+        return;
+    }
+
+    try self.messages.append(self.allocator, message.*);
+    if (self.messages.items.len == 1) {
         const value: u64 = 1;
         _ = std.posix.write(self.event_fd, std.mem.bytesAsSlice(u8, std.mem.asBytes(&value))) catch unreachable;
     }
@@ -739,23 +802,27 @@ pub fn remove_shm_segment_by_id(self: *Self, seg_id: phx.MitShm.SegId) void {
     }
 }
 
-pub const Event = union(enum) {
+pub const Message = union(enum) {
     shutdown: void,
-    vsync_finished: VsyncFinishedEvent,
-    mouse_move: MouseMoveEvent,
-    mouse_click: MouseClickEvent,
+    vsync_finished: VsyncFinishedMessage,
+    mouse_move: MouseMoveMessage,
+    mouse_click: MouseClickMessage,
+    present_pixmap_finished: PresentPixmapFinishedMessage,
+    put_image_finished: PutImageFinishedMessage,
+    present_pixmap_canceled: PresentPixmapCanceledMessage,
+    put_image_canceled: PutImageCanceledMessage,
 };
 
-pub const VsyncFinishedEvent = struct {
+pub const VsyncFinishedMessage = struct {
     timestamp_sec: f64,
 };
 
-pub const MouseMoveEvent = struct {
+pub const MouseMoveMessage = struct {
     x: i32,
     y: i32,
 };
 
-pub const MouseClickEvent = struct {
+pub const MouseClickMessage = struct {
     x: i32,
     y: i32,
     button: phx.event.Button,
@@ -765,4 +832,20 @@ pub const MouseClickEvent = struct {
 pub const MouseClickState = enum {
     press,
     release,
+};
+
+pub const PresentPixmapFinishedMessage = struct {
+    operation: phx.Graphics.PresentPixmapOperation,
+};
+
+pub const PutImageFinishedMessage = struct {
+    operation: phx.Graphics.PutImageOperation,
+};
+
+pub const PresentPixmapCanceledMessage = struct {
+    operation: phx.Graphics.PresentPixmapOperation,
+};
+
+pub const PutImageCanceledMessage = struct {
+    operation: phx.Graphics.PutImageOperation,
 };

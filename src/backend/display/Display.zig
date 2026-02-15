@@ -7,6 +7,8 @@ const Self = @This();
 
 allocator: std.mem.Allocator,
 impl: DisplayImpl,
+messages: std.ArrayListUnmanaged(Message) = .empty,
+messages_mutex: std.Thread.Mutex = .{},
 
 pub fn create_x11(server: *phx.Server, allocator: std.mem.Allocator) !Self {
     const display_x11 = try allocator.create(DisplayX11);
@@ -30,6 +32,7 @@ pub fn destroy(self: *Self) void {
             self.allocator.destroy(item);
         },
     }
+    self.messages.deinit(self.allocator);
 }
 
 /// Returns a reference. The fd is owned by the backend
@@ -45,26 +48,31 @@ pub fn create_window(self: *Self, window: *const phx.Window) !*phx.Graphics.Grap
     }
 }
 
+pub fn configure_window(self: *Self, window: *phx.Window, geometry: phx.Geometry) void {
+    switch (self.impl) {
+        inline else => |item| item.configure_window(window, geometry),
+    }
+}
+
 pub fn destroy_window(self: *Self, window: *phx.Window) void {
     switch (self.impl) {
         inline else => |item| return item.destroy_window(window),
     }
 }
 
-/// Returns a texture id. This will never return 0
-pub fn create_texture_from_pixmap(self: *Self, pixmap: *const phx.Pixmap) !u32 {
+pub fn create_pixmap(self: *Self, pixmap: *phx.Pixmap) !void {
     return switch (self.impl) {
-        inline else => |item| item.create_texture_from_pixmap(pixmap),
+        inline else => |item| item.create_pixmap(pixmap),
     };
 }
 
-pub fn destroy_pixmap(self: *Self, pixmap: *const phx.Pixmap) void {
+pub fn destroy_pixmap(self: *Self, pixmap: *phx.Pixmap) void {
     switch (self.impl) {
         inline else => |item| return item.destroy_pixmap(pixmap),
     }
 }
 
-pub fn present_pixmap(self: *Self, pixmap: *const phx.Pixmap, window: *const phx.Window, target_msc: u64) !void {
+pub fn present_pixmap(self: *Self, pixmap: *phx.Pixmap, window: *const phx.Window, target_msc: u64) !void {
     return switch (self.impl) {
         inline else => |item| item.present_pixmap(pixmap, window, target_msc),
     };
@@ -73,6 +81,13 @@ pub fn present_pixmap(self: *Self, pixmap: *const phx.Pixmap, window: *const phx
 pub fn get_supported_modifiers(self: *Self, window: *phx.Window, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {
     return switch (self.impl) {
         inline else => |item| item.get_supported_modifiers(window, depth, bpp, modifiers),
+    };
+}
+
+/// Increases the ref count of the shm segment until the operation is done
+pub fn put_image(self: *Self, op: *const phx.Graphics.PutImageArguments) !void {
+    return switch (self.impl) {
+        inline else => |item| item.put_image(op),
     };
 }
 
@@ -112,8 +127,28 @@ pub fn is_running(self: *Self) bool {
     };
 }
 
+pub fn wakeup(self: *Self) void {
+    return switch (self.impl) {
+        inline else => |item| item.wakeup(),
+    };
+}
+
+/// Thread-safe
+pub fn append_message(self: *Self, message: *const Message) !void {
+    self.messages_mutex.lock();
+    defer self.messages_mutex.unlock();
+
+    try self.messages.append(self.allocator, message.*);
+    if (self.messages.items.len == 1)
+        self.wakeup();
+}
+
 const DisplayImpl = union(enum) {
     x11: *DisplayX11,
+};
+
+pub const Message = union(enum) {
+    bla: void,
 };
 
 test "x11" {

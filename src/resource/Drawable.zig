@@ -30,3 +30,10 @@ pub fn get_bpp(self: Self) u8 {
         inline else => |item| return item.get_bpp(),
     };
 }
+
+pub fn get_depth(self: Self) u8 {
+    return switch (self.item) {
+        .window => |window| window.attributes.depth,
+        .pixmap => |pixmap| pixmap.dmabuf_data.depth,
+    };
+}

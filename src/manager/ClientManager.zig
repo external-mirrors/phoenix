@@ -73,15 +73,26 @@ pub fn get_client_by_fd(self: *Self, client_fd: std.posix.socket_t) ?*phx.Client
     return if (self.clients_by_fd.get(client_fd)) |client_index| self.clients[client_index] else null;
 }
 
-pub fn get_resource(self: *Self, resource_id: x11.ResourceId) ?*phx.Resource {
+pub fn get_resource_owner(self: *Self, resource_id: x11.ResourceId) ?*phx.Client {
     const client_index = phx.ResourceIdBaseManager.resource_id_get_base_index(resource_id.to_int());
     if (client_index >= self.clients.len) {
         return null;
-    } else if (self.clients[client_index]) |client| {
+    } else {
+        return self.clients[client_index];
+    }
+}
+
+pub fn get_resource(self: *Self, resource_id: x11.ResourceId) ?*phx.Resource {
+    if (self.get_resource_owner(resource_id)) |client| {
         return client.get_resource(resource_id);
     } else {
         return null;
     }
+}
+
+pub fn remove_resource(self: *Self, resource_id: x11.ResourceId) void {
+    if (self.get_resource_owner(resource_id)) |client|
+        client.remove_resource(resource_id);
 }
 
 pub fn get_resource_of_type(

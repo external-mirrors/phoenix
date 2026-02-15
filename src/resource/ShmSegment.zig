@@ -6,50 +6,54 @@ const Self = @This();
 id: phx.MitShm.SegId,
 shmid: c_int,
 read_only: bool,
-client_owner: *phx.Client,
-data: phx.Rc(ShmData),
+addr: *anyopaque,
+size: usize,
+refcount_shared: *phx.Refcount,
+allocator: std.mem.Allocator,
 
 pub fn init(
     id: phx.MitShm.SegId,
     shmid: c_int,
     addr: *anyopaque,
+    size: usize,
     read_only: bool,
-    client_owner: *phx.Client,
     allocator: std.mem.Allocator,
 ) !Self {
-    var self = Self{
+    const refcount_shared = try allocator.create(phx.Refcount);
+    errdefer allocator.destroy(refcount_shared);
+    refcount_shared.* = .init();
+
+    return .{
         .id = id,
         .shmid = shmid,
         .read_only = read_only,
-        .client_owner = client_owner,
-        .data = try phx.Rc(ShmData).init(&.{ .addr = addr }, allocator),
+        .addr = addr,
+        .size = size,
+        .refcount_shared = refcount_shared,
+        .allocator = allocator,
     };
-    errdefer _ = self.data.unref();
-
-    try self.client_owner.add_shm_segment(&self);
-    return self;
 }
 
-pub fn init_ref_data(self: *Self, id: phx.MitShm.SegId, client_owner: *phx.Client) !Self {
-    var copied = Self{
+pub fn init_ref_data(self: *Self, id: phx.MitShm.SegId) !Self {
+    self.refcount_shared.ref();
+    return .{
         .id = id,
         .shmid = self.shmid,
         .read_only = self.read_only,
-        .client_owner = client_owner,
-        .data = self.data.ref(),
+        .addr = self.addr,
+        .size = self.size,
+        .refcount_shared = self.refcount_shared,
+        .allocator = self.allocator,
     };
-    errdefer _ = copied.data.unref();
-
-    try client_owner.add_shm_segment(&copied);
-    return copied;
 }
 
-pub fn deinit(self: Self) void {
-    if (self.data.unref() == 0)
-        _ = phx.c.shmdt(self.data.data.addr);
-    self.client_owner.remove_resource(self.id.to_id());
+pub fn ref(self: *Self) void {
+    self.refcount_shared.ref();
 }
 
-const ShmData = struct {
-    addr: *anyopaque,
-};
+pub fn unref(self: *Self) void {
+    if (self.refcount_shared.unref() == 0) {
+        self.allocator.destroy(self.refcount_shared);
+        _ = phx.c.shmdt(self.addr);
+    }
+}

@@ -7,7 +7,7 @@ const Self = @This();
 const name_max_length: usize = 255;
 const max_num_atoms: usize = 262144;
 
-// TODO: Optimize with hash map?
+// XXX: Optimize with hash map?
 allocator: std.mem.Allocator,
 atoms: std.ArrayList([]const u8),
 

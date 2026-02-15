@@ -5,19 +5,22 @@ const x11 = phx.x11;
 pub const Resource = union(enum) {
     window: *phx.Window,
     pixmap: *phx.Pixmap,
-    fence: *phx.Fence,
+    fence: phx.Fence,
     event_context: phx.EventContext,
     colormap: phx.Colormap,
     glx_context: phx.GlxContext,
     shm_segment: phx.ShmSegment,
     counter: phx.Counter,
 
-    pub fn deinit(self: Resource) void {
-        switch (self) {
-            .window => |item| item.destroy(),
-            .pixmap => |item| item.destroy(),
-            .fence => |item| item.destroy(),
-            .shm_segment => |item| item.deinit(),
+    pub fn deinit(self: *Resource) void {
+        switch (self.*) {
+            .window => |item| {
+                item.remove_from_owner_recursive();
+                item.destroy();
+            },
+            .pixmap => |item| item.unref(),
+            .fence => |*item| item.deinit(),
+            .shm_segment => |*item| item.unref(),
             .event_context, .colormap, .glx_context, .counter => {},
         }
     }

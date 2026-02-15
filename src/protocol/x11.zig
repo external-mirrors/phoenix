@@ -142,6 +142,7 @@ pub const KeySym = enum(Card32) {
 };
 
 pub const Class = enum(Card16) {
+    copy_from_parent = 0,
     input_output = 1,
     input_only = 2,
 };

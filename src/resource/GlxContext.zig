@@ -6,4 +6,3 @@ visual: *const phx.Visual,
 is_direct: bool,
 // screen
 // share_list
-client_owner: *phx.Client,

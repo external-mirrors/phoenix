@@ -29,6 +29,9 @@ pub const randr_first_event: x11.Card8 = 50;
 pub const randr_screen_change_notify: x11.Card8 = randr_first_event + 0;
 pub const randr_notify: x11.Card8 = randr_first_event + 1;
 
+pub const mit_shm_first_event: x11.Card8 = 60;
+pub const mit_shm_put_image_completion: x11.Card8 = mit_shm_first_event + 3;
+
 pub const FocusDetail = enum(x11.Card8) {
     ancestor = 0,
     virtual = 1,

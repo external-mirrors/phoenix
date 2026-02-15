@@ -8,7 +8,6 @@ allocator: std.mem.Allocator,
 parent: ?*Self,
 children: std.ArrayList(*Self),
 server: *phx.Server,
-client_owner: *phx.Client,
 deleting_self: bool,
 
 id: x11.WindowId,
@@ -16,14 +15,13 @@ attributes: Attributes,
 properties: x11.PropertyHashMap,
 core_event_listeners: std.ArrayList(CoreEventListener),
 extension_event_listeners: std.ArrayList(ExtensionEventListener),
-graphics_window: *phx.Graphics.GraphicsWindow,
+graphics_window: *phx.Graphics.GraphicsWindow, // Reference
 
 pub fn create(
     parent: ?*Self,
     id: x11.WindowId,
     attributes: *const Attributes,
     server: *phx.Server,
-    client_owner: *phx.Client,
     allocator: std.mem.Allocator,
 ) !*Self {
     var window = try allocator.create(Self);
@@ -34,7 +32,6 @@ pub fn create(
         .parent = parent,
         .children = .init(allocator),
         .server = server,
-        .client_owner = client_owner,
         .deleting_self = false,
 
         .id = id,
@@ -42,12 +39,8 @@ pub fn create(
         .properties = .empty,
         .core_event_listeners = .init(allocator),
         .extension_event_listeners = .init(allocator),
-        .graphics_window = undefined,
+        .graphics_window = try server.display.create_window(window),
     };
-
-    window.graphics_window = try server.display.create_window(window);
-
-    try window.client_owner.add_window(window);
 
     if (parent) |par|
         try par.children.append(window);
@@ -55,10 +48,13 @@ pub fn create(
     return window;
 }
 
+/// Recursive
 pub fn destroy(self: *Self) void {
     self.deleting_self = true;
 
-    self.server.display.destroy_window(self);
+    // XXX: Ugly hack
+    if (!self.server.shutting_down)
+        self.server.display.destroy_window(self);
 
     if (self.parent) |parent|
         parent.remove_child(self);
@@ -79,13 +75,19 @@ pub fn destroy(self: *Self) void {
     self.revert_input_focus();
 
     self.remove_event_listeners_from_clients();
-    self.client_owner.remove_resource(self.id.to_id());
 
     self.core_event_listeners.deinit();
     self.extension_event_listeners.deinit();
     self.properties.deinit(self.allocator);
     self.children.deinit();
     self.allocator.destroy(self);
+}
+
+pub fn remove_from_owner_recursive(self: *Self) void {
+    self.server.remove_resource(self.id.to_id());
+    for (self.children.items) |child| {
+        child.remove_from_owner_recursive();
+    }
 }
 
 fn revert_input_focus(self: *Self) void {
@@ -797,7 +799,7 @@ pub fn get_bpp(_: *const Self) u8 {
     return 24;
 }
 
-// TODO: Optimize
+// XXX: Optimize
 pub fn get_absolute_position(self: *const Self) @Vector(2, i32) {
     var pos = @Vector(2, i32){ self.attributes.geometry.x, self.attributes.geometry.y };
     var parent = self.parent;
@@ -868,6 +870,7 @@ fn get_window_at_position_recursive(self: *phx.Window, geometry: phx.Geometry, p
 }
 
 pub const Attributes = struct {
+    depth: u8,
     geometry: phx.Geometry, // Position is relative to parent
     class: x11.Class,
     visual: *const phx.Visual,

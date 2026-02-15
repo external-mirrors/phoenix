@@ -10,7 +10,6 @@ Maybe break x11 protocol standard and use the top 3 bits in resource id?
 Handle error.InvalidEnumTag in request.read_request using std.meta.intToEnum. It should return an x11 .value error.
 Move backend to a separate process which has can be restarted. Restarting works without losing graphics contexts since pixmaps save the dmabuf fd, which it can re-import if the backend process is restarted.
     Then we can use process restriction functions for increased security.
-Use timerfd (linux only) for epoll friendly timer timeout.
 Instead of creating and destroying opengl textures for each window/pixmap each time, create textures and re-use them; never destroying them.
     This is more efficient and leads to lower memory usage (nvidia leaks memory on texture create/destroy, on purpose).
 Client might set any of the top resource id bits to 1. What do?

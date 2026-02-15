@@ -83,14 +83,9 @@ pub fn deinit(self: *Self) void {
     }
     self.listening_to_windows.deinit();
 
-    // This is recursive safe, if a resource is removed from |self.resources| while we are iterating it
-    // (for example Window calling Client.remove_resource)
-    while (self.resources.count() > 0) {
-        var resources_it = self.resources.keyIterator();
-        if (resources_it.next()) |res_key| {
-            if (self.resources.fetchRemove(res_key.*)) |res|
-                res.value.deinit();
-        }
+    var resources_it = self.resources.iterator();
+    while (resources_it.next()) |res| {
+        res.value_ptr.deinit();
     }
     self.resources.deinit();
 
@@ -337,7 +332,7 @@ pub fn add_pixmap(self: *Self, pixmap: *phx.Pixmap) !void {
     return self.add_resource(pixmap.id.to_id(), .{ .pixmap = pixmap });
 }
 
-pub fn add_fence(self: *Self, fence: *phx.Fence) !void {
+pub fn add_fence(self: *Self, fence: phx.Fence) !void {
     return self.add_resource(fence.id.to_id(), .{ .fence = fence });
 }
 
@@ -345,8 +340,8 @@ pub fn add_glx_context(self: *Self, glx_context: phx.GlxContext) !void {
     return self.add_resource(glx_context.id.to_id(), .{ .glx_context = glx_context });
 }
 
-pub fn add_shm_segment(self: *Self, shm_segment: *const phx.ShmSegment) !void {
-    return self.add_resource(shm_segment.id.to_id(), .{ .shm_segment = shm_segment.* });
+pub fn add_shm_segment(self: *Self, shm_segment: phx.ShmSegment) !void {
+    return self.add_resource(shm_segment.id.to_id(), .{ .shm_segment = shm_segment });
 }
 
 pub fn add_counter(self: *Self, counter: phx.Counter) !void {

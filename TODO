@@ -60,3 +60,4 @@ When TILE support is added consider this: https://gitlab.freedesktop.org/wlroots
 When damage/expose tracking is added have a keybind to toggle showing updated regions (flash red rectangle).
 Trigger KeymapNotify (for FocusIn).
 Support reading/writing file descriptors automatically in request/reply parsing. If field type is std.posix.fd_t then handle it as a file descriptor instead. fd_t may not work as its just an alias to an integer type. May need to create a custom Fd type.
+Permissions (for example for selecting for key input) should check if the target window was created by the same client process id. Maybe also allow access to parent/child process windows.

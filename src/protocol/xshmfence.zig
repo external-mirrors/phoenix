@@ -19,19 +19,18 @@ pub const xshmfence = extern struct {
     }
 
     pub fn destroy(self: *xshmfence) void {
-        const self_slice = std.mem.bytesAsSlice(u8, std.mem.asBytes(self));
-        std.posix.munmap(@alignCast(self_slice));
+        std.posix.munmap(@ptrCast(@alignCast(self)));
     }
 
     pub fn trigger(self: *xshmfence) bool {
         if (@cmpxchgStrong(i32, &self.v, 0, 1, .seq_cst, .seq_cst) == null) {
             @atomicStore(i32, &self.v, 1, .seq_cst);
-            return std.os.linux.futex_wake(&self.v, std.os.linux.FUTEX.WAKE, std.math.maxInt(i32)) >= 0;
+            return std.os.linux.futex_3arg(&self.v, .{ .cmd = .WAKE, .private = false }, std.math.maxInt(i32)) >= 0;
         }
         return false;
     }
 
-    // pub fn @"await"(self: *xshmfence) bool {
+    // pub fn await(self: *xshmfence) bool {
     //     while (@cmpxchgWeak(i32, &self.v, 0, -1, .seq_cst, .seq_cst) != 1) {
     //         std.debug.print("before wait\n", .{});
     //         std.debug.print("after wait\n", .{});

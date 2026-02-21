@@ -1,5 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const Fifo = @import("fifo.zig").Fifo;
+const RingBuffer = @import("ringbuffer.zig").RingBuffer;
 const phx = @import("../phoenix.zig");
 const x11 = phx.x11;
 
@@ -9,8 +11,8 @@ allocator: std.mem.Allocator,
 connection: std.net.Server.Connection,
 state: State,
 
-read_buffer: DataBuffer,
-write_buffer: DataBuffer,
+read_buffer: ReadDataBuffer,
+write_buffer: WriteDataBuffer,
 
 read_buffer_fds: RequestFdsBuffer,
 write_buffer_fds: ReplyFdsBuffer,
@@ -21,7 +23,7 @@ sequence_number_counter: u16,
 resources: phx.ResourceHashMap,
 client_connected_timestamp_sec: f64,
 
-listening_to_windows: std.ArrayList(*phx.Window),
+listening_to_windows: std.ArrayListUnmanaged(*phx.Window) = .empty,
 
 server: *phx.Server,
 
@@ -51,25 +53,29 @@ pub fn init(
     server: *phx.Server,
     poll_flags: u32,
     allocator: std.mem.Allocator,
-) Self {
+) !Self {
+    var read_buffer_fds = try RequestFdsBuffer.init(allocator, max_fds_buffer_size);
+    errdefer read_buffer_fds.deinit(allocator);
+
+    var write_buffer_fds = try ReplyFdsBuffer.init(allocator, max_fds_buffer_size);
+    errdefer write_buffer_fds.deinit(allocator);
+
     return .{
         .allocator = allocator,
         .connection = connection,
         .state = .connecting,
 
-        .read_buffer = .init(allocator),
-        .write_buffer = .init(allocator),
+        .read_buffer = .init(),
+        .write_buffer = .init(),
 
-        .read_buffer_fds = .init(allocator),
-        .write_buffer_fds = .init(allocator),
+        .read_buffer_fds = read_buffer_fds,
+        .write_buffer_fds = write_buffer_fds,
 
         .resource_id_base = resource_id_base,
         .sequence_number = 1,
         .sequence_number_counter = 1,
         .resources = .init(allocator),
         .client_connected_timestamp_sec = phx.time.clock_get_monotonic_seconds(),
-
-        .listening_to_windows = .init(allocator),
 
         .server = server,
 
@@ -81,7 +87,7 @@ pub fn deinit(self: *Self) void {
     for (self.listening_to_windows.items) |window| {
         window.remove_all_event_listeners_for_client(self);
     }
-    self.listening_to_windows.deinit();
+    self.listening_to_windows.deinit(self.allocator);
 
     var resources_it = self.resources.iterator();
     while (resources_it.next()) |res| {
@@ -94,21 +100,21 @@ pub fn deinit(self: *Self) void {
     self.read_buffer.deinit();
     self.write_buffer.deinit();
 
-    while (self.read_buffer_fds.readableLength() > 0) {
-        const read_fd = self.read_buffer_fds.buf[self.read_buffer_fds.head];
-        if (read_fd > 0)
-            std.posix.close(read_fd);
-        self.read_buffer_fds.discard(1);
+    for (self.read_buffer_fds.get_slices()) |read_fds| {
+        for (read_fds) |read_fd| {
+            if (read_fd > 0)
+                std.posix.close(read_fd);
+        }
     }
 
-    while (self.write_buffer_fds.readableLength() > 0) {
-        const reply_fd = self.write_buffer_fds.buf[self.write_buffer_fds.head];
-        reply_fd.deinit();
-        self.write_buffer_fds.discard(1);
+    for (self.write_buffer_fds.get_slices()) |reply_fds| {
+        for (reply_fds) |*reply_fd| {
+            reply_fd.deinit();
+        }
     }
 
-    self.read_buffer_fds.deinit();
-    self.write_buffer_fds.deinit();
+    self.read_buffer_fds.deinit(self.allocator);
+    self.write_buffer_fds.deinit(self.allocator);
 
     self.server.selection_owner_manager.clear_selections_by_client(self);
 }
@@ -119,17 +125,19 @@ pub fn is_owner_of_resource(self: *Self, resource_id: x11.ResourceId) bool {
 }
 
 pub fn read_buffer_data_size(self: *Self) usize {
-    return self.read_buffer.readableLength();
+    var size: usize = 0;
+    var it = self.read_buffer.get_readable_slices_iterator();
+    while (it.next()) |slice| {
+        size += slice.len;
+    }
+    return size;
 }
 
 /// Returns null if the size requested is larger than the read buffer
 pub fn peek_read_buffer(self: *Self, comptime T: type) ?T {
-    if (@sizeOf(T) > self.read_buffer.readableLength())
-        return null;
-
     var data: T = undefined;
-    @memcpy(std.mem.bytesAsSlice(u8, std.mem.asBytes(&data)), self.read_buffer.readableSliceOfLen(@sizeOf(T)));
-    return data;
+    const data_slice = self.read_buffer.read_to_slice(std.mem.bytesAsSlice(u8, std.mem.asBytes(&data)));
+    return if (data_slice.len == @sizeOf(T)) data else null;
 }
 
 pub fn read_client_data_to_buffer(self: *Self) !void {
@@ -147,17 +155,26 @@ pub fn read_client_data_to_buffer(self: *Self) !void {
         }
 
         errdefer recv_result.deinit();
-        try self.read_buffer.write(recv_result.data);
+        try self.read_buffer.append_slice(recv_result.data);
         // TODO: If this fails but not the above then we need to discard data from the write end, how?
-        try self.read_buffer_fds.write(recv_result.get_fds());
+        try self.read_buffer_fds.append_slice(recv_result.get_fds());
     }
 }
 
 pub fn flush_write_buffer(self: *Self) !void {
+    var reply_fds_buf: [phx.netutils.max_fds]phx.message.ReplyFd = undefined;
     var fd_buf: [phx.netutils.max_fds]std.posix.fd_t = undefined;
-    while (self.write_buffer.readableLength() > 0) {
-        const write_buffer = self.write_buffer.readableSliceOfLen(self.write_buffer.readableLength());
-        const reply_fds = self.write_buffer_fds.readableSliceOfLen(@min(self.write_buffer_fds.readableLength(), fd_buf.len));
+
+    var write_buffer_num_bytes_read: usize = 0;
+    defer {
+        //std.debug.print("flush write buffer, num bytes written: {d}\n", .{write_buffer_num_bytes_read});
+        _ = self.write_buffer.discard(write_buffer_num_bytes_read);
+    }
+
+    var write_buffer_it = self.write_buffer.get_readable_slices_iterator();
+    while (write_buffer_it.next()) |write_buffer| {
+        //std.debug.print("flush write buffer: {d}\n", .{write_buffer.len});
+        const reply_fds = self.write_buffer_fds.read_to_slice(&reply_fds_buf);
         for (reply_fds, 0..) |reply_fd, i| {
             fd_buf[i] = reply_fd.fd;
         }
@@ -167,12 +184,12 @@ pub fn flush_write_buffer(self: *Self) !void {
             error.WouldBlock => return,
             else => return err,
         };
+        write_buffer_num_bytes_read += bytes_written;
 
-        self.write_buffer.discard(bytes_written);
         for (reply_fds) |reply_fd| {
             reply_fd.deinit();
         }
-        self.write_buffer_fds.discard(reply_fds.len);
+        _ = self.write_buffer_fds.discard(reply_fds.len);
 
         if (bytes_written == 0)
             return;
@@ -180,27 +197,26 @@ pub fn flush_write_buffer(self: *Self) !void {
 }
 
 pub fn skip_read_bytes(self: *Self, num_bytes: usize) void {
-    const num_bytes_to_skip = @min(self.read_buffer.readableLength(), num_bytes);
-    self.read_buffer.discard(num_bytes_to_skip);
+    _ = self.read_buffer.discard(num_bytes);
 }
 
-pub fn get_read_fds(self: *Self) []const std.posix.fd_t {
-    return self.read_buffer_fds.readableSliceOfLen(self.read_buffer_fds.readableLength());
+pub fn get_read_fds(self: *Self, buffer: []std.posix.fd_t) []const std.posix.fd_t {
+    return self.read_buffer_fds.read_to_slice(buffer);
 }
 
 pub fn discard_read_fds(self: *Self, num_fds: usize) void {
-    const num_fds_to_cleanup = @min(self.read_buffer_fds.readableLength(), num_fds);
-    self.read_buffer_fds.discard(num_fds_to_cleanup);
+    _ = self.read_buffer_fds.discard(num_fds);
 }
 
 pub fn discard_and_close_read_fds(self: *Self, num_fds: usize) void {
-    const num_fds_to_cleanup = @min(self.read_buffer_fds.readableLength(), num_fds);
-    for (0..num_fds_to_cleanup) |_| {
-        const fd = self.read_buffer_fds.buf[self.read_buffer_fds.head];
+    var fd_buf: [32]std.posix.fd_t = undefined;
+    std.debug.assert(num_fds <= fd_buf.len);
+    const fds_to_cleanup = self.read_buffer_fds.read_to_slice(&fd_buf);
+    for (fds_to_cleanup) |fd| {
         if (fd > 0)
             std.posix.close(fd);
-        self.read_buffer_fds.discard(1);
     }
+    self.read_buffer_fds.discard(fds_to_cleanup.len);
 }
 
 pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator) !phx.message.Request(T) {
@@ -209,26 +225,29 @@ pub fn read_request(self: *Self, comptime T: type, allocator: std.mem.Allocator)
     if (self.read_buffer_data_size() < request_length)
         return error.RequestDataNotAvailableYet;
 
-    var fsr = phx.request.FixedSizeReader(@TypeOf(self.read_buffer)).init(&self.read_buffer, request_length);
-
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    errdefer arena.deinit();
-
-    const req_data = try phx.request.read_request(T, @TypeOf(self.read_buffer), &fsr, &arena);
-    if (fsr.num_bytes_read != request_length)
-        return error.InvalidRequestLength;
-
-    std.log.debug("{s} request: {s}", .{ @typeName(T), x11.stringify_fmt(req_data) });
-    return phx.message.Request(T).init(&req_data, &arena);
+    return self.read_request_of_size(T, request_length, allocator);
 }
 
-pub fn read_request_assume_correct_size(self: *Self, comptime T: type, allocator: std.mem.Allocator) !phx.message.Request(T) {
-    var fsr = phx.request.FixedSizeReader(@TypeOf(self.read_buffer)).init(&self.read_buffer, 4096);
+pub fn read_request_of_size(self: *Self, comptime T: type, request_length: usize, allocator: std.mem.Allocator) !phx.message.Request(T) {
+    var reader = self.read_buffer.reader();
+    // TODO: Consider other sizes? it needs a buffer for takeInt to work
+    var limited_reader_buf: [64]u8 = undefined;
+    var limited_reader = std.Io.Reader.limited(&reader.interface, .limited(request_length), &limited_reader_buf);
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     errdefer arena.deinit();
 
-    const req_data = try phx.request.read_request(T, @TypeOf(self.read_buffer), &fsr, &arena);
+    const req_data = phx.request.read_request(T, &limited_reader, &arena) catch |err| switch (err) {
+        error.EndOfStream => {
+            std.debug.print("EndOfStream remaining bytes: {d}\n", .{@intFromEnum(limited_reader.remaining)});
+            return error.InvalidRequestLength;
+        },
+        else => return err,
+    };
+    if (@intFromEnum(limited_reader.remaining) != 0)
+        return error.InvalidRequestLength;
+
+    std.log.debug("{s} request: {f}", .{ @typeName(T), x11.stringify_fmt(req_data) });
     return phx.message.Request(T).init(&req_data, &arena);
 }
 
@@ -242,13 +261,14 @@ pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const phx.m
     if (@typeInfo(@TypeOf(reply_data)) != .pointer)
         @compileError("Expected reply data to be a pointer");
 
-    //std.log.info("{s} reply: {s}", .{ @typeName(@TypeOf(reply_data.*)), x11.stringify_fmt(reply_data.*) });
-    const num_bytes_written_before = self.write_buffer.count;
-    try phx.reply.write_reply(@TypeOf(reply_data.*), reply_data, self.write_buffer.writer());
+    // TODO:
+    //const num_bytes_written_before = self.write_buffer.count;
+    var writer = self.write_buffer.writer();
+    try phx.reply.write_reply(@TypeOf(reply_data.*), reply_data, &writer.interface);
     // The X11 protocol says that replies have to be at least 32-bytes
-    std.debug.assert(self.write_buffer.count - num_bytes_written_before >= 32);
+    //std.debug.assert(self.write_buffer.count - num_bytes_written_before >= 32);
     // TODO: If this fails but not the above then we need to discard data from the write end, how?
-    try self.write_buffer_fds.write(fds);
+    try self.write_buffer_fds.append_slice(fds);
     try self.server.set_client_has_pending_flush(self);
 }
 
@@ -261,16 +281,16 @@ pub fn write_error(self: *Self, request_context: *phx.RequestContext, error_type
         .minor_opcode = request_context.header.minor_opcode,
         .major_opcode = request_context.header.major_opcode,
     };
-    std.log.err("Replying with error: {s}", .{x11.stringify_fmt(err_reply)});
-    try self.write_buffer.write(std.mem.asBytes(&err_reply));
+    std.log.err("Replying with error: {f}", .{x11.stringify_fmt(err_reply)});
+    try self.write_buffer.append_slice(std.mem.asBytes(&err_reply));
     try self.server.set_client_has_pending_flush(self);
 }
 
 /// Also flushes the write buffer
 pub fn write_event(self: *Self, ev: *phx.event.Event) !void {
     ev.any.sequence_number = self.sequence_number;
-    std.log.debug("Replying with event: {s}", .{x11.stringify_fmt(ev)});
-    try self.write_buffer.write(std.mem.asBytes(ev));
+    std.log.debug("Replying with event: {f}", .{x11.stringify_fmt(ev)});
+    try self.write_buffer.append_slice(std.mem.asBytes(ev));
     try self.server.set_client_has_pending_flush(self);
 }
 
@@ -280,7 +300,7 @@ pub fn write_event_extension(self: *Self, ev: anytype) !void {
         @compileError("Expected event data to be a pointer");
 
     ev.sequence_number = self.sequence_number;
-    std.log.debug("Replying with event: {s}", .{x11.stringify_fmt(ev)});
+    //std.log.debug("Replying with event: {f}", .{x11.stringify_fmt(ev)});
     try self.write_reply(ev);
     try self.server.set_client_has_pending_flush(self);
 }
@@ -290,8 +310,8 @@ pub fn write_event_static_size(self: *Self, ev: anytype) !void {
         @compileError("Expected event data to be a pointer");
 
     ev.sequence_number = self.sequence_number;
-    std.log.debug("Replying with event: {s}", .{x11.stringify_fmt(ev)});
-    try self.write_buffer.write(std.mem.asBytes(ev));
+    std.log.debug("Replying with event: {f}", .{x11.stringify_fmt(ev)});
+    try self.write_buffer.append_slice(std.mem.asBytes(ev));
     try self.server.set_client_has_pending_flush(self);
 }
 
@@ -361,7 +381,7 @@ pub fn register_as_window_listener(self: *Self, window: *phx.Window) !void {
         if (listen_window == window)
             return;
     }
-    try self.listening_to_windows.append(window);
+    try self.listening_to_windows.append(self.allocator, window);
 }
 
 pub fn unregister_as_window_event_listener(self: *Self, window: *const phx.Window) void {
@@ -376,7 +396,7 @@ pub fn unregister_as_window_event_listener(self: *Self, window: *const phx.Windo
 pub fn get_credentials(self: *Self) ?Credentials {
     var peercred: phx.c.ucred = undefined;
     comptime std.debug.assert(builtin.os.tag == .linux);
-    phx.netutils.getsockopt(self.connection.stream.handle, std.posix.SOL.SOCKET, std.posix.SO.PEERCRED, std.mem.asBytes(&peercred)) catch {
+    std.posix.getsockopt(self.connection.stream.handle, std.posix.SOL.SOCKET, std.posix.SO.PEERCRED, std.mem.asBytes(&peercred)) catch {
         return null;
     };
     return .{
@@ -386,13 +406,15 @@ pub fn get_credentials(self: *Self) ?Credentials {
     };
 }
 
-// TODO: Use this
-//const max_read_buffer_size: usize = 1 * 1024 * 1024; // 1mb. If the server doesn't dont manage to read the data fast enough then the client is forcefully disconnected
-// TODO: Use this
-//const max_write_buffer_size: usize = 50 * 1024 * 1024; // 50mb. Clients that dont consume data fast enough are forcefully disconnected
-const DataBuffer = std.fifo.LinearFifo(u8, .Dynamic);
-const RequestFdsBuffer = std.fifo.LinearFifo(std.posix.fd_t, .Dynamic);
-const ReplyFdsBuffer = std.fifo.LinearFifo(phx.message.ReplyFd, .Dynamic);
+const max_read_buffer_size: usize = 1 * 1024 * 1024; // 1mb. If the server doesn't dont manage to read the data fast enough then the client is forcefully disconnected
+const max_write_buffer_size: usize = 50 * 1024 * 1024; // 50mb. Clients that dont consume data fast enough are forcefully disconnected
+const max_fds_buffer_size: usize = 16384;
+
+const ReadDataBuffer = Fifo(u8, max_read_buffer_size);
+const WriteDataBuffer = Fifo(u8, max_write_buffer_size);
+
+const RequestFdsBuffer = RingBuffer(std.posix.fd_t);
+const ReplyFdsBuffer = RingBuffer(phx.message.ReplyFd);
 
 const State = enum {
     connecting,

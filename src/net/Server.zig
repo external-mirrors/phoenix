@@ -45,7 +45,7 @@ input_focus: phx.InputFocus = .{
 },
 keyboard_grabbed: bool = false,
 
-installed_colormaps: std.ArrayList(phx.Colormap),
+installed_colormaps: std.ArrayListUnmanaged(phx.Colormap) = .empty,
 started_time_seconds: f64,
 
 screen_resources: phx.ScreenResources,
@@ -54,7 +54,7 @@ cursor_x: i32,
 cursor_y: i32,
 
 running: bool = false,
-shutting_down: bool = false,
+shutting_down: std.atomic.Value(bool) = .init(false),
 
 current_pending_client_flushes: std.ArrayListUnmanaged(*phx.Client) = .empty,
 // TODO: Initialize with the current state right when the server starts because the user might hold down a button when the server starts.
@@ -89,11 +89,13 @@ pub fn create(allocator: std.mem.Allocator) !*Self {
     if (epoll_fd == -1) return error.FailedToCreateEpoll;
     errdefer std.posix.close(epoll_fd);
 
-    var signal_mask = std.mem.zeroes(std.posix.sigset_t);
+    var signal_mask = std.mem.zeroes(std.os.linux.sigset_t);
     std.os.linux.sigaddset(&signal_mask, std.posix.SIG.INT);
-    std.posix.sigprocmask(std.posix.SIG.BLOCK, &signal_mask, null);
+    _ = std.os.linux.sigprocmask(std.posix.SIG.BLOCK, &signal_mask, null);
 
-    const signal_fd = try std.posix.signalfd(-1, &signal_mask, 0);
+    const signal_fd: i32 = @intCast(std.os.linux.signalfd(-1, &signal_mask, 0));
+    if (signal_fd == -1)
+        return error.FailedToCreateSignalFd;
     errdefer std.posix.close(signal_fd);
 
     var signal_fd_epoll_event = std.os.linux.epoll_event{
@@ -126,10 +128,10 @@ pub fn create(allocator: std.mem.Allocator) !*Self {
 
     input.load_keyboard_mapping();
 
-    var installed_colormaps = std.ArrayList(phx.Colormap).init(allocator);
-    errdefer installed_colormaps.deinit();
+    var installed_colormaps = std.ArrayListUnmanaged(phx.Colormap).empty;
+    errdefer installed_colormaps.deinit(allocator);
 
-    try installed_colormaps.append(screen_true_color_colormap);
+    try installed_colormaps.append(allocator, screen_true_color_colormap);
 
     var screen_resources = try display.get_screen_resources(@enumFromInt(1), allocator);
     errdefer screen_resources.deinit();
@@ -180,12 +182,12 @@ pub fn create(allocator: std.mem.Allocator) !*Self {
 }
 
 pub fn destroy(self: *Self) void {
-    self.shutting_down = true;
+    self.shutting_down.store(true, .release);
     self.cleanup_messages_resources();
     self.client_manager.deinit();
     self.atom_manager.deinit();
     self.selection_owner_manager.deinit();
-    self.installed_colormaps.deinit();
+    self.installed_colormaps.deinit(self.allocator);
     self.screen_resources.deinit();
     self.display.destroy();
     self.input.deinit();
@@ -367,7 +369,10 @@ fn add_client(self: *Self, connection: std.net.Server.Connection) !*phx.Client {
     try std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_ADD, connection.stream.handle, &new_client_epoll_event);
     errdefer std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_DEL, connection.stream.handle, null) catch {};
 
-    return self.client_manager.add_client(phx.Client.init(connection, resource_id_base, self, new_client_epoll_event.events, self.allocator));
+    var client = try phx.Client.init(connection, resource_id_base, self, new_client_epoll_event.events, self.allocator);
+    errdefer client.deinit();
+
+    return self.client_manager.add_client(client);
 }
 
 fn remove_client(self: *Self, client_fd: std.posix.socket_t) void {
@@ -376,6 +381,7 @@ fn remove_client(self: *Self, client_fd: std.posix.socket_t) void {
     };
 
     if (self.client_manager.get_client_by_fd(client_fd)) |client| {
+        self.remove_client_pending_flush(client);
         self.resource_id_base_manager.free(client.resource_id_base);
         _ = self.client_manager.remove_client(client_fd);
     }
@@ -409,7 +415,7 @@ fn process_all_client_requests(self: *Self, client: *phx.Client) bool {
     while (true) {
         switch (client.state) {
             .connecting => {
-                const one_request_handled = phx.ConnectionSetup.handle_client_connect(self, client, self.root_window, self.allocator) catch |err| {
+                const one_request_handled = phx.ConnectionSetup.handle_connection_setup_request(self, client, self.root_window, self.allocator) catch |err| {
                     std.log.err("Client connection setup failed: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
                     remove_client(self, client.connection.stream.handle);
                     return false;
@@ -459,7 +465,7 @@ fn handle_client_request(self: *Self, client: *phx.Client) !bool {
     if (request_header.major_opcode >= 1 and request_header.major_opcode <= phx.opcode.core_opcode_max) {
         phx.core.handle_request(&request_context) catch |err| switch (err) {
             error.PropertyTypeMismatch => try request_context.client.write_error(&request_context, .match, 0),
-            error.OutOfMemory => try request_context.client.write_error(&request_context, .alloc, 0),
+            error.OutOfMemory, error.WriteFailed, error.ReadFailed => try request_context.client.write_error(&request_context, .alloc, 0),
             error.EndOfStream,
             error.RequestBadLength,
             error.RequestDataNotAvailableYet,
@@ -486,7 +492,7 @@ fn handle_client_request(self: *Self, client: *phx.Client) !bool {
         };
     } else {
         std.log.err(
-            "Received invalid request from client (major opcode {d}). Sequence number: {d}, header: {s}",
+            "Received invalid request from client (major opcode {d}). Sequence number: {d}, header: {f}",
             .{ request_header.major_opcode, request_context.sequence_number, x11.stringify_fmt(request_header) },
         );
         try request_context.client.write_error(&request_context, .request, 0);
@@ -574,10 +580,15 @@ pub fn get_counter(self: *Self, counter_id: phx.Sync.CounterId) ?*phx.Counter {
 }
 
 fn handle_messages(self: *Self) void {
-    self.messages_mutex.lock();
-    defer self.messages_mutex.unlock();
+    var messages_moved: std.ArrayListUnmanaged(Message) = .empty;
+    defer messages_moved.deinit(self.allocator);
 
-    for (self.messages.items) |*message| {
+    self.messages_mutex.lock();
+    messages_moved = self.messages;
+    self.messages = .empty;
+    self.messages_mutex.unlock();
+
+    for (messages_moved.items) |*message| {
         switch (message.*) {
             .shutdown => self.running = false,
             .vsync_finished => |vsync_finished| {
@@ -615,8 +626,6 @@ fn handle_messages(self: *Self) void {
             },
         }
     }
-
-    self.messages.clearRetainingCapacity();
 }
 
 fn cleanup_messages_resources(self: *Self) void {
@@ -742,13 +751,13 @@ fn handle_mouse_click(self: *Self, mouse_click: MouseClickMessage) void {
 
 /// Thread-safe
 pub fn append_message(self: *Self, message: *const Message) !void {
-    self.messages_mutex.lock();
-    defer self.messages_mutex.unlock();
-
-    if (self.shutting_down) {
+    if (self.shutting_down.load(.acquire)) {
         cleanup_message_resources(@constCast(message));
         return;
     }
+
+    self.messages_mutex.lock();
+    defer self.messages_mutex.unlock();
 
     try self.messages.append(self.allocator, message.*);
     if (self.messages.items.len == 1) {
@@ -778,6 +787,15 @@ pub fn set_client_has_pending_flush(self: *Self, client: *phx.Client) !void {
     if (self.current_pending_client_flushes.items.len == 1) {
         const value: u64 = 1;
         _ = std.posix.write(self.event_fd, std.mem.bytesAsSlice(u8, std.mem.asBytes(&value))) catch unreachable;
+    }
+}
+
+fn remove_client_pending_flush(self: *Self, client: *phx.Client) void {
+    for (self.current_pending_client_flushes.items, 0..) |pending_client, i| {
+        if (pending_client == client) {
+            _ = self.current_pending_client_flushes.orderedRemove(i);
+            return;
+        }
     }
 }
 

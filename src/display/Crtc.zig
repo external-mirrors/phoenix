@@ -50,7 +50,7 @@ gamma_ramps_blue: std.ArrayListUnmanaged(u16) = .empty,
 pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
     var property_it = self.properties.valueIterator();
     while (property_it.next()) |property| {
-        property.deinit();
+        property.deinit(allocator);
     }
     self.properties.deinit(allocator);
 
@@ -106,8 +106,8 @@ pub fn replace_property(
     if (!ignore_immutable and is_property_immutable(property_name.id))
         return error.AttemptToMutateImmutableProperty;
 
-    var array_list = try std.ArrayList(DataType).initCapacity(self.allocator, value.len);
-    errdefer array_list.deinit();
+    var array_list = try std.ArrayListUnmanaged(DataType).initCapacity(self.allocator, value.len);
+    errdefer array_list.deinit(self.allocator);
     array_list.appendSliceAssumeCapacity(value);
 
     var result = try self.properties.getOrPut(self.allocator, property_name.id);
@@ -144,8 +144,8 @@ fn property_add(
             .append => @field(property.item, union_field_name).appendSlice(value),
         };
     } else {
-        var array_list = try std.ArrayList(DataType).initCapacity(self.allocator, value.len);
-        errdefer array_list.deinit();
+        var array_list = try std.ArrayListUnmanaged(DataType).initCapacity(self.allocator, value.len);
+        errdefer array_list.deinit(self.allocator);
         array_list.appendSliceAssumeCapacity(value);
 
         const property = PropertyValue{
@@ -240,21 +240,21 @@ pub const PropertyValueDataType = enum {
 };
 
 pub const PropertyValueData = union(PropertyValueDataType) {
-    card8_list: std.ArrayList(x11.Card8),
-    card16_list: std.ArrayList(x11.Card16),
-    card32_list: std.ArrayList(x11.Card32),
+    card8_list: std.ArrayListUnmanaged(x11.Card8),
+    card16_list: std.ArrayListUnmanaged(x11.Card16),
+    card32_list: std.ArrayListUnmanaged(x11.Card32),
 };
 
 pub const PropertyValue = struct {
     type: x11.AtomId,
     item: PropertyValueData,
-    valid_values: std.ArrayList(i32),
+    valid_values: std.ArrayListUnmanaged(i32),
     range: bool,
     pending: bool,
 
-    pub fn deinit(self: *PropertyValue) void {
+    pub fn deinit(self: *PropertyValue, allocator: std.mem.Allocator) void {
         switch (self.item) {
-            inline else => |*item| item.deinit(),
+            inline else => |*item| item.deinit(allocator),
         }
     }
 

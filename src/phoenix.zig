@@ -73,4 +73,6 @@ pub const KeySyms = keysym.KeySyms;
 pub const Crtc = @import("display/Crtc.zig");
 pub const ScreenResources = @import("display/ScreenResources.zig");
 
-pub const c = @import("c.zig");
+pub const c_include = @import("c.zig");
+pub const c = c_include.c;
+pub const cKeySym = c_include.KeySym;

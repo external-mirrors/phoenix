@@ -7,7 +7,7 @@ const Self = @This();
 pub const max_crtcs: usize = 32;
 pub const max_outputs: usize = 32;
 
-crtcs: std.ArrayList(phx.Crtc),
+crtcs: std.ArrayListUnmanaged(phx.Crtc) = .empty,
 primary_crtc_index: ?u8 = null,
 config_set_timestamp: x11.Timestamp,
 config_changed_timestamp: x11.Timestamp,
@@ -18,7 +18,6 @@ allocator: std.mem.Allocator,
 
 pub fn init(timestamp: x11.Timestamp, allocator: std.mem.Allocator) Self {
     return .{
-        .crtcs = .init(allocator),
         .config_set_timestamp = timestamp,
         .config_changed_timestamp = timestamp,
         .screen_changed_timestamp = timestamp,
@@ -32,7 +31,11 @@ pub fn deinit(self: *Self) void {
     for (self.crtcs.items) |*crtc| {
         crtc.deinit(self.allocator);
     }
-    self.crtcs.deinit();
+    self.crtcs.deinit(self.allocator);
+}
+
+pub fn append_crtc(self: *Self, crtc: *const phx.Crtc) !void {
+    return self.crtcs.append(self.allocator, crtc.*);
 }
 
 pub fn create_screen_info(self: *const Self) ScreenInfo {

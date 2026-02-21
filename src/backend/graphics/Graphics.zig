@@ -161,7 +161,7 @@ pub const GraphicsWindow = struct {
     mapped: bool,
     delete: bool = false,
     recreate_texture: bool = true,
-    children: std.ArrayList(*GraphicsWindow),
+    children: std.ArrayListUnmanaged(*GraphicsWindow) = .empty,
 };
 
 // TODO: Use phx.Present.PresentPixmap fields, such as x_off

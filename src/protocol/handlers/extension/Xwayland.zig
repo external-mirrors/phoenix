@@ -4,7 +4,7 @@ const x11 = phx.x11;
 
 pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.err(
-        "Received invalid xwayland request from client (opcode {d}:{d}). Sequence number: {d}, header: {s}",
+        "Received invalid xwayland request from client (opcode {d}:{d}). Sequence number: {d}, header: {f}",
         .{
             request_context.header.major_opcode,
             request_context.header.minor_opcode,

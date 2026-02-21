@@ -36,6 +36,7 @@ pub fn build(b: *std.Build) !void {
     const exe = b.addExecutable(.{
         .name = "phoenix",
         .root_module = exe_mod,
+        .use_lld = true, // Needed to make debug symbols work correctly in debug mode at the moment (zig 0.15.2)
     });
     b.installArtifact(exe);
 
@@ -143,16 +144,17 @@ fn generate_protocol_docs(comptime file_struct: type, install_path_dir: *std.fs.
     const file = try install_path_dir.createFile(filepath, .{});
     defer file.close();
 
-    var buffered_file = std.io.bufferedWriter(file.writer());
-    const writer = buffered_file.writer();
+    var file_buffer: [4096]u8 = undefined;
+    var writer = file.writer(&file_buffer);
+    var file_out = &writer.interface;
 
-    try writer.print("Requests\n", .{});
+    try file_out.print("Requests\n", .{});
     inline for (@typeInfo(file_struct.Request).@"struct".decls) |decl| {
         const request_type = @field(file_struct.Request, decl.name);
         if (comptime std.meta.activeTag(@typeInfo(request_type)) != .@"struct")
             continue;
 
-        try writer.print("{s}\n", .{type_get_name_only(@typeName(request_type))});
+        try file_out.print("{s}\n", .{type_get_name_only(@typeName(request_type))});
         inline for (@typeInfo(request_type).@"struct".fields) |field| {
             switch (@typeInfo(field.type)) {
                 .@"struct" => {
@@ -160,25 +162,25 @@ fn generate_protocol_docs(comptime file_struct: type, install_path_dir: *std.fs.
                     if (@hasDecl(field.type, "is_list_of")) {
                         const field_value = comptime "ListOf" ++ type_get_name_only(@typeName(field.type.get_element_type()));
                         const list_options = field.type.get_options();
-                        try writer.print("    {s: <14}    {s: <10}    {s}\n", .{ list_options.length_field orelse "", field_value, field.name });
+                        try file_out.print("    {s: <14}    {s: <10}    {s}\n", .{ list_options.length_field orelse "", field_value, field.name });
                     } else if (field.type == phx.x11.AlignmentPadding) {
-                        try writer.print("    {s: <14}    {s: <10}    p=padding\n", .{ "p", "" });
+                        try file_out.print("    {s: <14}    {s: <10}    p=padding\n", .{ "p", "" });
                     } else {
                         const field_value = type_get_name_only(@typeName(field.type));
-                        try writer.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), field_value, field.name });
+                        try file_out.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), field_value, field.name });
                     }
                 },
                 .@"enum" => |*e| {
                     const field_type_name = comptime type_get_name_only(@typeName(field.type));
                     const field_value = if (field.defaultValue()) |default_value| default_value else field_type_name;
                     if (field.type == phx.opcode.Major or comptime std.mem.eql(u8, field_type_name, "MinorOpcode")) {
-                        try writer.print("    {d: <14}    {d: <10}    {s}\n", .{ @sizeOf(field.type), @intFromEnum(field_value), field.name });
+                        try file_out.print("    {d: <14}    {d: <10}    {s}\n", .{ @sizeOf(field.type), @intFromEnum(field_value), field.name });
                     } else if (!e.is_exhaustive) {
-                        try writer.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), type_get_name_only(@typeName(field.type)), field.name });
+                        try file_out.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), type_get_name_only(@typeName(field.type)), field.name });
                     } else {
-                        try writer.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), "", field.name });
+                        try file_out.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), "", field.name });
                         inline for (e.fields) |enum_field| {
-                            try writer.print("        {d: <3}  {s}\n", .{ enum_field.value, enum_field.name });
+                            try file_out.print("        {d: <3}  {s}\n", .{ enum_field.value, enum_field.name });
                         }
                     }
                 },
@@ -192,14 +194,14 @@ fn generate_protocol_docs(comptime file_struct: type, install_path_dir: *std.fs.
                         i16 => "INT16",
                         else => type_get_name_only(@typeName(field.type)),
                     };
-                    try writer.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), type_name, field.name });
+                    try file_out.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), type_name, field.name });
                 },
             }
         }
-        try writer.print("\n", .{});
+        try file_out.print("\n", .{});
     }
 
-    try buffered_file.flush();
+    try file_out.flush();
 }
 
 fn type_get_name_only(type_name: []const u8) []const u8 {

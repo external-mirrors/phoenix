@@ -257,7 +257,7 @@ fn destroy_window_recursive(self: *Self, graphics_window: *phx.Graphics.Graphics
     for (graphics_window.children.items) |child_window| {
         self.destroy_window_recursive(child_window);
     }
-    graphics_window.children.deinit();
+    graphics_window.children.deinit(self.allocator);
 
     if (graphics_window.texture_id > 0) {
         c.glDeleteTextures(1, &graphics_window.texture_id);
@@ -334,10 +334,9 @@ fn destroy_pending_windows_recursive(self: *Self, graphics_window: *phx.Graphics
 }
 
 fn create_graphics_windows_texture(self: *Self, graphics_window: *phx.Graphics.GraphicsWindow) void {
-    var texture: c.GLuint = graphics_window.texture_id;
-    if (texture == 0)
-        c.glGenTextures(1, &texture);
-    c.glBindTexture(c.GL_TEXTURE_2D, texture);
+    if (graphics_window.texture_id == 0)
+        c.glGenTextures(1, &graphics_window.texture_id);
+    c.glBindTexture(c.GL_TEXTURE_2D, graphics_window.texture_id);
     c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, c.GL_LINEAR);
     c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_LINEAR);
     // TODO: If this fails then mark the window as failed and return error to client and destroy the window.
@@ -346,7 +345,6 @@ fn create_graphics_windows_texture(self: *Self, graphics_window: *phx.Graphics.G
     c.glBindTexture(c.GL_TEXTURE_2D, 0);
 
     self.clear_graphics_window(graphics_window);
-    graphics_window.texture_id = texture;
     graphics_window.recreate_texture = false;
 }
 
@@ -379,7 +377,7 @@ fn perform_put_image_operations(self: *Self) void {
             continue;
 
         //std.debug.print("perform put image: {d}\n", .{texture_id});
-        // XXX: Optimize
+        // XXX: Optimize with asynchronous upload with pixel buffer object
         const texture_format = depth_to_texture_format(op.depth);
         if (op.src_x == 0 and op.src_y == 0 and op.src_width == op.total_width and op.src_height == op.total_height) {
             c.glTexSubImage2D(c.GL_TEXTURE_2D, 0, op.dst_x, op.dst_y, op.total_width, op.total_height, texture_format, c.GL_UNSIGNED_BYTE, op.shm_segment.addr);
@@ -589,11 +587,10 @@ pub fn create_window(self: *Self, window: *const phx.Window) !*phx.Graphics.Grap
         .height = window.attributes.geometry.height,
         .background_color = pixel_to_color_vec(window.attributes.background_pixel),
         .mapped = window.attributes.mapped,
-        .children = .init(self.allocator),
     };
 
     if (parent_window) |parent|
-        try parent.children.append(graphics_window);
+        try parent.children.append(self.allocator, graphics_window);
 
     if (self.root_window == null) {
         std.debug.assert(parent_window == null);
@@ -798,7 +795,7 @@ fn create_textures_from_dmabufs(self: *Self) void {
         // TODO: Report success/failure back to x11 protocol handler
         pixmap_to_import.texture_id = self.create_texture_from_dmabuf(pixmap_to_import) catch |err| {
             const dmabuf_fds = pixmap_to_import.dmabuf_data.fd[0..pixmap_to_import.dmabuf_data.num_items];
-            std.log.err("GraphicsEgl.create_textures_from_dmabufs: failed to import dmabuf {d}, error: {s}", .{ dmabuf_fds, @errorName(err) });
+            std.log.err("GraphicsEgl.create_textures_from_dmabufs: failed to import dmabuf {any}, error: {s}", .{ dmabuf_fds, @errorName(err) });
             continue;
         };
     }

@@ -191,21 +191,22 @@ fn query_server_string(request_context: *phx.RequestContext) !void {
 
     var buffer: [2048]u8 = undefined;
     var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const allocator = fba.allocator();
 
-    var result_string = std.ArrayList(u8).init(fba.allocator());
-    defer result_string.deinit();
+    var result_string = std.ArrayListUnmanaged(u8).empty;
+    defer result_string.deinit(allocator);
 
     switch (req.request.name) {
-        .vendor => result_string.appendSlice(server_vendor_name ++ "\x00") catch unreachable,
-        .version => result_string.appendSlice(server_version_str ++ "\x00") catch unreachable,
+        .vendor => result_string.appendSlice(allocator, server_vendor_name ++ "\x00") catch unreachable,
+        .version => result_string.appendSlice(allocator, server_version_str ++ "\x00") catch unreachable,
         .extensions => {
             for (extensions) |extension| {
-                result_string.appendSlice(extension) catch unreachable;
-                result_string.append(' ') catch unreachable;
+                result_string.appendSlice(allocator, extension) catch unreachable;
+                result_string.append(allocator, ' ') catch unreachable;
             }
-            result_string.append('\x00') catch unreachable;
+            result_string.append(allocator, '\x00') catch unreachable;
         },
-        .vendor_names => result_string.appendSlice(glvnd ++ "\x00") catch unreachable,
+        .vendor_names => result_string.appendSlice(allocator, glvnd ++ "\x00") catch unreachable,
     }
 
     var rep = Reply.QueryServerString{
@@ -253,9 +254,10 @@ fn get_fb_configs(request_context: *phx.RequestContext) !void {
 
     var buffer: [8192]u8 = undefined;
     var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const allocator = fba.allocator();
 
-    var properties = std.ArrayList(FbAttributePair).init(fba.allocator());
-    defer properties.deinit();
+    var properties = std.ArrayListUnmanaged(FbAttributePair).empty;
+    defer properties.deinit(allocator);
 
     // TODO: Associate fbconfig with a window when creating a regular window as well
     var fbconfig_id: x11.Card32 = 0;
@@ -267,29 +269,29 @@ fn get_fb_configs(request_context: *phx.RequestContext) !void {
                     const properties_size_start: u32 = @intCast(properties.items.len);
 
                     if (server_glx_version >= version_1_3) {
-                        properties.append(.{ .type = .visual_id, .value = @intFromEnum(screen_visual.id) }) catch unreachable;
+                        properties.append(allocator, .{ .type = .visual_id, .value = @intFromEnum(screen_visual.id) }) catch unreachable;
                         switch (screen_visual.class) {
-                            .true_color => properties.append(.{ .type = .x_visual_type, .value = GLX_TRUE_COLOR }) catch unreachable,
+                            .true_color => properties.append(allocator, .{ .type = .x_visual_type, .value = GLX_TRUE_COLOR }) catch unreachable,
                         }
-                        properties.append(.{ .type = .fbconfig_id, .value = fbconfig_id }) catch unreachable;
+                        properties.append(allocator, .{ .type = .fbconfig_id, .value = fbconfig_id }) catch unreachable;
                     }
 
-                    properties.append(.{ .type = .rgba, .value = @intFromBool(alpha_size > 0) }) catch unreachable;
-                    properties.append(.{ .type = .red_size, .value = screen_visual.bits_per_color_component }) catch unreachable;
-                    properties.append(.{ .type = .green_size, .value = screen_visual.bits_per_color_component }) catch unreachable;
-                    properties.append(.{ .type = .blue_size, .value = screen_visual.bits_per_color_component }) catch unreachable;
-                    properties.append(.{ .type = .alpha_size, .value = alpha_size }) catch unreachable;
-                    properties.append(.{ .type = .accum_red_size, .value = 0 }) catch unreachable;
-                    properties.append(.{ .type = .accum_green_size, .value = 0 }) catch unreachable;
-                    properties.append(.{ .type = .accum_blue_size, .value = 0 }) catch unreachable;
-                    properties.append(.{ .type = .accum_alpha_size, .value = 0 }) catch unreachable;
-                    properties.append(.{ .type = .doublebuffer, .value = @intFromEnum(double_buffer) }) catch unreachable;
-                    properties.append(.{ .type = .stereo, .value = @intFromBool(false) }) catch unreachable;
-                    properties.append(.{ .type = .buffer_size, .value = screen_visual.bits_per_color_component * 3 + alpha_size }) catch unreachable;
-                    properties.append(.{ .type = .depth_size, .value = depth_size }) catch unreachable;
-                    properties.append(.{ .type = .stencil_size, .value = stencil_size }) catch unreachable;
-                    properties.append(.{ .type = .aux_buffers, .value = 0 }) catch unreachable;
-                    properties.append(.{ .type = .level, .value = 0 }) catch unreachable;
+                    properties.append(allocator, .{ .type = .rgba, .value = @intFromBool(alpha_size > 0) }) catch unreachable;
+                    properties.append(allocator, .{ .type = .red_size, .value = screen_visual.bits_per_color_component }) catch unreachable;
+                    properties.append(allocator, .{ .type = .green_size, .value = screen_visual.bits_per_color_component }) catch unreachable;
+                    properties.append(allocator, .{ .type = .blue_size, .value = screen_visual.bits_per_color_component }) catch unreachable;
+                    properties.append(allocator, .{ .type = .alpha_size, .value = alpha_size }) catch unreachable;
+                    properties.append(allocator, .{ .type = .accum_red_size, .value = 0 }) catch unreachable;
+                    properties.append(allocator, .{ .type = .accum_green_size, .value = 0 }) catch unreachable;
+                    properties.append(allocator, .{ .type = .accum_blue_size, .value = 0 }) catch unreachable;
+                    properties.append(allocator, .{ .type = .accum_alpha_size, .value = 0 }) catch unreachable;
+                    properties.append(allocator, .{ .type = .doublebuffer, .value = @intFromEnum(double_buffer) }) catch unreachable;
+                    properties.append(allocator, .{ .type = .stereo, .value = @intFromBool(false) }) catch unreachable;
+                    properties.append(allocator, .{ .type = .buffer_size, .value = screen_visual.bits_per_color_component * 3 + alpha_size }) catch unreachable;
+                    properties.append(allocator, .{ .type = .depth_size, .value = depth_size }) catch unreachable;
+                    properties.append(allocator, .{ .type = .stencil_size, .value = stencil_size }) catch unreachable;
+                    properties.append(allocator, .{ .type = .aux_buffers, .value = 0 }) catch unreachable;
+                    properties.append(allocator, .{ .type = .level, .value = 0 }) catch unreachable;
 
                     const properties_size_end: u32 = @intCast(properties.items.len);
                     num_properties = properties_size_end - properties_size_start;

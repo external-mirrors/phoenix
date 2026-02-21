@@ -2,7 +2,7 @@ const std = @import("std");
 const phx = @import("../phoenix.zig");
 const x11 = phx.x11;
 
-pub const KeySyms = phx.c.KeySym;
+pub const KeySyms = phx.cKeySym;
 pub const KeySym = phx.c.xkb_keysym_t;
 
 // TODO: Use xkb_keymap_new_from_names2

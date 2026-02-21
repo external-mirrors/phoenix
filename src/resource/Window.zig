@@ -6,15 +6,15 @@ const Self = @This();
 
 allocator: std.mem.Allocator,
 parent: ?*Self,
-children: std.ArrayList(*Self),
+children: std.ArrayListUnmanaged(*Self) = .empty,
 server: *phx.Server,
-deleting_self: bool,
+deleting_self: std.atomic.Value(bool),
 
 id: x11.WindowId,
 attributes: Attributes,
 properties: x11.PropertyHashMap,
-core_event_listeners: std.ArrayList(CoreEventListener),
-extension_event_listeners: std.ArrayList(ExtensionEventListener),
+core_event_listeners: std.ArrayListUnmanaged(CoreEventListener) = .empty,
+extension_event_listeners: std.ArrayListUnmanaged(ExtensionEventListener) = .empty,
 graphics_window: *phx.Graphics.GraphicsWindow, // Reference
 
 pub fn create(
@@ -30,30 +30,27 @@ pub fn create(
     window.* = .{
         .allocator = allocator,
         .parent = parent,
-        .children = .init(allocator),
         .server = server,
-        .deleting_self = false,
+        .deleting_self = .init(false),
 
         .id = id,
         .attributes = attributes.*,
         .properties = .empty,
-        .core_event_listeners = .init(allocator),
-        .extension_event_listeners = .init(allocator),
         .graphics_window = try server.display.create_window(window),
     };
 
     if (parent) |par|
-        try par.children.append(window);
+        try par.children.append(par.allocator, window);
 
     return window;
 }
 
 /// Recursive
 pub fn destroy(self: *Self) void {
-    self.deleting_self = true;
+    self.deleting_self.store(true, .release);
 
     // XXX: Ugly hack
-    if (!self.server.shutting_down)
+    if (!self.server.shutting_down.load(.acquire))
         self.server.display.destroy_window(self);
 
     if (self.parent) |parent|
@@ -68,7 +65,7 @@ pub fn destroy(self: *Self) void {
 
     var property_it = self.properties.valueIterator();
     while (property_it.next()) |property| {
-        property.deinit();
+        property.deinit(self.allocator);
     }
 
     self.server.selection_owner_manager.clear_selections_by_window(self);
@@ -76,10 +73,10 @@ pub fn destroy(self: *Self) void {
 
     self.remove_event_listeners_from_clients();
 
-    self.core_event_listeners.deinit();
-    self.extension_event_listeners.deinit();
+    self.core_event_listeners.deinit(self.allocator);
+    self.extension_event_listeners.deinit(self.allocator);
     self.properties.deinit(self.allocator);
-    self.children.deinit();
+    self.children.deinit(self.allocator);
     self.allocator.destroy(self);
 }
 
@@ -368,13 +365,13 @@ pub fn replace_property(
     property_type: phx.Atom,
     value: []const DataType,
 ) !void {
-    var array_list = try std.ArrayList(DataType).initCapacity(self.allocator, value.len);
-    errdefer array_list.deinit();
+    var array_list = try std.ArrayListUnmanaged(DataType).initCapacity(self.allocator, value.len);
+    errdefer array_list.deinit(self.allocator);
     array_list.appendSliceAssumeCapacity(value);
 
     var result = try self.properties.getOrPut(self.allocator, property_name.id);
     if (result.found_existing)
-        result.value_ptr.deinit();
+        result.value_ptr.deinit(self.allocator);
 
     const union_field_name = comptime property_element_type_to_union_field(DataType);
     result.value_ptr.* = .{
@@ -398,12 +395,12 @@ fn property_add(
             return error.PropertyTypeMismatch;
 
         return switch (operation) {
-            .prepend => @field(property.item, union_field_name).insertSlice(0, value),
-            .append => @field(property.item, union_field_name).appendSlice(value),
+            .prepend => @field(property.item, union_field_name).insertSlice(self.allocator, 0, value),
+            .append => @field(property.item, union_field_name).appendSlice(self.allocator, value),
         };
     } else {
-        var array_list = try std.ArrayList(DataType).initCapacity(self.allocator, value.len);
-        errdefer array_list.deinit();
+        var array_list = try std.ArrayListUnmanaged(DataType).initCapacity(self.allocator, value.len);
+        errdefer array_list.deinit(self.allocator);
         array_list.appendSliceAssumeCapacity(value);
 
         const property = x11.PropertyValue{
@@ -448,7 +445,7 @@ pub fn add_core_event_listener(self: *Self, client: *phx.Client, event_mask: phx
     if (!self.validate_event_exclusivity(event_mask))
         return error.ExclusiveEventListenerTaken;
 
-    try self.core_event_listeners.append(.{ .client = client, .event_mask = event_mask });
+    try self.core_event_listeners.append(self.allocator, .{ .client = client, .event_mask = event_mask });
     errdefer _ = self.core_event_listeners.pop();
 
     try client.register_as_window_listener(self);
@@ -635,7 +632,7 @@ pub fn add_extension_event_listener(self: *Self, client: *phx.Client, event_id: 
 
     std.debug.assert(self.get_extension_event_listener_index(client, event_id, extension_major_opcode) == null);
 
-    try self.extension_event_listeners.append(.{
+    try self.extension_event_listeners.append(self.allocator, .{
         .client = client,
         .event_id = event_id,
         .event_mask = event_mask,
@@ -749,7 +746,7 @@ fn remove_event_listeners_from_clients(self: *Self) void {
 }
 
 fn remove_child(self: *Self, child_to_remove: *Self) void {
-    if (self.deleting_self)
+    if (self.deleting_self.load(.acquire))
         return;
 
     for (self.children.items, 0..) |child, i| {

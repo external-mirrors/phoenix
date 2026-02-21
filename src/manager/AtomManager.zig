@@ -9,19 +9,16 @@ const max_num_atoms: usize = 262144;
 
 // XXX: Optimize with hash map?
 allocator: std.mem.Allocator,
-atoms: std.ArrayList([]const u8),
+atoms: std.ArrayListUnmanaged([]const u8) = .empty,
 
 pub fn init(allocator: std.mem.Allocator) !Self {
-    var self = Self{
-        .allocator = allocator,
-        .atoms = .init(allocator),
-    };
+    var self = Self{ .allocator = allocator };
     errdefer self.deinit();
 
     inline for (@typeInfo(x11.AtomId).@"enum".fields) |*field| {
         const atom_name = try allocator.dupe(u8, field.name);
         errdefer allocator.free(atom_name);
-        try self.atoms.append(atom_name);
+        try self.atoms.append(self.allocator, atom_name);
         std.debug.assert(self.atoms.items.len == field.value);
     }
 
@@ -32,7 +29,7 @@ pub fn deinit(self: *Self) void {
     for (self.atoms.items) |atom| {
         self.allocator.free(atom);
     }
-    self.atoms.deinit();
+    self.atoms.deinit(self.allocator);
 }
 
 pub fn get_atom_by_id(self: *Self, atom_id: x11.AtomId) ?phx.Atom {
@@ -65,7 +62,8 @@ pub fn get_atom_by_name_create_if_not_exists(self: *Self, name: []const u8) !phx
 
     const atom_name = try self.allocator.dupe(u8, name);
     errdefer self.allocator.free(atom_name);
-    try self.atoms.append(atom_name);
+
+    try self.atoms.append(self.allocator, atom_name);
     return .{ .id = @enumFromInt(self.atoms.items.len) };
 }
 

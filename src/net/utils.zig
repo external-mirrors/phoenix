@@ -72,7 +72,7 @@ pub fn sendmsg(socket: std.posix.socket_t, data_to_send: []const u8, fds_to_send
         std.log.info("sendmsg fds: {any}", .{fds_to_send});
     }
 
-    var cmsgbuf: [cmsg_space(@sizeOf(std.posix.fd_t) * max_fds)]u8 align(@alignOf(cmsghdr)) = undefined;
+    var cmsgbuf: [cmsg_space(@sizeOf(std.posix.fd_t) * max_fds)]u8 align(@alignOf(cmsghdr)) = @splat(0);
     var cmsg: *cmsghdr = @ptrCast(&cmsgbuf);
     cmsg.level = std.posix.SOL.SOCKET;
     cmsg.type = SCM_RIGHTS;
@@ -137,7 +137,7 @@ fn posix_recvmsg(socket: std.posix.socket_t, msghdr: *std.c.msghdr, flags: u32) 
 
 /// Can only receive max |max_fds| fds
 pub fn recvmsg(socket: std.posix.socket_t, data: []u8) !RecvMsgResult {
-    var cmsgbuf: [cmsg_space(@sizeOf(std.posix.fd_t) * max_fds)]u8 align(@alignOf(cmsghdr)) = undefined;
+    var cmsgbuf: [cmsg_space(@sizeOf(std.posix.fd_t) * max_fds)]u8 align(@alignOf(cmsghdr)) = @splat(0);
 
     var iov = [_]std.posix.iovec{
         .{
@@ -160,7 +160,7 @@ pub fn recvmsg(socket: std.posix.socket_t, data: []u8) !RecvMsgResult {
 
     const cmsg: *cmsghdr = @ptrCast(&cmsgbuf);
     const cmsghdr_len = cmsg_align(@sizeOf(cmsghdr));
-    var fds_buf = std.mem.bytesAsSlice(std.posix.fd_t, cmsgbuf[@sizeOf(cmsghdr)..]);
+    var fds_buf: []const std.posix.fd_t = @ptrCast(cmsgbuf[@sizeOf(cmsghdr)..]);
     var num_fds: usize = if (msghdr.controllen >= cmsghdr_len) (msghdr.controllen - cmsghdr_len) / @sizeOf(std.posix.fd_t) else 0;
     if (num_fds > 0 and (cmsg.level != std.posix.SOL.SOCKET or cmsg.type != SCM_RIGHTS)) {
         std.log.err("Received extra data in recvmsg that is not fds", .{});
@@ -172,33 +172,4 @@ pub fn recvmsg(socket: std.posix.socket_t, data: []u8) !RecvMsgResult {
     }
 
     return RecvMsgResult.init(data[0..bytes_read], fds_buf[0..num_fds]);
-}
-
-pub const GetSockOptError = error{
-    /// The calling process does not have the appropriate privileges.
-    AccessDenied,
-
-    /// The option is not supported by the protocol.
-    InvalidProtocolOption,
-
-    /// Insufficient resources are available in the system to complete the call.
-    SystemResources,
-} || std.posix.UnexpectedError;
-
-pub fn getsockopt(fd: std.posix.socket_t, level: i32, optname: u32, opt: []u8) GetSockOptError!void {
-    var len: std.posix.socklen_t = @intCast(opt.len);
-    switch (std.posix.errno(std.posix.system.getsockopt(fd, level, optname, opt.ptr, &len))) {
-        .SUCCESS => {
-            std.debug.assert(len == opt.len);
-        },
-        .BADF => unreachable,
-        .NOTSOCK => unreachable,
-        .INVAL => unreachable,
-        .FAULT => unreachable,
-        .NOPROTOOPT => return error.InvalidProtocolOption,
-        .NOMEM => return error.SystemResources,
-        .NOBUFS => return error.SystemResources,
-        .ACCES => return error.AccessDenied,
-        else => |err| return std.posix.unexpectedErrno(err),
-    }
 }

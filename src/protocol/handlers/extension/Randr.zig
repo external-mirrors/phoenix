@@ -665,26 +665,24 @@ fn mode_to_mode_info(mode: *const phx.Crtc.Mode, mode_name: []const u8) ModeInfo
 }
 
 const ModeInfosWithName = struct {
-    mode_infos: std.ArrayList(ModeInfo),
-    mode_names: std.ArrayList(u8),
+    mode_infos: std.ArrayListUnmanaged(ModeInfo) = .empty,
+    mode_names: std.ArrayListUnmanaged(u8) = .empty,
+    allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) ModeInfosWithName {
-        return .{
-            .mode_infos = .init(allocator),
-            .mode_names = .init(allocator),
-        };
+        return .{ .allocator = allocator };
     }
 
     pub fn deinit(self: *ModeInfosWithName) void {
-        self.mode_infos.deinit();
-        self.mode_names.deinit();
+        self.mode_infos.deinit(self.allocator);
+        self.mode_names.deinit(self.allocator);
     }
 
     pub fn append_mode(self: *ModeInfosWithName, mode: *const phx.Crtc.Mode) !void {
         var mode_name_buf: [128]u8 = undefined;
         const mode_name = std.fmt.bufPrint(&mode_name_buf, "{d}x{d}{s}", .{ mode.width, mode.height, if (mode.interlace) "i" else "" }) catch unreachable;
-        try self.mode_names.appendSlice(mode_name);
-        try self.mode_infos.append(mode_to_mode_info(mode, mode_name));
+        try self.mode_names.appendSlice(self.allocator, mode_name);
+        try self.mode_infos.append(self.allocator, mode_to_mode_info(mode, mode_name));
     }
 };
 

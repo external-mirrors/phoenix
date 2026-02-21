@@ -525,7 +525,7 @@ pub fn get_screen_resources(_: *Self, timestamp: x11.Timestamp, allocator: std.m
         .interlace = false,
     };
 
-    try screen_resources.crtcs.append(.{
+    try screen_resources.append_crtc(&.{
         .id = @enumFromInt(1),
         .x = 0,
         .y = 0,

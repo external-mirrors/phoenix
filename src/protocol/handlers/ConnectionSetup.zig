@@ -14,10 +14,11 @@ fn reply_with_error(client: *phx.Client, comptime format: []const u8, args: anyt
 }
 
 /// Returns true if there was enough data from the client to handle the request
-pub fn handle_client_connect(server: *phx.Server, client: *phx.Client, root_window: *phx.Window, allocator: std.mem.Allocator) !bool {
+pub fn handle_connection_setup_request(server: *phx.Server, client: *phx.Client, root_window: *phx.Window, allocator: std.mem.Allocator) !bool {
     // TODO: byteswap
     const connection_setup_request_header = client.peek_read_buffer(ConnectionSetupRequestHeader) orelse return false;
-    if (client.read_buffer_data_size() < connection_setup_request_header.total_size())
+    const connection_setup_total_size = connection_setup_request_header.total_size();
+    if (client.read_buffer_data_size() < connection_setup_total_size)
         return false;
 
     const server_byte_order: ConnectionSetupRequestByteOrder = if (x11.native_endian == .little) .little else .big;
@@ -42,15 +43,15 @@ pub fn handle_client_connect(server: *phx.Server, client: *phx.Client, root_wind
         return false;
     }
 
-    var req = client.read_request_assume_correct_size(Request.ConnectionSetup, allocator) catch |err| {
+    var req = client.read_request_of_size(Request.ConnectionSetup, connection_setup_total_size, allocator) catch |err| {
         try reply_with_error(client, "There was an error handling the connection request, error: {s}", .{@errorName(err)});
         return false;
     };
     defer req.deinit();
 
     std.log.info("auth_protocol_name_length: {s}", .{req.request.auth_protocol_name.items});
-    std.log.info("auth_protocol_data_length: {s} (len: {d})", .{ std.fmt.fmtSliceHexLower(req.request.auth_protocol_data.items), req.request.auth_protocol_data.items.len });
-    std.log.info("Connection setup request: {}", .{x11.stringify_fmt(req.request)});
+    std.log.info("auth_protocol_data_length: {x} (len: {d})", .{ req.request.auth_protocol_data.items, req.request.auth_protocol_data.items.len });
+    std.log.info("Connection setup request: {f}", .{x11.stringify_fmt(req.request)});
 
     const screen_visual = server.get_visual_by_id(phx.Server.screen_true_color_visual_id) orelse unreachable;
     const screen_colormap = server.get_colormap(phx.Server.screen_true_color_colormap_id) orelse unreachable;

@@ -101,7 +101,7 @@ Run `zig build -Dgenerate-docs=true`. This will generate `.txt` files in `./zig-
 Note that the generated documentation feature is a work-in-progress.
 
 ## Dependencies
-* [Zig 0.14.1](https://ziglang.org/download/)
+* [Zig 0.15.2](https://ziglang.org/download/)
 * libxkbcommon
 * X11 (`libxcb`) - for nested mode under X11, when building Phoenix with `-Dbackends=x11`
 * Wayland (`wayland-client`, `wayland-egl`) - for nested mode under Wayland, when building Phoenix with `-Dbackends=wayland` (not currently supported)

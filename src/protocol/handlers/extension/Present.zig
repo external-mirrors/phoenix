@@ -71,7 +71,7 @@ fn present_pixmap(request_context: *phx.RequestContext) !void {
     // TODO: Implement properly
     // TODO: Handle wait_fence
 
-    //std.log.err("present pixmap: {s}", .{x11.stringify_fmt(req.request)});
+    //std.log.err("present pixmap: {f}", .{x11.stringify_fmt(req.request)});
 
     var idle_notify_event = Event.IdleNotify{
         .window = req.request.window,
@@ -154,7 +154,7 @@ const Notify = struct {
 };
 
 const Options = packed struct(x11.Card32) {
-    @"async": bool,
+    async: bool,
     copy: bool,
     ust: bool,
     suboptimal: bool,

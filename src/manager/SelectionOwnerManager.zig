@@ -5,16 +5,15 @@ const x11 = phx.x11;
 const Self = @This();
 
 // XXX: Optimize with hash map?
-selection_owners: std.ArrayList(SelectionOwner),
+selection_owners: std.ArrayListUnmanaged(SelectionOwner) = .empty,
+allocator: std.mem.Allocator,
 
 pub fn init(allocator: std.mem.Allocator) Self {
-    return .{
-        .selection_owners = .init(allocator),
-    };
+    return .{ .allocator = allocator };
 }
 
 pub fn deinit(self: *Self) void {
-    self.selection_owners.deinit();
+    self.selection_owners.deinit(self.allocator);
 }
 
 pub fn set_owner(
@@ -53,7 +52,7 @@ pub fn set_owner(
         selection_owner.owner_client = if (new_owner_window) |_| new_owner_client else null;
     } else {
         // TODO: Limit how many selections there can be
-        try self.selection_owners.append(.{
+        try self.selection_owners.append(self.allocator, .{
             .selection = selection,
             .owner_window = new_owner_window,
             .owner_client = if (new_owner_window) |_| new_owner_client else null,

@@ -40,7 +40,7 @@ pub fn ref(self: *Self) void {
 pub fn unref(self: *Self) void {
     if (self.refcount.unref() == 0) {
         // XXX: Ugly hack
-        if (!self.server.shutting_down)
+        if (!self.server.shutting_down.load(.acquire))
             self.server.display.destroy_pixmap(self);
 
         for (self.dmabuf_data.fd[0..self.dmabuf_data.num_items]) |dmabuf_fd| {

@@ -157,18 +157,18 @@ pub const Timestamp = enum(Card32) {
 };
 
 pub const PropertyValueData = union(enum) {
-    card8_list: std.ArrayList(Card8),
-    card16_list: std.ArrayList(Card16),
-    card32_list: std.ArrayList(Card32),
+    card8_list: std.ArrayListUnmanaged(Card8),
+    card16_list: std.ArrayListUnmanaged(Card16),
+    card32_list: std.ArrayListUnmanaged(Card32),
 };
 
 pub const PropertyValue = struct {
     type: AtomId,
     item: PropertyValueData,
 
-    pub fn deinit(self: *PropertyValue) void {
+    pub fn deinit(self: *PropertyValue, allocator: std.mem.Allocator) void {
         switch (self.item) {
-            inline else => |*item| item.deinit(),
+            inline else => |*item| item.deinit(allocator),
         }
     }
 

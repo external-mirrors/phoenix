@@ -5,14 +5,14 @@ const x11 = phx.x11;
 // TODO: Don't allow reply data to exceed i32 bytes
 
 // TODO: Byteswap
-pub fn write_reply(comptime T: type, reply: *T, writer: anytype) !void {
+pub fn write_reply(comptime T: type, reply: *T, writer: *std.Io.Writer) !void {
     reply_set_length_fields_root(T, reply);
-    std.log.debug(@typeName(T) ++ " reply: {s}", .{x11.stringify_fmt(reply)});
-    var reply_writer = ReplyWriter(@TypeOf(writer)).init(writer);
-    return write_reply_fields(T, reply, reply_writer.writer());
+    std.log.debug(@typeName(T) ++ " reply: {f}", .{x11.stringify_fmt(reply)});
+    var reply_writer = ReplyWriter.init(writer);
+    return write_reply_fields(T, reply, &reply_writer.interface);
 }
 
-fn write_reply_fields(comptime T: type, reply: *T, writer: anytype) !void {
+fn write_reply_fields(comptime T: type, reply: *T, writer: *std.Io.Writer) !void {
     if (@typeInfo(T) != .@"struct")
         @compileError("Expected T to be a struct, got: " ++ @typeName(T) ++ " which is a " ++ @tagName(@typeInfo(T)));
 
@@ -27,7 +27,7 @@ fn write_reply_fields(comptime T: type, reply: *T, writer: anytype) !void {
     }
 }
 
-fn write_reply_field(comptime FieldType: type, value: *FieldType, writer: anytype) !void {
+fn write_reply_field(comptime FieldType: type, value: *FieldType, writer: *std.Io.Writer) !void {
     switch (@typeInfo(FieldType)) {
         .@"enum" => |e| try writer.writeInt(e.tag_type, @intFromEnum(value.*), x11.native_endian),
         .int => |i| try writer.writeInt(@Type(.{ .int = i }), value.*, x11.native_endian),
@@ -38,7 +38,9 @@ fn write_reply_field(comptime FieldType: type, value: *FieldType, writer: anytyp
             } else if (@hasDecl(FieldType, "is_union_list")) {
                 @compileError("UnionList is not supported in replies yet");
             } else if (FieldType == x11.AlignmentPadding) {
-                try writer.writeByteNTimes(0, x11.padding(writer.context.num_bytes_written, 4));
+                const reply_writer: *ReplyWriter = @fieldParentPtr("interface", writer);
+                const slice: []const u8 = &.{ 0, 0, 0, 0 };
+                try writer.writeAll(slice[0..x11.padding(reply_writer.num_bytes_written, 4)]);
             } else if (s.backing_integer) |backing_integer| {
                 try writer.writeInt(backing_integer, @bitCast(value.*), x11.native_endian);
             } else {
@@ -48,10 +50,12 @@ fn write_reply_field(comptime FieldType: type, value: *FieldType, writer: anytyp
         .array => |*arr| {
             switch (@typeInfo(arr.child)) {
                 .int => |i| {
-                    // TODO: Write entire slice at once after switching to the new Io interface
+                    // TODO: Use writeAll instead
                     for (value) |element| {
                         try writer.writeInt(@Type(.{ .int = i }), element, x11.native_endian);
                     }
+                    //if (value.len > 0)
+                    //    try writer.writeAll(@ptrCast(value)); // XXX: Use writeSliceEndian?
                 },
                 else => @compileError("Only int arrays are supported right now, got array of " ++ @typeName(arr.child)),
             }
@@ -71,7 +75,7 @@ fn write_reply_field(comptime FieldType: type, value: *FieldType, writer: anytyp
     }
 }
 
-fn write_reply_list_of(comptime T: type, list_of: *const T, writer: anytype) !void {
+fn write_reply_list_of(comptime T: type, list_of: *const T, writer: *std.Io.Writer) !void {
     const element_type = comptime T.get_element_type();
     const list_of_options = comptime T.get_options();
     if (list_of_options.length_field_type != .integer)
@@ -86,10 +90,12 @@ fn reply_set_length_fields_root(comptime T: type, reply: *T) void {
     if (!@hasField(T, "length"))
         @compileError("Reply struct " ++ @typeName(T) ++ " is missing length fields");
 
-    var size_calculate_writer = ReplyWriter(DummyWriter).init(DummyWriter{});
-    // This can't fail since the DummyWriter doesn't actually write any data
-    write_reply_fields(T, reply, size_calculate_writer.writer()) catch unreachable;
-    const calculated_reply_size: i32 = @intCast(size_calculate_writer.num_bytes_written);
+    var size_calculate_writer = std.Io.Writer.Discarding.init(&.{});
+    var dummy_reply_writer = ReplyWriter.init(&size_calculate_writer.writer);
+
+    // This can't fail since it doesn't actually write any data
+    write_reply_fields(T, reply, &dummy_reply_writer.interface) catch unreachable;
+    const calculated_reply_size: i32 = @intCast(size_calculate_writer.count);
 
     const header_size: i32 = switch (T) {
         phx.ConnectionSetup.Reply.ConnectionSetupSuccess,
@@ -104,36 +110,56 @@ fn reply_set_length_fields_root(comptime T: type, reply: *T) void {
     reply.length = @intCast(struct_length_without_header / unit_size);
 }
 
-pub fn ReplyWriter(comptime WriterType: type) type {
-    return struct {
-        const Self = @This();
-        pub const Writer = std.io.Writer(*Self, error{OutOfMemory}, write_fn);
+const ReplyWriter = struct {
+    const Self = @This();
 
-        wrapped_writer: WriterType,
-        num_bytes_written: usize,
+    num_bytes_written: usize,
+    wrapped_writer: *std.Io.Writer,
+    interface: std.Io.Writer,
 
-        pub fn init(wrapped_writer: WriterType) Self {
-            return .{
-                .wrapped_writer = wrapped_writer,
-                .num_bytes_written = 0,
-            };
+    pub fn init(wrapped_writer: *std.Io.Writer) Self {
+        return .{
+            .num_bytes_written = 0,
+            .wrapped_writer = wrapped_writer,
+            .interface = .{
+                .vtable = &.{
+                    .drain = drain,
+                    .flush = flush,
+                    .rebase = rebase,
+                },
+                .buffer = &.{},
+            },
+        };
+    }
+
+    fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
+        var self: *Self = @fieldParentPtr("interface", w);
+
+        var num_bytes_written: usize = 0;
+        defer self.num_bytes_written += num_bytes_written;
+
+        for (data[0 .. data.len - 1]) |slice| {
+            try self.wrapped_writer.writeAll(slice);
+            num_bytes_written += slice.len;
         }
 
-        pub fn writer(self: *Self) Writer {
-            return .{ .context = self };
-        }
+        // TODO: Optimize for splat size 1 and splat data size 1
+        const splat_data = data[data.len - 1];
+        try self.wrapped_writer.splatBytesAll(splat_data, splat);
+        num_bytes_written += (splat_data.len * splat);
 
-        fn write_fn(self: *Self, bytes: []const u8) error{OutOfMemory}!usize {
-            const num_bytes_written = try self.wrapped_writer.write(bytes);
-            self.num_bytes_written += num_bytes_written;
-            return num_bytes_written;
-        }
-    };
-}
+        return num_bytes_written;
+    }
 
-const DummyWriter = struct {
-    pub fn write(_: *DummyWriter, bytes: []const u8) !usize {
-        return bytes.len;
+    pub fn flush(w: *std.Io.Writer) std.Io.Writer.Error!void {
+        _ = w;
+    }
+
+    pub fn rebase(w: *std.Io.Writer, preserve: usize, capacity: usize) std.Io.Writer.Error!void {
+        _ = w;
+        _ = preserve;
+        _ = capacity;
+        return error.WriteFailed;
     }
 };
 

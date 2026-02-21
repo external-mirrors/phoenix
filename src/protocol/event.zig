@@ -414,16 +414,18 @@ pub const Event = extern union {
     colormap_notify: ColormapNotifyEvent,
 
     pub fn set_event_window(self: *Event, event: x11.WindowId) void {
-        switch (self.any.code) {
-            .key_press => self.key_press.event = event,
-            .key_release => self.key_release.event = event,
-            .button_press => self.button_press.event = event,
-            .button_release => self.button_release.event = event,
-            .motion_notify => self.motion_notify.event = event,
-            .map_notify => self.map_notify.event = event,
-            .configure_notify => self.configure_notify.event = event,
-            else => {},
-        }
+        return switch (self.any.code) {
+            inline else => |*ev| {
+                if (@hasField(@TypeOf(ev.*), "event"))
+                    @field(ev.*, "event") = event;
+            },
+        };
+    }
+
+    pub fn format(self: *Event, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        return switch (self.any.code) {
+            inline else => |*ev| std.json.Stringify.value(ev.*, .{ .whitespace = .indent_4 }, writer),
+        };
     }
 
     comptime {

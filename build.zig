@@ -2,9 +2,6 @@ const std = @import("std");
 const phx = @import("src/phoenix.zig");
 
 pub fn build(b: *std.Build) !void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
-
     const backends_option = b.option([]const u8, "backends",
         \\Select which backends to include in the build ("all", "x11", "wayland", "drm"). This is a comma-separated list. Defaults to "all"
     ) orelse "all";
@@ -19,6 +16,11 @@ pub fn build(b: *std.Build) !void {
         try generate_docs(b.install_path);
         return;
     }
+
+    const debugger = b.option(bool, "debugger", "Build with debugger support") orelse false;
+
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = if (debugger) .Debug else null });
 
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -36,7 +38,9 @@ pub fn build(b: *std.Build) !void {
     const exe = b.addExecutable(.{
         .name = "phoenix",
         .root_module = exe_mod,
-        .use_lld = true, // Needed to make debug symbols work correctly in debug mode at the moment (zig 0.15.2)
+        // Needed to make debug symbols work correctly in debug mode at the moment (zig 0.15.2) without having to use a fork of lldb (https://codeberg.org/ziglang/zig#testing-zig-code-with-lldb)
+        .use_lld = if (debugger) true else null,
+        .use_llvm = if (debugger) true else null,
     });
     b.installArtifact(exe);
 

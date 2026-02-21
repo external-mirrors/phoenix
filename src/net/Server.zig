@@ -263,7 +263,6 @@ fn create_root_window(self: *Self) !*phx.Window {
 pub fn run(self: *Self) !void {
     std.log.defaultLog(.info, .default, "Phoenix is now running at {s}. You can connect to it by setting the DISPLAY environment variable to :1, for example \"DISPLAY=:1 glxgears\"", .{unix_domain_socket_path});
 
-    const poll_timeout_ms: u32 = 500;
     self.running = true;
 
     const cursor_pos = self.display.get_cursor_position();
@@ -271,7 +270,7 @@ pub fn run(self: *Self) !void {
     self.cursor_y = cursor_pos[1];
 
     while (self.running) {
-        const num_events = std.posix.epoll_wait(self.epoll_fd, &self.epoll_events, poll_timeout_ms);
+        const num_events = std.posix.epoll_wait(self.epoll_fd, &self.epoll_events, -1);
         for (0..num_events) |event_index| {
             const epoll_event = &self.epoll_events[event_index];
 
@@ -290,6 +289,8 @@ pub fn run(self: *Self) !void {
                     continue;
                 };
 
+                std.log.info("Client connected: {d}, waiting for client connection setup", .{connection.stream.handle});
+
                 _ = self.add_client(connection) catch |err| {
                     std.log.err("Failed to add client: {d}, disconnecting client. Error: {s}", .{ connection.stream.handle, @errorName(err) });
                     connection.stream.close();
@@ -302,7 +303,7 @@ pub fn run(self: *Self) !void {
 
                 client.read_client_data_to_buffer() catch |err| {
                     std.log.err("Failed to add data to client buffer, disconnecting client. Error: {s}", .{@errorName(err)});
-                    remove_client(self, client.connection.stream.handle);
+                    _ = remove_client(self, client.connection.stream.handle);
                     continue;
                 };
 
@@ -316,7 +317,7 @@ pub fn run(self: *Self) !void {
 
                 client.flush_write_buffer() catch |err| {
                     std.log.err("Failed to write data to client: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
-                    remove_client(self, client.connection.stream.handle);
+                    _ = remove_client(self, client.connection.stream.handle);
                     continue;
                 };
             }
@@ -333,7 +334,7 @@ pub fn run(self: *Self) !void {
                     break;
                 } else {
                     std.log.info("Client disconnected: {d}", .{epoll_event.data.fd});
-                    remove_client(self, epoll_event.data.fd);
+                    _ = remove_client(self, epoll_event.data.fd);
                     continue;
                 }
             }
@@ -354,7 +355,6 @@ fn set_socket_non_blocking(socket: std.posix.socket_t) void {
 
 fn add_client(self: *Self, connection: std.net.Server.Connection) !*phx.Client {
     set_socket_non_blocking(connection.stream.handle);
-    std.log.info("Client connected: {d}, waiting for client connection setup", .{connection.stream.handle});
 
     const resource_id_base = self.resource_id_base_manager.get_next_free() orelse {
         std.log.warn("All resources id bases are exhausted, no more clients can be accepted", .{});
@@ -375,7 +375,7 @@ fn add_client(self: *Self, connection: std.net.Server.Connection) !*phx.Client {
     return self.client_manager.add_client(client);
 }
 
-fn remove_client(self: *Self, client_fd: std.posix.socket_t) void {
+fn remove_client(self: *Self, client_fd: std.posix.socket_t) bool {
     std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_DEL, client_fd, null) catch |err| {
         std.log.err("Epoll del failed for client: {d}. Error: {s}", .{ client_fd, @errorName(err) });
     };
@@ -384,7 +384,10 @@ fn remove_client(self: *Self, client_fd: std.posix.socket_t) void {
         self.remove_client_pending_flush(client);
         self.resource_id_base_manager.free(client.resource_id_base);
         _ = self.client_manager.remove_client(client_fd);
+        return true;
     }
+
+    return false;
 }
 
 pub fn set_client_muted(self: *Self, client: *phx.Client, muted: bool, read_write: struct { read: bool, write: bool }) void {
@@ -417,7 +420,7 @@ fn process_all_client_requests(self: *Self, client: *phx.Client) bool {
             .connecting => {
                 const one_request_handled = phx.ConnectionSetup.handle_connection_setup_request(self, client, self.root_window, self.allocator) catch |err| {
                     std.log.err("Client connection setup failed: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
-                    remove_client(self, client.connection.stream.handle);
+                    _ = remove_client(self, client.connection.stream.handle);
                     return false;
                 };
 
@@ -430,7 +433,7 @@ fn process_all_client_requests(self: *Self, client: *phx.Client) bool {
             .connected => {
                 const one_request_handled = handle_client_request(self, client) catch |err| {
                     std.log.err("Client request handling failed: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
-                    remove_client(self, client.connection.stream.handle);
+                    _ = remove_client(self, client.connection.stream.handle);
                     return false;
                 };
 
@@ -511,7 +514,7 @@ fn handle_client_request(self: *Self, client: *phx.Client) !bool {
         client.skip_read_bytes(request_length - bytes_read);
     }
 
-    try client.flush_write_buffer();
+    //try client.flush_write_buffer();
     return true;
 }
 
@@ -767,12 +770,15 @@ pub fn append_message(self: *Self, message: *const Message) !void {
 }
 
 fn handle_pending_client_flushes(self: *Self) void {
-    for (self.current_pending_client_flushes.items) |pending_client| {
+    var i: usize = 0;
+    while (i < self.current_pending_client_flushes.items.len) {
+        const pending_client = self.current_pending_client_flushes.items[i];
         pending_client.flush_write_buffer() catch |err| {
             std.log.err("Failed to write data to client: {d}, disconnecting client. Error: {s}", .{ pending_client.connection.stream.handle, @errorName(err) });
-            remove_client(self, pending_client.connection.stream.handle);
-            continue;
+            if (remove_client(self, pending_client.connection.stream.handle))
+                continue;
         };
+        i += 1;
     }
     self.current_pending_client_flushes.clearRetainingCapacity();
 }

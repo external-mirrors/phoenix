@@ -67,6 +67,9 @@ inline fn cmsg_len(size: usize) usize {
 
 /// Can only send max |max_fds| fds
 pub fn sendmsg(socket: std.posix.socket_t, data_to_send: []const u8, fds_to_send: []std.posix.fd_t) !usize {
+    if(data_to_send.len == 0 and fds_to_send.len == 0)
+        return 0;
+
     std.debug.assert(fds_to_send.len <= max_fds);
     if (fds_to_send.len > 0) {
         std.log.info("sendmsg fds: {any}", .{fds_to_send});

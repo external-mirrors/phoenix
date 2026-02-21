@@ -353,7 +353,7 @@ pub fn get_keyboard_names(self: *Self, params: *const phx.Xkb.Request.GetNames, 
     ), 4);
 
     var value_list: []x11.Card32 = undefined;
-    value_list.ptr = @alignCast(@ptrCast(value_list_raw));
+    value_list.ptr = @ptrCast(@alignCast(value_list_raw));
     value_list.len = @intCast(value_list_size);
 
     const value_list_copy = try allocator.dupe(x11.Card32, value_list);
@@ -614,7 +614,7 @@ fn update_thread(self: *Self) !void {
     };
 
     while (self.running) {
-        const num_fds_ready = std.posix.poll(&poll_fds, 0) catch |err| {
+        const num_fds_ready = std.posix.poll(&poll_fds, -1) catch |err| {
             // TODO: What do?
             std.log.err("DisplayX11: Failed to poll!, error: {s}", .{@errorName(err)});
             continue;

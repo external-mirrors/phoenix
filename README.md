@@ -94,7 +94,8 @@ sudo rm /usr/local/bin/phoenix
 ```
 
 ## Building (for development)
-Run `zig build`, which builds Phoenix in debug mode. The compiled binary will be available at `./zig-out/bin/phoenix`. You can alternatively build and run with one command: `zig build run`.
+Run `zig build`, which builds Phoenix in debug mode (fast building). The compiled binary will be available at `./zig-out/bin/phoenix`. You can alternatively build and run with one command: `zig build run`.\
+Run `zig build -Ddebugger=true` to build Phoenix with debugger support (builds slower since it builds with zig LLVM backend).
 
 ### Generate X11 protocol documentation
 Run `zig build -Dgenerate-docs=true`. This will generate `.txt` files in `./zig-out/protocol/`. This generates X11 protocol documentation in the style of the official protocol documentation. The documentation is automatically generated from the protocol struct code.

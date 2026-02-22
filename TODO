@@ -58,3 +58,4 @@ Trigger KeymapNotify (for FocusIn).
 Support reading/writing file descriptors automatically in request/reply parsing. If field type is std.posix.fd_t then handle it as a file descriptor instead. fd_t may not work as its just an alias to an integer type. May need to create a custom Fd type.
 Permissions (for example for selecting for key input) should check if the target window was created by the same client process id. Maybe also allow access to parent/child process windows.
 Use Server.set_client_muted when a reply requires a lot of data to be sent, such as GetImage with the root window (capturing a screenshot of all windows). The raw image for one 4k image is 23mb (rgb). In such cases we want to force the client to receive the data before doing anything else with the client that requires more data to be allocated.
+Client.flush_write_buffer is often called with empty data. Why?

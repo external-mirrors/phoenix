@@ -56,7 +56,6 @@ cursor_y: i32,
 running: bool = false,
 shutting_down: std.atomic.Value(bool) = .init(false),
 
-current_pending_client_flushes: std.ArrayListUnmanaged(*phx.Client) = .empty,
 // TODO: Initialize with the current state right when the server starts because the user might hold down a button when the server starts.
 // TODO: Update with key states as well when keys are handled.
 current_key_but_mask: phx.event.KeyButMask = .{},
@@ -192,7 +191,6 @@ pub fn destroy(self: *Self) void {
     self.display.destroy();
     self.input.deinit();
     self.messages.deinit(self.allocator);
-    self.current_pending_client_flushes.deinit(self.allocator);
     self.all_shm_segments.deinit(self.allocator);
     std.posix.close(self.epoll_fd);
     std.posix.close(self.signal_fd);
@@ -278,7 +276,6 @@ pub fn run(self: *Self) !void {
                 var buf: [@sizeOf(u64)]u8 = undefined;
                 _ = std.posix.read(self.event_fd, &buf) catch unreachable;
 
-                self.handle_pending_client_flushes();
                 self.handle_messages();
             } else if (epoll_event.data.fd == self.signal_fd) {
                 std.log.info("Received SIGINT signal, stopping " ++ vendor, .{});
@@ -381,7 +378,6 @@ fn remove_client(self: *Self, client_fd: std.posix.socket_t) bool {
     };
 
     if (self.client_manager.get_client_by_fd(client_fd)) |client| {
-        self.remove_client_pending_flush(client);
         self.resource_id_base_manager.free(client.resource_id_base);
         _ = self.client_manager.remove_client(client_fd);
         return true;
@@ -654,7 +650,7 @@ fn handle_mouse_move(self: *Self, mouse_move: MouseMoveMessage) void {
     const current_server_time = self.get_timestamp_milliseconds();
     const cursor_pos_root = @Vector(2, i32){ self.cursor_x, self.cursor_y };
     var cursor_pos_relative_to_window = @Vector(2, i32){ 0, 0 };
-    // XXX: Optimize this. Maybe we dont want to do this on every mouse move
+    // XXX: Optimize this. Maybe we dont want to do this on every mouse move. Also update cursor window when a window moves
     var cursor_window = phx.Window.get_window_at_position(self.root_window, cursor_pos_root, &cursor_pos_relative_to_window);
 
     var motion_notify_event = phx.event.Event{
@@ -766,42 +762,6 @@ pub fn append_message(self: *Self, message: *const Message) !void {
     if (self.messages.items.len == 1) {
         const value: u64 = 1;
         _ = std.posix.write(self.event_fd, std.mem.bytesAsSlice(u8, std.mem.asBytes(&value))) catch unreachable;
-    }
-}
-
-fn handle_pending_client_flushes(self: *Self) void {
-    var i: usize = 0;
-    while (i < self.current_pending_client_flushes.items.len) {
-        const pending_client = self.current_pending_client_flushes.items[i];
-        pending_client.flush_write_buffer() catch |err| {
-            std.log.err("Failed to write data to client: {d}, disconnecting client. Error: {s}", .{ pending_client.connection.stream.handle, @errorName(err) });
-            if (remove_client(self, pending_client.connection.stream.handle))
-                continue;
-        };
-        i += 1;
-    }
-    self.current_pending_client_flushes.clearRetainingCapacity();
-}
-
-pub fn set_client_has_pending_flush(self: *Self, client: *phx.Client) !void {
-    for (self.current_pending_client_flushes.items) |pending_client| {
-        if (pending_client == client)
-            return;
-    }
-
-    try self.current_pending_client_flushes.append(self.allocator, client);
-    if (self.current_pending_client_flushes.items.len == 1) {
-        const value: u64 = 1;
-        _ = std.posix.write(self.event_fd, std.mem.bytesAsSlice(u8, std.mem.asBytes(&value))) catch unreachable;
-    }
-}
-
-fn remove_client_pending_flush(self: *Self, client: *phx.Client) void {
-    for (self.current_pending_client_flushes.items, 0..) |pending_client, i| {
-        if (pending_client == client) {
-            _ = self.current_pending_client_flushes.orderedRemove(i);
-            return;
-        }
     }
 }
 

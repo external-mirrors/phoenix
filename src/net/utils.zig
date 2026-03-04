@@ -17,7 +17,6 @@ pub const RecvMsgResult = struct {
             .num_fds = @intCast(fds.len),
         };
 
-        // TODO: Why do some of these fds have the value -1431655766 (0xffffffffaaaaaaaa)?
         var num_valid_fds: u32 = 0;
         for (fds) |fd| {
             if (fd > 0) {
@@ -67,7 +66,7 @@ inline fn cmsg_len(size: usize) usize {
 
 /// Can only send max |max_fds| fds
 pub fn sendmsg(socket: std.posix.socket_t, data_to_send: []const u8, fds_to_send: []std.posix.fd_t) !usize {
-    if(data_to_send.len == 0 and fds_to_send.len == 0)
+    if (data_to_send.len == 0 and fds_to_send.len == 0)
         return 0;
 
     std.debug.assert(fds_to_send.len <= max_fds);
@@ -104,7 +103,7 @@ pub fn sendmsg(socket: std.posix.socket_t, data_to_send: []const u8, fds_to_send
 
 fn posix_recvmsg(socket: std.posix.socket_t, msghdr: *std.c.msghdr, flags: u32) !usize {
     while (true) {
-        const rc = std.c.recvmsg(socket, msghdr, flags);
+        const rc = std.posix.system.recvmsg(socket, msghdr, flags);
         switch (std.posix.errno(rc)) {
             .SUCCESS => return @intCast(rc),
 

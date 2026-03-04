@@ -52,7 +52,7 @@ pub fn init(
     server: *phx.Server,
     poll_flags: u32,
     allocator: std.mem.Allocator,
-) !Self {
+) Self {
     return .{
         .allocator = allocator,
         .connection = connection,
@@ -225,10 +225,7 @@ pub fn read_request_of_size(self: *Self, comptime T: type, request_length: usize
     errdefer arena.deinit();
 
     const req_data = phx.request.read_request(T, &limited_reader, &arena) catch |err| switch (err) {
-        error.EndOfStream => {
-            std.debug.print("EndOfStream remaining bytes: {d}\n", .{@intFromEnum(limited_reader.remaining)});
-            return error.InvalidRequestLength;
-        },
+        error.EndOfStream => return error.InvalidRequestLength,
         else => return err,
     };
     if (@intFromEnum(limited_reader.remaining) != 0)

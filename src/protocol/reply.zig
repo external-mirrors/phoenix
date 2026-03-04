@@ -71,7 +71,7 @@ fn write_reply_field(comptime FieldType: type, value: *FieldType, writer: *std.I
                 },
             }
         },
-        else => @compileError("Only enum, integer, struct, optional and union types are supported in replies right now, got: " ++ @tagName(@typeInfo(FieldType))),
+        else => @compileError("Only enum, integer, struct, array, optional and union types are supported in replies right now, got: " ++ @tagName(@typeInfo(FieldType))),
     }
 }
 

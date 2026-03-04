@@ -88,13 +88,7 @@ pub fn create(allocator: std.mem.Allocator) !*Self {
     if (epoll_fd == -1) return error.FailedToCreateEpoll;
     errdefer std.posix.close(epoll_fd);
 
-    var signal_mask = std.mem.zeroes(std.os.linux.sigset_t);
-    std.os.linux.sigaddset(&signal_mask, std.posix.SIG.INT);
-    _ = std.os.linux.sigprocmask(std.posix.SIG.BLOCK, &signal_mask, null);
-
-    const signal_fd: i32 = @intCast(std.os.linux.signalfd(-1, &signal_mask, 0));
-    if (signal_fd == -1)
-        return error.FailedToCreateSignalFd;
+    const signal_fd = try create_sigint_signal_fd();
     errdefer std.posix.close(signal_fd);
 
     var signal_fd_epoll_event = std.os.linux.epoll_event{
@@ -156,14 +150,15 @@ pub fn create(allocator: std.mem.Allocator) !*Self {
         .cursor_y = 0,
     };
 
-    const server_connection = std.net.Server.Connection{
+    var server_connection = std.net.Server.Connection{
         .stream = self.server_net.stream,
         .address = self.server_net.listen_address,
     };
 
-    self.root_client = self.add_client(server_connection) catch |err| {
-        std.log.err("Failed to add client: {d}, disconnecting client. Error: {s}", .{ server_connection.stream.handle, @errorName(err) });
-        server_connection.stream.close();
+    self.root_client = self.add_client(&server_connection) catch |err| {
+        std.log.err("Failed to add server client: {d}, error: {s}", .{ server_connection.stream.handle, @errorName(err) });
+        if (server_connection.stream.handle > 0)
+            server_connection.stream.close();
         return error.FailedToSetupRootClient;
     };
 
@@ -197,6 +192,18 @@ pub fn destroy(self: *Self) void {
     std.posix.close(self.event_fd);
     std.posix.unlink(unix_domain_socket_path) catch {};
     self.allocator.destroy(self);
+}
+
+fn create_sigint_signal_fd() !i32 {
+    var signal_mask = std.mem.zeroes(std.os.linux.sigset_t);
+    std.os.linux.sigaddset(&signal_mask, std.posix.SIG.INT);
+    _ = std.os.linux.sigprocmask(std.posix.SIG.BLOCK, &signal_mask, null);
+
+    const signal_fd: i32 = @intCast(std.os.linux.signalfd(-1, &signal_mask, 0));
+    if (signal_fd == -1)
+        return error.FailedToCreateSignalFd;
+
+    return signal_fd;
 }
 
 /// Following the X11 protocol standard
@@ -281,16 +288,17 @@ pub fn run(self: *Self) !void {
                 std.log.info("Received SIGINT signal, stopping " ++ vendor, .{});
                 self.running = false;
             } else if (epoll_event.data.fd == self.server_net.stream.handle) {
-                const connection = self.server_net.accept() catch |err| {
+                var connection = self.server_net.accept() catch |err| {
                     std.log.err("Connection from client failed, error: {s}", .{@errorName(err)});
                     continue;
                 };
 
                 std.log.info("Client connected: {d}, waiting for client connection setup", .{connection.stream.handle});
 
-                _ = self.add_client(connection) catch |err| {
+                _ = self.add_client(&connection) catch |err| {
                     std.log.err("Failed to add client: {d}, disconnecting client. Error: {s}", .{ connection.stream.handle, @errorName(err) });
-                    connection.stream.close();
+                    if (connection.stream.handle > 0)
+                        connection.stream.close();
                 };
             } else if (epoll_event.events & std.os.linux.EPOLL.IN != 0) {
                 var client = self.client_manager.get_client_by_fd(epoll_event.data.fd) orelse {
@@ -323,9 +331,6 @@ pub fn run(self: *Self) !void {
                 if (epoll_event.data.fd == self.signal_fd or epoll_event.data.fd == self.event_fd) {
                     // What? how is this possible?
                 } else if (epoll_event.data.fd == self.server_net.stream.handle) {
-                    std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_DEL, epoll_event.data.fd, null) catch |err| {
-                        std.log.err("Epoll del failed for server: {d}. Error: {s}", .{ epoll_event.data.fd, @errorName(err) });
-                    };
                     std.log.err("Server socket failed (HUP), closing " ++ vendor, .{});
                     self.running = false;
                     break;
@@ -350,7 +355,7 @@ fn set_socket_non_blocking(socket: std.posix.socket_t) void {
     _ = std.posix.fcntl(socket, std.posix.F.SETFL, flags | std.posix.SOCK.NONBLOCK) catch unreachable;
 }
 
-fn add_client(self: *Self, connection: std.net.Server.Connection) !*phx.Client {
+fn add_client(self: *Self, connection: *std.net.Server.Connection) !*phx.Client {
     set_socket_non_blocking(connection.stream.handle);
 
     const resource_id_base = self.resource_id_base_manager.get_next_free() orelse {
@@ -366,8 +371,11 @@ fn add_client(self: *Self, connection: std.net.Server.Connection) !*phx.Client {
     try std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_ADD, connection.stream.handle, &new_client_epoll_event);
     errdefer std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_DEL, connection.stream.handle, null) catch {};
 
-    var client = try phx.Client.init(connection, resource_id_base, self, new_client_epoll_event.events, self.allocator);
-    errdefer client.deinit();
+    var client = phx.Client.init(connection.*, resource_id_base, self, new_client_epoll_event.events, self.allocator);
+    errdefer {
+        client.deinit();
+        connection.stream.handle = -1;
+    }
 
     return self.client_manager.add_client(client);
 }

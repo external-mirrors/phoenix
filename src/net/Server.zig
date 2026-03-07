@@ -280,13 +280,17 @@ pub fn run(self: *Self) !void {
             const epoll_event = &self.epoll_events[event_index];
 
             if (epoll_event.data.fd == self.event_fd) {
-                var buf: [@sizeOf(u64)]u8 = undefined;
-                _ = std.posix.read(self.event_fd, &buf) catch unreachable;
+                if (epoll_event.events & std.os.linux.EPOLL.IN != 0) {
+                    var buf: [@sizeOf(u64)]u8 = undefined;
+                    _ = std.posix.read(self.event_fd, &buf) catch unreachable;
 
-                self.handle_messages();
+                    self.handle_messages();
+                }
             } else if (epoll_event.data.fd == self.signal_fd) {
-                std.log.info("Received SIGINT signal, stopping " ++ vendor, .{});
-                self.running = false;
+                if (epoll_event.events & std.os.linux.EPOLL.IN != 0) {
+                    std.log.info("Received SIGINT signal, stopping " ++ vendor, .{});
+                    self.running = false;
+                }
             } else if (epoll_event.data.fd == self.server_net.stream.handle) {
                 var connection = self.server_net.accept() catch |err| {
                     std.log.err("Connection from client failed, error: {s}", .{@errorName(err)});
@@ -453,7 +457,7 @@ fn handle_client_request(self: *Self, client: *phx.Client) !bool {
     // TODO: Byteswap
     const request_header = client.peek_read_buffer(phx.request.RequestHeader) orelse return false;
     const request_length = request_header.get_length_in_bytes();
-    std.log.info("Got client data. Opcode: {d}:{d}, length: {d}", .{ request_header.major_opcode, request_header.minor_opcode, request_length });
+    std.log.info("Got client data. Opcode: {d}:{d}, length: {d}, num bytes available to read: {d}", .{ request_header.major_opcode, request_header.minor_opcode, request_length, client.read_buffer_data_size() });
     if (client.read_buffer_data_size() < request_length)
         return false;
 

@@ -30,8 +30,6 @@ pub const c = @cImport({
     @cDefine("__USE_GNU", {});
     @cInclude("sys/shm.h");
     @cInclude("sys/socket.h");
-
-    @cInclude("stdlib.h"); // setenv, unsetenv
 });
 
 pub const KeySym = @cImport(@cInclude("xkbcommon/xkbcommon-keysyms.h"));

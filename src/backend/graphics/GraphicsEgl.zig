@@ -40,6 +40,9 @@ const PFNGLEGLIMAGETARGETTEXTURE2DOESPROC = *const fn (c.GLenum, c.GLeglImageOES
 const PFNEGLQUERYDMABUFMODIFIERSEXTPROC = *const fn (c.EGLDisplay, c.EGLint, c.EGLint, [*c]c.EGLuint64KHR, [*c]c.EGLBoolean, [*c]c.EGLint) callconv(.c) c.EGLBoolean;
 const PFNGLCOPYIMAGESUBDATAPROC = *const fn (c.GLuint, c.GLenum, c.GLint, c.GLint, c.GLint, c.GLint, c.GLuint, c.GLenum, c.GLint, c.GLint, c.GLint, c.GLint, c.GLsizei, c.GLsizei, c.GLsizei) callconv(.c) void;
 
+extern "c" fn setenv(__name: [*c]const u8, __value: [*c]const u8, __replace: c_int) c_int;
+extern "c" fn unsetenv(__name: [*c]const u8) c_int;
+
 egl_display: c.EGLDisplay,
 egl_surface: c.EGLSurface,
 egl_context: c.EGLContext,
@@ -126,6 +129,7 @@ pub fn init(
 
     if (c.eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context) == c.EGL_FALSE)
         return error.FailedToMakeEglContextCurrent;
+    errdefer _ = c.eglMakeCurrent(egl_display, null, null, null);
 
     if (debug) {
         glDebugMessageCallback(gl_debug_callback, null);
@@ -145,11 +149,11 @@ pub fn init(
     }
 
     // Stop nvidia driver from buffering frames
-    _ = c.setenv("__GL_MaxFramesAllowed", "1", 1);
-    _ = c.setenv("__GL_THREADED_OPTIMIZATIONS", "0", 1);
+    _ = setenv("__GL_MaxFramesAllowed", "1", 1);
+    _ = setenv("__GL_THREADED_OPTIMIZATIONS", "0", 1);
     // Some people set this to force all applications to vsync on nvidia, but this makes eglSwapBuffers never return.
-    _ = c.unsetenv("__GL_SYNC_TO_VBLANK");
-    _ = c.unsetenv("vblank_mode");
+    _ = unsetenv("__GL_SYNC_TO_VBLANK");
+    _ = unsetenv("vblank_mode");
     if (c.eglSwapInterval(egl_display, 0) == c.EGL_FALSE)
         std.log.warn("Failed to disable egl vsync", .{});
 
@@ -779,12 +783,6 @@ fn create_texture_from_dmabuf(self: *Self, pixmap: *const phx.Pixmap) !u32 {
     c.glBindTexture(c.GL_TEXTURE_2D, 0);
 
     return texture;
-
-    //if (c.eglMakeCurrent(self.egl_display, null, null, null) == c.EGL_FALSE)
-    //    return error.FailedToMakeEglContextCurrent;
-
-    // TODO:
-    //_ = try std.Thread.spawn(.{}, Self.render_callback, .{ self, texture });
 }
 
 fn create_textures_from_dmabufs(self: *Self) void {

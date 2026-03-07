@@ -118,11 +118,7 @@ pub fn is_owner_of_resource(self: *Self, resource_id: x11.ResourceId) bool {
 }
 
 pub fn read_buffer_data_size(self: *Self) usize {
-    var size: usize = 0;
-    for (self.read_buffer.get_slices()) |slice| {
-        size += slice.len;
-    }
-    return size;
+    return self.read_buffer.size;
 }
 
 /// Returns null if the size requested is larger than the read buffer
@@ -148,7 +144,7 @@ pub fn read_client_data_to_buffer(self: *Self) !void {
 
         errdefer recv_result.deinit();
         try self.read_buffer.append_slice(self.allocator, recv_result.data);
-        // TODO: If this fails but not the above then we need to discard data from the write end, how?
+        errdefer _ = self.read_buffer.discard_write_end(recv_result.data.len);
         try self.read_buffer_fds.append_slice(self.allocator, recv_result.get_fds());
     }
 }
@@ -177,9 +173,6 @@ pub fn flush_write_buffer(self: *Self) !void {
             reply_fd.deinit();
         }
         _ = self.write_buffer_fds.discard(reply_fds.len);
-
-        if (bytes_written == 0)
-            return;
     }
 }
 
@@ -245,13 +238,15 @@ pub fn write_reply_with_fds(self: *Self, reply_data: anytype, fds: []const phx.m
     if (@typeInfo(@TypeOf(reply_data)) != .pointer)
         @compileError("Expected reply data to be a pointer");
 
-    // TODO:
-    //const num_bytes_written_before = self.write_buffer.count;
+    const num_bytes_written_before = self.write_buffer.size;
     var writer = self.write_buffer.writer(self.allocator);
     try phx.reply.write_reply(@TypeOf(reply_data.*), reply_data, &writer.interface);
+
     // The X11 protocol says that replies have to be at least 32-bytes
-    //std.debug.assert(self.write_buffer.count - num_bytes_written_before >= 32);
-    // TODO: If this fails but not the above then we need to discard data from the write end, how?
+    const num_bytes_written_message = self.write_buffer.size - num_bytes_written_before;
+    std.debug.assert(num_bytes_written_message >= 32);
+    errdefer _ = self.write_buffer.discard_write_end(num_bytes_written_message);
+
     try self.write_buffer_fds.append_slice(self.allocator, fds);
     self.flush_write_buffer_ignore_error();
 }

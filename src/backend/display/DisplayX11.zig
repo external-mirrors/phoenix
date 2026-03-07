@@ -135,7 +135,7 @@ pub fn run_update_thread(self: *Self) !void {
     if (self.thread_started)
         return error.UpdateThreadAlreadyStarted;
 
-    self.thread = try std.Thread.spawn(.{}, update_thread, .{self});
+    self.thread = try std.Thread.spawn(.{ .stack_size = 1 * 1024 * 1024 }, update_thread, .{self});
     self.thread_started = true;
 }
 

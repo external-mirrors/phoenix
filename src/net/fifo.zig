@@ -97,7 +97,7 @@ pub fn Fifo(comptime T: type) type {
             return item;
         }
 
-        /// It's valid to discard more items than there are. The extra items will be discarded.
+        /// It's valid to discard more items than there are. The extra items will be ignored.
         /// Returns the number of items discarded.
         pub fn discard(self: *Self, num_items_to_discard: usize) usize {
             const ndiscard = @min(num_items_to_discard, self.size);
@@ -105,6 +105,15 @@ pub fn Fifo(comptime T: type) type {
                 self.start_index = (self.start_index + ndiscard) % self.buffer.len;
                 self.size -= ndiscard;
             }
+            return ndiscard;
+        }
+
+        /// It's valid to discard more items than there are. The extra items will be ignored.
+        /// Returns the number of items discarded.
+        pub fn discard_write_end(self: *Self, num_items_to_discard: usize) usize {
+            const ndiscard = @min(num_items_to_discard, self.size);
+            if (ndiscard > 0)
+                self.size -= ndiscard;
             return ndiscard;
         }
 

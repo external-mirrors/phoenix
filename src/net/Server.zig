@@ -154,11 +154,13 @@ pub fn create(allocator: std.mem.Allocator) !*Self {
         .stream = self.server_net.stream,
         .address = self.server_net.listen_address,
     };
+    errdefer {
+        if (server_connection.stream.handle > 0)
+            server_connection.stream.close();
+    }
 
     self.root_client = self.add_client(&server_connection) catch |err| {
         std.log.err("Failed to add server client: {d}, error: {s}", .{ server_connection.stream.handle, @errorName(err) });
-        if (server_connection.stream.handle > 0)
-            server_connection.stream.close();
         return error.FailedToSetupRootClient;
     };
 
@@ -376,10 +378,8 @@ fn add_client(self: *Self, connection: *std.net.Server.Connection) !*phx.Client 
     errdefer std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_DEL, connection.stream.handle, null) catch {};
 
     var client = phx.Client.init(connection.*, resource_id_base, self, new_client_epoll_event.events, self.allocator);
-    errdefer {
-        client.deinit();
-        connection.stream.handle = -1;
-    }
+    connection.stream.handle = -1;
+    errdefer client.deinit();
 
     return self.client_manager.add_client(client);
 }

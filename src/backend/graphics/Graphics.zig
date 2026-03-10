@@ -60,9 +60,9 @@ pub fn make_current_thread_active(self: *Self) !void {
     };
 }
 
-pub fn make_current_thread_unactive(self: *Self) !void {
+pub fn make_current_thread_inactive(self: *Self) !void {
     return switch (self.impl) {
-        inline else => |item| item.make_current_thread_unactive(),
+        inline else => |item| item.make_current_thread_inactive(),
     };
 }
 

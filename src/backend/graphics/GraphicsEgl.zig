@@ -448,8 +448,6 @@ fn perform_present_pixmap_operations(self: *Self) void {
             @intCast(op.window.height),
             1,
         );
-
-        // TODO: Trigger operation finished event
     }
     self.present_pixmap_operations.clearRetainingCapacity();
 }
@@ -492,7 +490,7 @@ fn render_graphics_windows(self: *Self, graphics_window: *phx.Graphics.GraphicsW
     }
     c.glEnd();
 
-    // TODO: Don't render windows that are covered by other windows
+    // XXX: Don't render windows that are covered by other windows
     for (graphics_window.children.items) |child_window| {
         const end_pos = @min(pos + size, parent_pos + parent_size);
         const scissor_size = end_pos - pos;
@@ -501,17 +499,15 @@ fn render_graphics_windows(self: *Self, graphics_window: *phx.Graphics.GraphicsW
 }
 
 pub fn make_current_thread_active(self: *Self) !void {
-    // TODO: If this fails propagate it up to the main thread, maybe by setting a variable if it succeeds
-    // or not and wait for that in the main thread.
     if (c.eglMakeCurrent(self.egl_display, self.egl_surface, self.egl_surface, self.egl_context) == c.EGL_FALSE) {
         std.log.err("GraphicsEgl.make_current_thread_active: eglMakeCurrent failed, error: {d}", .{c.eglGetError()});
         return error.FailedToMakeEglContextCurrent;
     }
 }
 
-pub fn make_current_thread_unactive(self: *Self) !void {
+pub fn make_current_thread_inactive(self: *Self) !void {
     if (c.eglMakeCurrent(self.egl_display, null, null, null) == c.EGL_FALSE) {
-        std.log.err("GraphicsEgl.make_current_thread_unactive: eglMakeCurrent failed, error: {d}", .{c.eglGetError()});
+        std.log.err("GraphicsEgl.make_current_thread_inactive: eglMakeCurrent failed, error: {d}", .{c.eglGetError()});
         return error.FailedToMakeEglContextCurrent;
     }
 }
@@ -770,7 +766,7 @@ fn create_texture_from_dmabuf(self: *Self, pixmap: *const phx.Pixmap) !u32 {
     if (image == null or c.eglGetError() != c.EGL_SUCCESS)
         return error.FailedToImportFd;
 
-    // TODO: Do this properly
+    // XXX: Do this properly
     while (c.glGetError() != 0) {}
     var texture: c.GLuint = 0;
     errdefer c.glDeleteTextures(1, &texture);

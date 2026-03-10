@@ -105,7 +105,7 @@ pub fn init(server: *phx.Server, allocator: std.mem.Allocator) !Self {
         .window = window_id,
         .width = width,
         .height = height,
-        .size_updated = true,
+        .size_updated = false,
         .wm_delete_window_atom = wm_delete_window_reply.*.atom,
 
         .thread = undefined,
@@ -613,6 +613,11 @@ fn update_thread(self: *Self) !void {
         },
     };
 
+    self.wakeup();
+    self.graphics.resize(self.width, self.height);
+    self.graphics.update();
+    self.graphics.render();
+
     while (self.running) {
         const num_fds_ready = std.posix.poll(&poll_fds, -1) catch |err| {
             // TODO: What do?
@@ -699,8 +704,8 @@ fn update_thread(self: *Self) !void {
         }
     }
 
-    self.graphics.make_current_thread_unactive() catch |err| {
-        std.log.err("DisplayX11: Failed to make current thread unactive for graphics!, error: {s}", .{@errorName(err)});
+    self.graphics.make_current_thread_inactive() catch |err| {
+        std.log.err("DisplayX11: Failed to make current thread inactive for graphics!, error: {s}", .{@errorName(err)});
         return;
     };
 }

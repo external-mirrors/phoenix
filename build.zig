@@ -20,7 +20,7 @@ pub fn build(b: *std.Build) !void {
     const debugger = b.option(bool, "debugger", "Build with debugger support") orelse false;
 
     const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = if (debugger) .Debug else null });
+    const optimize = if (debugger) .Debug else b.standardOptimizeOption(.{});
 
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),

@@ -84,14 +84,14 @@ fn open(request_context: *phx.RequestContext) !void {
     const render_path = c.drmGetRenderDeviceNameFromFd(card_fd) orelse return error.FailedToGetCardRenderPath;
     defer std.c.free(render_path);
 
-    const render_fd = try std.posix.openZ(render_path, .{ .ACCMODE = .RDWR, .CLOEXEC = true }, 0);
+    const render_fd = std.posix.openZ(render_path, .{ .ACCMODE = .RDWR, .CLOEXEC = true }, 0) catch |err| {
+        std.log.err("Dri3Open: failed to open render path {s}, error: {s}", .{ render_path, @errorName(err) });
+        return request_context.client.write_error(request_context, .access, 0);
+    };
     errdefer std.posix.close(render_fd);
 
-    //const gbm = c.gbm_create_device(card_fd) orelse return error.GbmCreateDeviceFailed;
-    //_ = gbm;
-
     if (!validate_drm_auth(card_fd, render_fd))
-        return error.DrmAuthFailed;
+        return request_context.client.write_error(request_context, .access, 0);
 
     var open_reply = Reply.Open{
         .sequence_number = request_context.sequence_number,

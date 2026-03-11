@@ -630,7 +630,7 @@ fn update_thread(self: *Self) !void {
         var has_display_updates = false;
         var render_timeout_hit = false;
 
-        for (poll_fds) |poll_fd| {
+        for (&poll_fds) |*poll_fd| {
             if (poll_fd.fd == self.event_fd and (poll_fd.revents & std.posix.POLL.IN) != 0) {
                 var buf: [@sizeOf(u64)]u8 = undefined;
                 _ = std.posix.read(self.event_fd, &buf) catch unreachable;
@@ -640,6 +640,7 @@ fn update_thread(self: *Self) !void {
                 _ = std.posix.read(timer_fd, &buf) catch unreachable;
                 render_timeout_hit = true;
             }
+            poll_fd.revents = 0;
         }
 
         while (c.xcb_poll_for_event(self.connection)) |event| {

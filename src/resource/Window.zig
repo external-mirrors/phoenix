@@ -833,6 +833,7 @@ pub fn map(self: *Self) void {
 
     self.attributes.mapped = true;
     self.graphics_window.mapped = true; // XXX: Technically a race condition, but who cares
+    self.server.display.set_dirty();
 
     var map_notify_event = phx.event.Event{
         .map_notify = .{

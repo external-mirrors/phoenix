@@ -132,6 +132,12 @@ pub fn put_image(self: *Self, op: *const PutImageArguments) !void {
     };
 }
 
+pub fn set_dirty(self: *Self) void {
+    switch (self.impl) {
+        inline else => |item| item.set_dirty(),
+    }
+}
+
 const GraphicsImpl = union(enum) {
     egl: *GraphicsEgl,
 };

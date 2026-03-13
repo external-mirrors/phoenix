@@ -84,11 +84,14 @@ fn open(request_context: *phx.RequestContext) !void {
     const render_path = c.drmGetRenderDeviceNameFromFd(card_fd) orelse return error.FailedToGetCardRenderPath;
     defer std.c.free(render_path);
 
-    const render_fd = std.posix.openZ(render_path, .{ .ACCMODE = .RDWR, .CLOEXEC = true }, 0) catch |err| {
+    var render_fd = std.posix.openZ(render_path, .{ .ACCMODE = .RDWR, .CLOEXEC = true }, 0) catch |err| {
         std.log.err("Dri3Open: failed to open render path {s}, error: {s}", .{ render_path, @errorName(err) });
         return request_context.client.write_error(request_context, .access, 0);
     };
-    errdefer std.posix.close(render_fd);
+    defer {
+        if (render_fd > 0)
+            std.posix.close(render_fd);
+    }
 
     if (!validate_drm_auth(card_fd, render_fd))
         return request_context.client.write_error(request_context, .access, 0);
@@ -102,6 +105,7 @@ fn open(request_context: *phx.RequestContext) !void {
             .close_after_sent = true,
         },
     });
+    render_fd = 0;
 }
 
 fn pixmap_from_buffer(request_context: *phx.RequestContext) !void {

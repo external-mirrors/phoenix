@@ -67,6 +67,8 @@ glEGLImageTargetTexture2DOES: PFNGLEGLIMAGETARGETTEXTURE2DOESPROC,
 eglQueryDmaBufModifiersEXT: PFNEGLQUERYDMABUFMODIFIERSEXTPROC,
 glCopyImageSubData: PFNGLCOPYIMAGESUBDATAPROC,
 
+dirty: std.atomic.Value(bool) = .init(true),
+
 pub fn init(
     server: *phx.Server,
     width: u32,
@@ -89,12 +91,12 @@ pub fn init(
 
     const glDebugMessageCallback: PFNGLDEBUGMESSAGECALLBACKPROC = @ptrCast(c.eglGetProcAddress("glDebugMessageCallback") orelse return error.FailedToResolveOpenglProc);
     const eglGetPlatformDisplayEXT: PFNEGLGETPLATFORMDISPLAYEXTPROC = @ptrCast(c.eglGetProcAddress("eglGetPlatformDisplayEXT") orelse return error.FailedToResolveOpenglProc);
-    const glCopyImageSubData: PFNGLCOPYIMAGESUBDATAPROC = @ptrCast(c.eglGetProcAddress("glCopyImageSubData") orelse return error.FailedToResolveOpenglProc);
 
     const eglQueryDisplayAttribEXT: PFNEGLQUERYDISPLAYATTRIBEXTPROC = @ptrCast(c.eglGetProcAddress("eglQueryDisplayAttribEXT") orelse return error.FailedToResolveOpenglProc);
     const eglQueryDeviceStringEXT: PFNEGLQUERYDEVICESTRINGEXTPROC = @ptrCast(c.eglGetProcAddress("eglQueryDeviceStringEXT") orelse return error.FailedToResolveOpenglProc);
     const glEGLImageTargetTexture2DOES: PFNGLEGLIMAGETARGETTEXTURE2DOESPROC = @ptrCast(c.eglGetProcAddress("glEGLImageTargetTexture2DOES") orelse return error.FailedToResolveOpenglProc);
     const eglQueryDmaBufModifiersEXT: PFNEGLQUERYDMABUFMODIFIERSEXTPROC = @ptrCast(c.eglGetProcAddress("eglQueryDmaBufModifiersEXT") orelse return error.FailedToResolveOpenglProc);
+    const glCopyImageSubData: PFNGLCOPYIMAGESUBDATAPROC = @ptrCast(c.eglGetProcAddress("glCopyImageSubData") orelse return error.FailedToResolveOpenglProc);
 
     const egl_display = eglGetPlatformDisplayEXT(platform, connection, &[_]c.EGLint{
         screen_type,
@@ -182,7 +184,6 @@ pub fn init(
     const draw_buffer: c.GLenum = c.GL_COLOR_ATTACHMENT0;
     var framebuffer: c.GLuint = 0;
     c.glGenFramebuffers(1, &framebuffer);
-    if (c.glGetError() != 0) return error.FailedToGenerateFramebuffer;
     c.glBindFramebuffer(c.GL_FRAMEBUFFER, framebuffer);
     c.glDrawBuffers(1, &draw_buffer);
     c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
@@ -519,20 +520,24 @@ pub fn update(self: *Self) void {
 pub fn render(self: *Self) void {
     self.run_graphics_updates();
 
-    c.glClearColor(0.0, 0.47450, 0.73725, 1.0);
-    c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT | c.GL_STENCIL_BUFFER_BIT);
+    if (self.dirty.load(.acquire)) {
+        self.dirty.store(false, .release);
 
-    self.mutex.lock();
-    if (self.root_window) |root_window| {
-        self.perform_put_image_operations();
-        self.perform_present_pixmap_operations();
-        self.render_graphics_windows(root_window, @Vector(2, i32){ 0, 0 }, @Vector(2, i32){ @intCast(self.width), @intCast(self.height) });
-        c.glBindTexture(c.GL_TEXTURE_2D, 0);
-        c.glScissor(0, 0, @intCast(self.width), @intCast(self.height));
+        c.glClearColor(0.0, 0.47450, 0.73725, 1.0);
+        c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT | c.GL_STENCIL_BUFFER_BIT);
+
+        self.mutex.lock();
+        if (self.root_window) |root_window| {
+            self.perform_put_image_operations();
+            self.perform_present_pixmap_operations();
+            self.render_graphics_windows(root_window, @Vector(2, i32){ 0, 0 }, @Vector(2, i32){ @intCast(self.width), @intCast(self.height) });
+            c.glBindTexture(c.GL_TEXTURE_2D, 0);
+            c.glScissor(0, 0, @intCast(self.width), @intCast(self.height));
+        }
+        self.mutex.unlock();
+
+        _ = c.eglSwapBuffers(self.egl_display, self.egl_surface);
     }
-    self.mutex.unlock();
-
-    _ = c.eglSwapBuffers(self.egl_display, self.egl_surface);
     self.server.append_message(&.{
         .vsync_finished = .{
             .timestamp_sec = phx.time.clock_get_monotonic_seconds(),
@@ -556,6 +561,8 @@ pub fn resize(self: *Self, width: u32, height: u32) void {
     c.glLoadIdentity();
 
     c.glScissor(0, 0, @intCast(self.width), @intCast(self.height));
+
+    self.dirty.store(true, .release);
 }
 
 fn pixel_to_color_vec(color: u32) @Vector(4, f32) {
@@ -597,6 +604,7 @@ pub fn create_window(self: *Self, window: *const phx.Window) !*phx.Graphics.Grap
         self.root_window = graphics_window;
     }
 
+    self.dirty.store(true, .release);
     return graphics_window;
 }
 
@@ -611,6 +619,8 @@ pub fn configure_window(self: *Self, window: *phx.Window, geometry: phx.Geometry
     window.graphics_window.y = geometry.y;
     window.graphics_window.width = geometry.width;
     window.graphics_window.height = geometry.height;
+
+    self.dirty.store(true, .release);
 }
 
 pub fn destroy_window(self: *Self, window: *phx.Window) void {
@@ -618,6 +628,7 @@ pub fn destroy_window(self: *Self, window: *phx.Window) void {
     defer self.mutex.unlock();
 
     window.graphics_window.delete = true;
+    self.dirty.store(true, .release);
 }
 
 pub fn create_pixmap(self: *Self, pixmap: *phx.Pixmap) !void {
@@ -631,6 +642,7 @@ pub fn create_pixmap(self: *Self, pixmap: *phx.Pixmap) !void {
     defer self.mutex.unlock();
 
     try self.pixmap_to_import.append(self.allocator, pixmap);
+    self.dirty.store(true, .release);
 }
 
 pub fn destroy_pixmap(self: *Self, pixmap: *phx.Pixmap) void {
@@ -650,6 +662,8 @@ pub fn destroy_pixmap(self: *Self, pixmap: *phx.Pixmap) void {
         };
         pixmap.texture_id = 0;
     }
+
+    self.dirty.store(true, .release);
 }
 
 pub fn present_pixmap(self: *Self, pixmap: *phx.Pixmap, window: *const phx.Window, target_msc: u64) !void {
@@ -662,6 +676,7 @@ pub fn present_pixmap(self: *Self, pixmap: *phx.Pixmap, window: *const phx.Windo
         .target_msc = target_msc,
     });
     pixmap.ref();
+    self.dirty.store(true, .release);
 }
 
 pub fn put_image(self: *Self, op: *const phx.Graphics.PutImageArguments) !void {
@@ -692,6 +707,11 @@ pub fn put_image(self: *Self, op: *const phx.Graphics.PutImageArguments) !void {
 
     op.shm.ref();
     graphics_drawable.ref();
+    self.dirty.store(true, .release);
+}
+
+pub fn set_dirty(self: *Self) void {
+    self.dirty.store(true, .release);
 }
 
 fn create_texture_from_dmabuf(self: *Self, pixmap: *const phx.Pixmap) !u32 {
@@ -726,13 +746,15 @@ fn create_texture_from_dmabuf(self: *Self, pixmap: *const phx.Pixmap) !u32 {
         attr_index += 2;
 
         if (pixmap.dmabuf_data.modifier[i]) |mod| {
-            attr[attr_index + 0] = plane_modifier_lo_attrs[i];
-            attr[attr_index + 1] = @intCast(mod & 0xFFFFFFFF);
-            attr_index += 2;
+            if (mod != DRM_FORMAT_MOD_INVALID) {
+                attr[attr_index + 0] = plane_modifier_lo_attrs[i];
+                attr[attr_index + 1] = @intCast(mod & 0xFFFFFFFF);
+                attr_index += 2;
 
-            attr[attr_index + 0] = plane_modifier_hi_attrs[i];
-            attr[attr_index + 1] = @intCast(mod >> 32);
-            attr_index += 2;
+                attr[attr_index + 0] = plane_modifier_hi_attrs[i];
+                attr[attr_index + 1] = @intCast(mod >> 32);
+                attr_index += 2;
+            }
         }
 
         var path_buf: [std.fs.max_path_bytes]u8 = undefined;
@@ -905,3 +927,5 @@ const plane_modifier_hi_attrs: [drm_max_buf_attrs]u32 = .{
     c.EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT,
     c.EGL_DMA_BUF_PLANE3_MODIFIER_HI_EXT,
 };
+
+const DRM_FORMAT_MOD_INVALID: usize = 0xffffffffffffff;

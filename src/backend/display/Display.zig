@@ -128,9 +128,15 @@ pub fn is_running(self: *Self) bool {
 }
 
 pub fn wakeup(self: *Self) void {
-    return switch (self.impl) {
+    switch (self.impl) {
         inline else => |item| item.wakeup(),
-    };
+    }
+}
+
+pub fn set_dirty(self: *Self) void {
+    switch (self.impl) {
+        inline else => |item| item.set_dirty(),
+    }
 }
 
 /// Thread-safe

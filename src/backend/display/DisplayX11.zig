@@ -565,6 +565,10 @@ pub fn wakeup(self: *Self) void {
     _ = std.posix.write(self.event_fd, std.mem.bytesAsSlice(u8, std.mem.asBytes(&value))) catch unreachable;
 }
 
+pub fn set_dirty(self: *Self) void {
+    self.graphics.set_dirty();
+}
+
 fn update_thread(self: *Self) !void {
     self.graphics.make_current_thread_active() catch |err| {
         std.log.err("DisplayX11: Failed to make current thread active for graphics!, error: {s}", .{@errorName(err)});

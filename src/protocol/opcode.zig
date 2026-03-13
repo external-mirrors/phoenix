@@ -27,6 +27,7 @@ pub const Major = enum(x11.Card8) {
     create_pixmap = 53,
     free_pixmap = 54,
     create_gc = 55,
+    change_gc = 56,
     free_gc = 60,
     create_colormap = 78,
     query_extension = 98,

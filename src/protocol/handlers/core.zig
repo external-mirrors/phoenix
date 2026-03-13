@@ -39,6 +39,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .create_pixmap => create_pixmap(request_context),
         .free_pixmap => free_pixmap(request_context),
         .create_gc => create_gc(request_context),
+        .change_gc => change_gc(request_context),
         .free_gc => free_gc(request_context),
         .create_colormap => create_colormap(request_context),
         .query_extension => query_extension(request_context),
@@ -1131,6 +1132,13 @@ fn create_gc(request_context: *phx.RequestContext) !void {
     std.log.err("TODO: Implement CreateGC (or maybe not)", .{});
 }
 
+fn change_gc(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.ChangeGC, request_context.allocator);
+    defer req.deinit();
+
+    std.log.err("TODO: Implement ChangeGC (or maybe not)", .{});
+}
+
 fn free_gc(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.FreeGC, request_context.allocator);
     defer req.deinit();
@@ -1899,6 +1907,24 @@ pub const Request = struct {
         length: x11.Card16,
         gc: x11.GContextId,
         drawable: x11.DrawableId,
+        value_mask: CreateGCValueMask,
+        value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
+
+        pub fn get_value(self: *const CreateGC, comptime T: type, comptime value_mask_field: []const u8) ?T {
+            if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
+                // The protocol specifies that all uninteresting bits are undefined, so we need to set them to 0
+                return downcast_integer(T, self.value_list.items[index]);
+            } else {
+                return null;
+            }
+        }
+    };
+
+    pub const ChangeGC = struct {
+        opcode: phx.opcode.Major = .change_gc,
+        pad1: x11.Card8,
+        length: x11.Card16,
+        gc: x11.GContextId,
         value_mask: CreateGCValueMask,
         value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
 

@@ -1200,9 +1200,9 @@ fn query_extension(request_context: *phx.RequestContext) !void {
         // } else if (std.mem.eql(u8, req.request.name.items, "XKEYBOARD")) {
         //     rep.present = true;
         //     rep.major_opcode = @intFromEnum(phx.opcode.Major.xkb);
-        // } else if (std.mem.eql(u8, req.request.name.items, "RENDER")) {
-        //     rep.present = true;
-        //     rep.major_opcode = @intFromEnum(phx.opcode.Major.render);
+    } else if (std.mem.eql(u8, req.request.name.items, "RENDER")) {
+        rep.present = true;
+        rep.major_opcode = @intFromEnum(phx.opcode.Major.render);
     } else if (std.mem.eql(u8, req.request.name.items, "RANDR")) {
         rep.present = true;
         rep.major_opcode = @intFromEnum(phx.opcode.Major.randr);

@@ -67,6 +67,8 @@ pub fn init(server: *phx.Server, allocator: std.mem.Allocator) !Self {
         return error.FailedToCreateRootWindow;
     }
 
+    try set_window_title(connection, window_id, "Phoenix");
+
     var graphics = try phx.Graphics.create_egl(
         server,
         width,
@@ -468,6 +470,21 @@ fn get_keyboard_map_key_actions(map: *const c.xcb_xkb_get_map_map_t, num_key_act
         .actions_count_return = .{ .items = actions_count },
         .actions_return = .{ .items = actions },
     };
+}
+
+fn set_window_title(connection: *c.xcb_connection_t, window: c.xcb_window_t, title: []const u8) !void {
+    const utf8_string_atom = try get_atom(connection, "UTF8_STRING");
+    const net_wm_name_atom = try get_atom(connection, "_NET_WM_NAME");
+    _ = c.xcb_change_property(connection, c.XCB_PROP_MODE_REPLACE, window, c.XCB_ATOM_WM_NAME, utf8_string_atom, 8, @truncate(title.len), title.ptr);
+    _ = c.xcb_change_property(connection, c.XCB_PROP_MODE_REPLACE, window, net_wm_name_atom, utf8_string_atom, 8, @truncate(title.len), title.ptr);
+}
+
+fn get_atom(connection: *c.xcb_connection_t, name: []const u8) !c.xcb_atom_t {
+    const cookie = c.xcb_intern_atom(connection, 0, @truncate(name.len), name.ptr);
+    const reply = c.xcb_intern_atom_reply(connection, cookie, null) orelse return error.FailedToGetAtomReply;
+    const atom = reply.*.atom;
+    std.c.free(reply);
+    return atom;
 }
 
 // fn copy_key_actions(dest: anytype, source: anytype) void {

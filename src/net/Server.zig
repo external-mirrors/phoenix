@@ -56,9 +56,10 @@ cursor_y: i32,
 running: bool = false,
 shutting_down: std.atomic.Value(bool) = .init(false),
 
-// TODO: Initialize with the current state right when the server starts because the user might hold down a button when the server starts.
-// TODO: Update with key states as well when keys are handled.
+// TODO: Initialize with the current state right when the server starts because the user might hold down a button when the server starts
+// and in the case on nested x11 capslock/numlock might be enabled on start.
 current_key_but_mask: phx.event.KeyButMask = .{},
+keys_pressed: KeysPressed = .{},
 
 all_shm_segments: std.ArrayListUnmanaged(phx.ShmSegment) = .empty,
 
@@ -606,8 +607,9 @@ fn handle_messages(self: *Self) void {
                 _ = vsync_finished;
                 // TODO: trigger PresentCompleteNotify or whatever
             },
-            .mouse_move => |mouse_move| self.handle_mouse_move(mouse_move),
-            .mouse_click => |mouse_click| self.handle_mouse_click(mouse_click),
+            .mouse_move => |*mouse_move| self.handle_mouse_move(mouse_move),
+            .mouse_click => |*mouse_click| self.handle_mouse_click(mouse_click),
+            .key => |*key| self.handle_key(key),
             .present_pixmap_finished => |*present_pixmap_finished| {
                 // TODO: trigger event
                 present_pixmap_finished.operation.unref();
@@ -647,7 +649,7 @@ fn cleanup_messages_resources(self: *Self) void {
 
 fn cleanup_message_resources(message: *Message) void {
     switch (message.*) {
-        .shutdown, .vsync_finished, .mouse_move, .mouse_click => {},
+        .shutdown, .vsync_finished, .mouse_move, .mouse_click, .key => {},
         .present_pixmap_finished => |*present_pixmap_finished| present_pixmap_finished.operation.unref(),
         .put_image_finished => |*put_image_finished| put_image_finished.operation.unref(),
         .present_pixmap_canceled => |*present_pixmap_canceled| present_pixmap_canceled.operation.unref(),
@@ -655,12 +657,14 @@ fn cleanup_message_resources(message: *Message) void {
     }
 }
 
-fn handle_mouse_move(self: *Self, mouse_move: MouseMoveMessage) void {
-    self.cursor_x = mouse_move.x;
-    self.cursor_y = mouse_move.y;
+fn handle_mouse_move(self: *Self, mouse_move: *MouseMoveMessage) void {
+    if (mouse_move.real_event) {
+        self.cursor_x = mouse_move.x;
+        self.cursor_y = mouse_move.y;
+    }
 
     const current_server_time = self.get_timestamp_milliseconds();
-    const cursor_pos_root = @Vector(2, i32){ self.cursor_x, self.cursor_y };
+    const cursor_pos_root = @Vector(2, i32){ mouse_move.x, mouse_move.y };
     var cursor_pos_relative_to_window = @Vector(2, i32){ 0, 0 };
     // XXX: Optimize this. Maybe we dont want to do this on every mouse move. Also update cursor window when a window moves
     var cursor_window = phx.Window.get_window_at_position(self.root_window, cursor_pos_root, &cursor_pos_relative_to_window);
@@ -683,12 +687,14 @@ fn handle_mouse_move(self: *Self, mouse_move: MouseMoveMessage) void {
     cursor_window.write_core_event_to_event_listeners(&motion_notify_event);
 }
 
-fn handle_mouse_click(self: *Self, mouse_click: MouseClickMessage) void {
-    self.cursor_x = mouse_click.x;
-    self.cursor_y = mouse_click.y;
+fn handle_mouse_click(self: *Self, mouse_click: *MouseClickMessage) void {
+    if (mouse_click.real_event) {
+        self.cursor_x = mouse_click.x;
+        self.cursor_y = mouse_click.y;
+    }
 
     const current_server_time = self.get_timestamp_milliseconds();
-    const cursor_pos_root = @Vector(2, i32){ self.cursor_x, self.cursor_y };
+    const cursor_pos_root = @Vector(2, i32){ mouse_click.x, mouse_click.y };
     var cursor_pos_relative_to_window = @Vector(2, i32){ 0, 0 };
     var cursor_window = phx.Window.get_window_at_position(self.root_window, cursor_pos_root, &cursor_pos_relative_to_window);
 
@@ -720,41 +726,90 @@ fn handle_mouse_click(self: *Self, mouse_click: MouseClickMessage) void {
         }
     }
 
+    const button_event = phx.event.ButtonPressEvent{
+        .code = if (mouse_click.state == .press) .button_press else .button_release,
+        .button = mouse_click.button,
+        .time = current_server_time,
+        .root_window = self.root_window.id,
+        .event = cursor_window.id,
+        .child_window = .none, // XXX: Is there any case where we dont want this to be .none?
+        .root_x = @intCast(cursor_pos_root[0]),
+        .root_y = @intCast(cursor_pos_root[1]),
+        .event_x = @intCast(cursor_pos_relative_to_window[0]),
+        .event_y = @intCast(cursor_pos_relative_to_window[1]),
+        .state = self.current_key_but_mask,
+        .same_screen = true,
+    };
+
     switch (mouse_click.state) {
         .press => {
-            var button_press_event = phx.event.Event{
-                .button_press = .{
-                    .button = mouse_click.button,
-                    .time = current_server_time,
-                    .root_window = self.root_window.id,
-                    .event = cursor_window.id,
-                    .child_window = .none, // XXX: Is there any case where we dont want this to be .none?
-                    .root_x = @intCast(cursor_pos_root[0]),
-                    .root_y = @intCast(cursor_pos_root[1]),
-                    .event_x = @intCast(cursor_pos_relative_to_window[0]),
-                    .event_y = @intCast(cursor_pos_relative_to_window[1]),
-                    .state = self.current_key_but_mask,
-                    .same_screen = true,
-                },
-            };
+            var button_press_event = phx.event.Event{ .button_press = button_event };
             cursor_window.write_core_event_to_event_listeners(&button_press_event);
         },
         .release => {
-            var button_release_event = phx.event.Event{
-                .button_release = .{
-                    .button = mouse_click.button,
-                    .time = current_server_time,
-                    .root_window = self.root_window.id,
-                    .event = cursor_window.id,
-                    .child_window = .none, // XXX: Is there any case where we dont want this to be .none?
-                    .root_x = @intCast(cursor_pos_root[0]),
-                    .root_y = @intCast(cursor_pos_root[1]),
-                    .event_x = @intCast(cursor_pos_relative_to_window[0]),
-                    .event_y = @intCast(cursor_pos_relative_to_window[1]),
-                    .state = self.current_key_but_mask,
-                    .same_screen = true,
-                },
-            };
+            var button_release_event = phx.event.Event{ .button_release = @bitCast(button_event) };
+            cursor_window.write_core_event_to_event_listeners(&button_release_event);
+        },
+    }
+}
+
+fn handle_key(self: *Self, key: *KeyMessage) void {
+    const current_server_time = self.get_timestamp_milliseconds();
+    const cursor_pos_root = @Vector(2, i32){ key.x, key.y };
+    var cursor_pos_relative_to_window = @Vector(2, i32){ 0, 0 };
+    var cursor_window = phx.Window.get_window_at_position(self.root_window, cursor_pos_root, &cursor_pos_relative_to_window);
+
+    const prev_capslock_pressed = self.keys_pressed.capslock;
+    const prev_numlock_pressed = self.keys_pressed.numlock;
+
+    switch (self.input.x11_keycode_to_keysym(key.keycode)) {
+        phx.KeySyms.XKB_KEY_Shift_L => self.keys_pressed.lshift = key.state == .press,
+        phx.KeySyms.XKB_KEY_Shift_R => self.keys_pressed.rshift = key.state == .press,
+        phx.KeySyms.XKB_KEY_Control_L => self.keys_pressed.lctrl = key.state == .press,
+        phx.KeySyms.XKB_KEY_Control_R => self.keys_pressed.rctrl = key.state == .press,
+        phx.KeySyms.XKB_KEY_Alt_L => self.keys_pressed.lalt = key.state == .press,
+        phx.KeySyms.XKB_KEY_Alt_R => self.keys_pressed.ralt = key.state == .press,
+        phx.KeySyms.XKB_KEY_Meta_L => self.keys_pressed.lmeta = key.state == .press,
+        phx.KeySyms.XKB_KEY_Meta_R => self.keys_pressed.rmeta = key.state == .press,
+        phx.KeySyms.XKB_KEY_ISO_Level3_Shift => self.current_key_but_mask.mod5 = key.state == .press,
+        phx.KeySyms.XKB_KEY_Caps_Lock => self.keys_pressed.capslock = key.state == .press,
+        phx.KeySyms.XKB_KEY_Num_Lock => self.keys_pressed.numlock = key.state == .press,
+        else => {},
+    }
+
+    self.current_key_but_mask.shift = self.keys_pressed.lshift or self.keys_pressed.rshift;
+    self.current_key_but_mask.control = self.keys_pressed.lctrl or self.keys_pressed.rctrl;
+    self.current_key_but_mask.mod1 = self.keys_pressed.lalt or self.keys_pressed.ralt;
+    self.current_key_but_mask.mod4 = self.keys_pressed.lmeta or self.keys_pressed.rmeta;
+
+    if (self.keys_pressed.capslock and !prev_capslock_pressed)
+        self.current_key_but_mask.lock = !self.current_key_but_mask.lock;
+
+    if (self.keys_pressed.numlock and !prev_numlock_pressed)
+        self.current_key_but_mask.mod2 = !self.current_key_but_mask.mod2;
+
+    const key_event = phx.event.KeyPressEvent{
+        .code = if (key.state == .press) .key_press else .key_release,
+        .keycode = key.keycode,
+        .time = current_server_time,
+        .root_window = self.root_window.id,
+        .event = cursor_window.id,
+        .child_window = .none, // XXX: Is there any case where we dont want this to be .none?
+        .root_x = @intCast(cursor_pos_root[0]),
+        .root_y = @intCast(cursor_pos_root[1]),
+        .event_x = @intCast(cursor_pos_relative_to_window[0]),
+        .event_y = @intCast(cursor_pos_relative_to_window[1]),
+        .state = self.current_key_but_mask,
+        .same_screen = true,
+    };
+
+    switch (key.state) {
+        .press => {
+            var button_press_event = phx.event.Event{ .key_press = key_event };
+            cursor_window.write_core_event_to_event_listeners(&button_press_event);
+        },
+        .release => {
+            var button_release_event = phx.event.Event{ .key_release = @bitCast(key_event) };
             cursor_window.write_core_event_to_event_listeners(&button_release_event);
         },
     }
@@ -798,11 +853,25 @@ pub fn remove_shm_segment_by_id(self: *Self, seg_id: phx.MitShm.SegId) void {
     }
 }
 
+const KeysPressed = struct {
+    lshift: bool = false,
+    rshift: bool = false,
+    lctrl: bool = false,
+    rctrl: bool = false,
+    lalt: bool = false,
+    ralt: bool = false,
+    lmeta: bool = false,
+    rmeta: bool = false,
+    capslock: bool = false,
+    numlock: bool = false,
+};
+
 pub const Message = union(enum) {
     shutdown: void,
     vsync_finished: VsyncFinishedMessage,
     mouse_move: MouseMoveMessage,
     mouse_click: MouseClickMessage,
+    key: KeyMessage,
     present_pixmap_finished: PresentPixmapFinishedMessage,
     put_image_finished: PutImageFinishedMessage,
     present_pixmap_canceled: PresentPixmapCanceledMessage,
@@ -816,16 +885,26 @@ pub const VsyncFinishedMessage = struct {
 pub const MouseMoveMessage = struct {
     x: i32,
     y: i32,
+    real_event: bool,
 };
 
 pub const MouseClickMessage = struct {
     x: i32,
     y: i32,
     button: phx.event.Button,
-    state: MouseClickState,
+    state: PressState,
+    real_event: bool,
 };
 
-pub const MouseClickState = enum {
+pub const KeyMessage = struct {
+    x: i32,
+    y: i32,
+    keycode: x11.KeyCode,
+    state: PressState,
+    real_event: bool,
+};
+
+pub const PressState = enum {
     press,
     release,
 };

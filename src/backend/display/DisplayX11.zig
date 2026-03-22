@@ -39,7 +39,7 @@ pub fn init(server: *phx.Server, allocator: std.mem.Allocator) !Self {
     const xkb_use_extension_reply = c.xcb_xkb_use_extension_reply(connection, c.xcb_xkb_use_extension(connection, 1, 0), null) orelse return error.XkbUseExtensionFailed;
     cstdlib.free(xkb_use_extension_reply);
 
-    const event_mask: u32 = c.XCB_EVENT_MASK_KEY_PRESS | c.XCB_EVENT_MASK_BUTTON_PRESS | c.XCB_EVENT_MASK_BUTTON_RELEASE | c.XCB_EVENT_MASK_POINTER_MOTION | c.XCB_EVENT_MASK_STRUCTURE_NOTIFY;
+    const event_mask: u32 = c.XCB_EVENT_MASK_KEY_PRESS | c.XCB_EVENT_MASK_KEY_RELEASE | c.XCB_EVENT_MASK_BUTTON_PRESS | c.XCB_EVENT_MASK_BUTTON_RELEASE | c.XCB_EVENT_MASK_POINTER_MOTION | c.XCB_EVENT_MASK_STRUCTURE_NOTIFY;
     const attributes = [_]u32{ 0, c.XCB_GRAVITY_NORTH_WEST, event_mask };
     const screen = c.xcb_setup_roots_iterator(c.xcb_get_setup(connection)).data;
     const window_id = c.xcb_generate_id(connection);
@@ -686,7 +686,13 @@ fn update_thread(self: *Self) !void {
                 },
                 c.XCB_MOTION_NOTIFY => {
                     const motion_notify: *const c.xcb_motion_notify_event_t = @ptrCast(event);
-                    self.server.append_message(&.{ .mouse_move = .{ .x = motion_notify.event_x, .y = motion_notify.event_y } }) catch {
+                    self.server.append_message(&.{
+                        .mouse_move = .{
+                            .x = motion_notify.event_x,
+                            .y = motion_notify.event_y,
+                            .real_event = true,
+                        },
+                    }) catch {
                         std.log.err("DisplayX11: Failed to add mouse move message to server", .{});
                     };
                 },
@@ -699,11 +705,26 @@ fn update_thread(self: *Self) !void {
                                 .y = button_press.event_y,
                                 .button = button,
                                 .state = if (event_type == c.XCB_BUTTON_PRESS) .press else .release,
+                                .real_event = true,
                             },
                         }) catch {
                             std.log.err("DisplayX11: Failed to add button press/release message to server", .{});
                         };
                     }
+                },
+                c.XCB_KEY_PRESS, c.XCB_KEY_RELEASE => |event_type| {
+                    const key_press: *const c.xcb_key_press_event_t = @ptrCast(event);
+                    self.server.append_message(&.{
+                        .key = .{
+                            .x = key_press.event_x,
+                            .y = key_press.event_y,
+                            .keycode = @enumFromInt(key_press.detail),
+                            .state = if (event_type == c.XCB_KEY_PRESS) .press else .release,
+                            .real_event = true,
+                        },
+                    }) catch {
+                        std.log.err("DisplayX11: Failed to add key press/release message to server", .{});
+                    };
                 },
                 else => {},
             }

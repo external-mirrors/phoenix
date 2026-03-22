@@ -62,7 +62,8 @@ fn window_class_validate_attributes(class: x11.Class, req: *const Request.Create
             !req.value_mask.backing_planes and
             !req.value_mask.backing_pixel and
             !req.value_mask.save_under and
-            !req.value_mask.colormap,
+            !req.value_mask.colormap and
+            req.depth == 0,
     };
 }
 
@@ -82,13 +83,12 @@ fn create_window(request_context: *phx.RequestContext) !void {
         else => req.request.class,
     };
 
-    const depth = switch (@intFromEnum(class)) {
-        copy_from_parent => parent_window.attributes.depth,
-        else => req.request.depth,
-    };
+    var depth = req.request.depth;
+    if (depth == 0 and (req.request.class == .copy_from_parent or req.request.class == .input_output))
+        depth = parent_window.attributes.depth;
 
     if (!depth_is_supported(class, depth)) {
-        std.log.err("Received invalid depth {d} in CreateWindow request", .{req.request.depth});
+        std.log.err("Received invalid depth {d} (class: {d}) in CreateWindow request", .{ req.request.depth, req.request.class });
         return request_context.client.write_error(request_context, .value, req.request.depth);
     }
 
@@ -1253,12 +1253,10 @@ fn get_keyboard_mapping(request_context: *phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .value, req.request.count);
     }
 
-    const keyboard_mapping_table_start_index = first_keycode - min_keycode.to_int();
-
     var rep = Reply.GetKeyboardMapping{
         .keysyms_per_keycode = request_context.server.input.get_keysyms_per_keycode(),
         .sequence_number = request_context.sequence_number,
-        .keysyms = .{ .items = @constCast(request_context.server.input.get_keyboard_mapping()[keyboard_mapping_table_start_index .. keyboard_mapping_table_start_index + req.request.count]) },
+        .keysyms = .{ .items = @constCast(request_context.server.input.get_keyboard_mapping(first_keycode, req.request.count)) },
     };
     try request_context.client.write_reply(&rep);
 }
@@ -1287,7 +1285,7 @@ fn get_modifier_mapping(request_context: *phx.RequestContext) !void {
 
         // Mod1
         request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Alt_L),
-        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Alt_R),
         @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
 
         // Mod2

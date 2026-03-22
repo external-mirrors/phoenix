@@ -69,24 +69,24 @@ pub const AnyEvent = extern struct {
 
 pub const ModMask = packed struct(x11.Card8) {
     shift: bool = false,
-    lock: bool = false,
+    lock: bool = false, // Aka caps lock
     control: bool = false,
-    mod1: bool = false,
-    mod2: bool = false,
+    mod1: bool = false, // Aka alt
+    mod2: bool = false, // Aka num lock
     mod3: bool = false,
-    mod4: bool = false,
-    mod5: bool = false,
+    mod4: bool = false, // Aka super/meta/windows
+    mod5: bool = false, // Aka alt-gr
 };
 
 pub const KeyButMask = packed struct(x11.Card16) {
     shift: bool = false,
-    lock: bool = false,
+    lock: bool = false, // Aka caps lock
     control: bool = false,
-    mod1: bool = false,
-    mod2: bool = false,
+    mod1: bool = false, // Aka alt
+    mod2: bool = false, // Aka num lock
     mod3: bool = false,
-    mod4: bool = false,
-    mod5: bool = false,
+    mod4: bool = false, // Aka super/meta/windows
+    mod5: bool = false, // Aka alt-gr
     button1: bool = false,
     button2: bool = false,
     button3: bool = false,
@@ -104,13 +104,13 @@ pub const KeyButMask = packed struct(x11.Card16) {
 // TODO: Change size? this has to be 2 bytes in some requests (like GrabButton) but 1 byte in some replies, like XkbGetDeviceInfo
 pub const KeyMask = packed struct(x11.Card8) {
     shift: bool = false,
-    lock: bool = false,
+    lock: bool = false, // Aka caps lock
     control: bool = false,
-    mod1: bool = false,
-    mod2: bool = false,
+    mod1: bool = false, // Aka alt
+    mod2: bool = false, // Aka num lock
     mod3: bool = false,
-    mod4: bool = false,
-    mod5: bool = false,
+    mod4: bool = false, // Aka super/meta/windows
+    mod5: bool = false, // Aka alt-gr
 
     comptime {
         std.debug.assert(@sizeOf(@This()) == @sizeOf(x11.Card8));
@@ -122,11 +122,11 @@ fn KeyEvent(comptime code: EventCode) type {
     return extern struct {
         code: EventCode = code,
         keycode: x11.KeyCode,
-        sequence_number: x11.Card16,
+        sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
         time: x11.Timestamp,
-        root: x11.WindowId,
+        root_window: x11.WindowId,
         event: x11.WindowId,
-        child: x11.WindowId,
+        child_window: x11.WindowId,
         root_x: i16,
         root_y: i16,
         event_x: i16,
@@ -422,9 +422,10 @@ pub const Event = extern union {
         };
     }
 
-    pub fn format(self: *Event, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    pub fn format(self: *const Event, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         return switch (self.any.code) {
-            inline else => |*ev| std.json.Stringify.value(ev.*, .{ .whitespace = .indent_4 }, writer),
+            .generic_event_extension => writer.writeAll("generic_event_extension"),
+            inline else => |event_type| std.json.Stringify.value(@field(self, @tagName(event_type)), .{ .whitespace = .indent_4 }, writer),
         };
     }
 

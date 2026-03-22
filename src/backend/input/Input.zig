@@ -9,7 +9,7 @@ const Self = @This();
 const min_keycode: u32 = 8;
 const max_keycode: u32 = 255;
 const keycode_range = max_keycode - min_keycode;
-const keysyms_per_keycode: u8 = 7;
+const keysyms_per_keycode: u8 = 2;
 
 impl: InputImpl,
 
@@ -37,17 +37,18 @@ pub fn load_keyboard_mapping(self: *Self) void {
         const keysym_lowercase = phx.keysym.to_lowercase(keysym);
         self.keyboard_mapping[keysym_index + 0] = @enumFromInt(keysym_lowercase);
         self.keyboard_mapping[keysym_index + 1] = @enumFromInt(keysym);
-        self.keyboard_mapping[keysym_index + 2] = @enumFromInt(keysym_lowercase);
-        self.keyboard_mapping[keysym_index + 3] = @enumFromInt(keysym);
-        self.keyboard_mapping[keysym_index + 4] = @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol);
-        self.keyboard_mapping[keysym_index + 5] = @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol);
-        self.keyboard_mapping[keysym_index + 6] = @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol);
+        // self.keyboard_mapping[keysym_index + 2] = @enumFromInt(keysym_lowercase);
+        // self.keyboard_mapping[keysym_index + 3] = @enumFromInt(keysym);
+        // self.keyboard_mapping[keysym_index + 4] = @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol);
+        // self.keyboard_mapping[keysym_index + 5] = @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol);
+        // self.keyboard_mapping[keysym_index + 6] = @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol);
         keysym_index += keysyms_per_keycode;
     }
 }
 
-pub fn get_keyboard_mapping(self: *const Self) []const x11.KeySym {
-    return &self.keyboard_mapping;
+pub fn get_keyboard_mapping(self: *const Self, first_keycode: usize, num_keycodes: usize) []const x11.KeySym {
+    const first = first_keycode - min_keycode;
+    return self.keyboard_mapping[first .. first + num_keycodes];
 }
 
 pub fn get_min_keycode(_: *const Self) x11.KeyCode {

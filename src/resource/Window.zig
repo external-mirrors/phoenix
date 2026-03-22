@@ -863,6 +863,7 @@ fn get_window_at_position_recursive(self: *phx.Window, geometry: phx.Geometry, p
             return child_window.get_window_at_position_recursive(sub_geometry, pos, relative_pos);
     }
 
+    // TODO: This should be relative to window origin
     relative_pos.* = pos - @Vector(2, i32){ geometry.x, geometry.y };
     return self;
 }

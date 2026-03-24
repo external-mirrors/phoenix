@@ -92,21 +92,13 @@ pub fn create(allocator: std.mem.Allocator) !*Self {
     const signal_fd = try create_sigint_signal_fd();
     errdefer std.posix.close(signal_fd);
 
-    var signal_fd_epoll_event = std.os.linux.epoll_event{
-        .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.ET,
-        .data = .{ .fd = signal_fd },
-    };
-    try std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_ADD, signal_fd, &signal_fd_epoll_event);
-    errdefer std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, signal_fd, null) catch {};
-
     const event_fd = try std.posix.eventfd(0, std.os.linux.EFD.CLOEXEC);
     errdefer std.posix.close(event_fd);
 
-    var event_fd_epoll_event = std.os.linux.epoll_event{
-        .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.ET,
-        .data = .{ .fd = event_fd },
-    };
-    try std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_ADD, event_fd, &event_fd_epoll_event);
+    try epoll_add_input(epoll_fd, signal_fd);
+    errdefer std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, signal_fd, null) catch {};
+
+    try epoll_add_input(epoll_fd, event_fd);
     errdefer std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, event_fd, null) catch {};
 
     // TODO: Choose backend from argv but give an error if phoenix is built without that backend
@@ -197,12 +189,20 @@ pub fn destroy(self: *Self) void {
     self.allocator.destroy(self);
 }
 
-fn create_sigint_signal_fd() !i32 {
+fn epoll_add_input(epoll_fd: i32, fd: std.posix.fd_t) !void {
+    var epoll_event = std.os.linux.epoll_event{
+        .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.ET,
+        .data = .{ .fd = fd },
+    };
+    try std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_ADD, fd, &epoll_event);
+}
+
+fn create_sigint_signal_fd() !std.posix.fd_t {
     var signal_mask = std.mem.zeroes(std.os.linux.sigset_t);
     std.os.linux.sigaddset(&signal_mask, std.posix.SIG.INT);
     _ = std.os.linux.sigprocmask(std.posix.SIG.BLOCK, &signal_mask, null);
 
-    const signal_fd: i32 = @intCast(std.os.linux.signalfd(-1, &signal_mask, 0));
+    const signal_fd: std.posix.fd_t = @intCast(std.os.linux.signalfd(-1, &signal_mask, 0));
     if (signal_fd == -1)
         return error.FailedToCreateSignalFd;
 

@@ -213,6 +213,7 @@ pub fn read_request_of_size(self: *Self, comptime T: type, request_length: usize
     // TODO: Consider other sizes? it needs a buffer for takeInt to work
     var limited_reader_buf: [64]u8 = undefined;
     var limited_reader = std.Io.Reader.limited(&reader.interface, .limited(request_length), &limited_reader_buf);
+    defer _ = self.read_buffer.discard(request_length - limited_reader.remaining.toInt().?);
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     errdefer arena.deinit();

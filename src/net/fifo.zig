@@ -158,6 +158,7 @@ fn Reader(comptime FifoType: type) type {
 
         fifo: *FifoType,
         interface: std.Io.Reader,
+        pos: usize,
 
         pub fn init(fifo: *FifoType) Self {
             return .{
@@ -171,6 +172,7 @@ fn Reader(comptime FifoType: type) type {
                     .seek = 0,
                     .end = 0,
                 },
+                .pos = 0,
             };
         }
 
@@ -179,15 +181,24 @@ fn Reader(comptime FifoType: type) type {
             const num_bytes_to_write: usize = @intFromEnum(limit);
 
             var total_num_bytes_written: usize = 0;
-            defer _ = self.fifo.discard(total_num_bytes_written);
+            defer self.pos += total_num_bytes_written;
 
+            var fifo_read_offset = self.pos;
             for (self.fifo.get_slices()) |slice| {
+                if (fifo_read_offset >= slice.len) {
+                    fifo_read_offset -= slice.len;
+                    continue;
+                }
+
+                const offset_slice = slice[fifo_read_offset..];
                 const num_bytes_left_to_write = num_bytes_to_write - total_num_bytes_written;
-                const slice_to_write = slice[0..@min(slice.len, num_bytes_left_to_write)];
+                const slice_to_write = offset_slice[0..@min(offset_slice.len, num_bytes_left_to_write)];
 
                 try write_all(w, slice_to_write, &total_num_bytes_written);
                 if (total_num_bytes_written >= num_bytes_left_to_write)
                     break;
+
+                fifo_read_offset = 0;
             }
 
             return if (total_num_bytes_written == 0) error.EndOfStream else total_num_bytes_written;
@@ -204,7 +215,9 @@ fn Reader(comptime FifoType: type) type {
 
         fn discard(r: *std.Io.Reader, limit: std.Io.Limit) std.Io.Reader.Error!usize {
             var self: *Self = @fieldParentPtr("interface", r);
-            return self.fifo.discard(@intFromEnum(limit));
+            const pos_before = self.pos;
+            self.pos = @min(self.fifo.size, std.math.add(usize, self.pos, @intFromEnum(limit)) catch self.fifo.size);
+            return self.pos - pos_before;
         }
     };
 }
@@ -373,13 +386,9 @@ test "reader writer" {
     var writer = fifo_output.writer(std.testing.allocator);
 
     try std.testing.expectEqual(3, reader.interface.stream(&writer.interface, .limited(3)));
-
-    try std.testing.expectEqualSlices(u8, &.{ 4, 5 }, fifo_input.read_to_slice(&buffer));
     try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3 }, fifo_output.read_to_slice(&buffer));
 
     try std.testing.expectEqual(2, reader.interface.stream(&writer.interface, .limited(3)));
-
-    try std.testing.expectEqualSlices(u8, &.{}, fifo_input.read_to_slice(&buffer));
     try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3, 4, 5 }, fifo_output.read_to_slice(&buffer));
 
     try std.testing.expectEqual(error.EndOfStream, reader.interface.stream(&writer.interface, .limited(3)));

@@ -29,14 +29,15 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn load_keyboard_mapping(self: *Self) void {
-    // TODO: These structures are hardcoded for now
+    // TODO: These structures are hardcoded for now.
+    // TODO: Map shift + some keys (such as number keys) to other keys, such as shift + 1 to ! (on a swedish keyboard)
     var keysym_index: usize = 0;
     for (0..keycode_range) |i| {
         const keycode: x11.KeyCode = @enumFromInt(min_keycode + i);
         const keysym = self.x11_keycode_to_keysym(keycode);
         const keysym_lowercase = phx.keysym.to_lowercase(keysym);
-        self.keyboard_mapping[keysym_index + 0] = @enumFromInt(keysym_lowercase);
-        self.keyboard_mapping[keysym_index + 1] = @enumFromInt(keysym);
+        self.keyboard_mapping[keysym_index + 0] = @enumFromInt(keysym_lowercase); // Keysym when shift is not pressed
+        self.keyboard_mapping[keysym_index + 1] = @enumFromInt(keysym); // Keysym when shift is not pressed
         // self.keyboard_mapping[keysym_index + 2] = @enumFromInt(keysym_lowercase);
         // self.keyboard_mapping[keysym_index + 3] = @enumFromInt(keysym);
         // self.keyboard_mapping[keysym_index + 4] = @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol);

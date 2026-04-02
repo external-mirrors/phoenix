@@ -54,8 +54,6 @@ fn write_reply_field(comptime FieldType: type, value: *FieldType, writer: *std.I
                     for (value) |element| {
                         try writer.writeInt(@Type(.{ .int = i }), element, x11.native_endian);
                     }
-                    //if (value.len > 0)
-                    //    try writer.writeAll(@ptrCast(value)); // XXX: Use writeSliceEndian?
                 },
                 else => @compileError("Only int arrays are supported right now, got array of " ++ @typeName(arr.child)),
             }

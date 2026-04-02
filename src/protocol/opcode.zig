@@ -17,6 +17,7 @@ pub const Major = enum(x11.Card8) {
     get_property = 20,
     set_selection_owner = 22,
     get_selection_owner = 23,
+    send_event = 25,
     grab_server = 36,
     ungrab_server = 37,
     query_pointer = 38,

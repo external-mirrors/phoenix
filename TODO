@@ -59,3 +59,4 @@ Support reading/writing file descriptors automatically in request/reply parsing.
 Permissions (for example for selecting for key input) should check if the target window was created by the same client process id. Maybe also allow access to parent/child process windows.
 Use Server.set_client_muted when a reply requires a lot of data to be sent, such as GetImage with the root window (capturing a screenshot of all windows). The raw image for one 4k image is 23mb (rgb). In such cases we want to force the client to receive the data before doing anything else with the client that requires more data to be allocated.
 Call eglReleaseThread after eglTerminate.
+Create a more efficient intToEnum that checks if the enum values are sequential (take into consideration exhausive enum) and does a cast directly if they are, otherwise call intToEnum.

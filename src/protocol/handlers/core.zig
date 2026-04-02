@@ -29,6 +29,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .get_property => get_property(request_context),
         .set_selection_owner => set_selection_owner(request_context),
         .get_selection_owner => get_selection_owner(request_context),
+        .send_event => send_event(request_context),
         .grab_server => grab_server(request_context),
         .ungrab_server => ungrab_server(request_context),
         .query_pointer => query_pointer(request_context),
@@ -940,6 +941,14 @@ fn get_selection_owner(request_context: *phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn send_event(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.SendEvent, request_context.allocator);
+    defer req.deinit();
+
+    // TODO:
+    std.log.err("TODO: implement SendEvent", .{});
+}
+
 fn grab_server(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GrabServer, request_context.allocator);
     defer req.deinit();
@@ -1826,6 +1835,15 @@ pub const Request = struct {
         pad1: x11.Card8 = 0,
         length: x11.Card16,
         selection: x11.AtomId,
+    };
+
+    pub const SendEvent = struct {
+        opcode: phx.opcode.Major = .send_event,
+        propagate: bool,
+        length: x11.Card16,
+        destination: x11.WindowId,
+        event_mask: EventMask,
+        event: [32]x11.Card8,
     };
 
     pub const GrabServer = struct {

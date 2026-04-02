@@ -63,7 +63,19 @@ fn read_request_field(
                 @field(request, field_name) = try read_request_with_context(FieldType, reader_context);
             }
         },
-        else => @compileError("Only enum, integer and struct types are supported in requests right now, got: " ++
+        .array => |*arr| {
+            switch (@typeInfo(arr.child)) {
+                .int => |int| {
+                    const int_type = @Type(.{ .int = int });
+                    // TODO: Use readSliceAll instead
+                    for (0..@field(request, field_name).len) |i| {
+                        @field(request, field_name)[i] = try reader_context.reader.takeInt(int_type, x11.native_endian);
+                    }
+                },
+                else => @compileError("Only int arrays are supported right now, got array of " ++ @typeName(arr.child)),
+            }
+        },
+        else => @compileError("Only enum, integer, struct and array types are supported in requests right now, got: " ++
             @tagName(@typeInfo(FieldType)) ++ " for " ++ @typeName(T) ++ "." ++ field_name),
     }
 }
@@ -107,14 +119,12 @@ fn read_request_array(comptime ElementType: type, list_length: usize, reader_con
     var items = try reader_context.allocator.alloc(ElementType, list_length);
     switch (@typeInfo(ElementType)) {
         .int => |int| {
+            const int_type = @Type(.{ .int = int });
             // TODO: Use readSliceAll instead
             for (0..items.len) |i| {
                 //items[i] = try read_request_with_context(ElementType, reader_context);
-                const int_type = @Type(.{ .int = int });
                 items[i] = try reader_context.reader.takeInt(int_type, x11.native_endian);
             }
-            // if (items.len > 0)
-            //     try reader_context.reader.readSliceAll(@ptrCast(items)); // XXX: Use readSliceEndian?
         },
         .@"struct" => {
             for (0..items.len) |i| {

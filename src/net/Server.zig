@@ -31,6 +31,7 @@ epoll_events: [32]std.os.linux.epoll_event = undefined,
 signal_fd: std.posix.fd_t,
 event_fd: std.posix.fd_t,
 messages: std.ArrayListUnmanaged(Message) = .empty,
+messages_back: std.ArrayListUnmanaged(Message) = .empty,
 messages_mutex: std.Thread.Mutex = .{},
 resource_id_base_manager: phx.ResourceIdBaseManager,
 atom_manager: phx.AtomManager,
@@ -181,6 +182,7 @@ pub fn destroy(self: *Self) void {
     self.display.destroy();
     self.input.deinit();
     self.messages.deinit(self.allocator);
+    self.messages_back.deinit(self.allocator);
     self.all_shm_segments.deinit(self.allocator);
     std.posix.close(self.epoll_fd);
     std.posix.close(self.signal_fd);
@@ -591,16 +593,20 @@ pub fn get_counter(self: *Self, counter_id: phx.Sync.CounterId) ?*phx.Counter {
     return self.client_manager.get_resource_of_type(counter_id.to_id(), .counter);
 }
 
-fn handle_messages(self: *Self) void {
-    var messages_moved: std.ArrayListUnmanaged(Message) = .empty;
-    defer messages_moved.deinit(self.allocator);
+fn swap_message_lists(self: *Self) void {
+    const tmp = self.messages;
+    self.messages = self.messages_back;
+    self.messages_back = tmp;
+}
 
+fn handle_messages(self: *Self) void {
     self.messages_mutex.lock();
-    messages_moved = self.messages;
-    self.messages = .empty;
+    const messages_now = self.messages;
+    self.messages.clearRetainingCapacity();
+    self.swap_message_lists();
     self.messages_mutex.unlock();
 
-    for (messages_moved.items) |*message| {
+    for (messages_now.items) |*message| {
         switch (message.*) {
             .shutdown => self.running = false,
             .vsync_finished => |vsync_finished| {

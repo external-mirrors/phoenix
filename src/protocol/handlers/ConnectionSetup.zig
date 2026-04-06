@@ -60,6 +60,31 @@ pub fn handle_connection_setup_request(server: *phx.Server, client: *phx.Client,
 
     var pixmap_formats = [_]PixmapFormat{
         .{
+            .depth = 1,
+            .bits_per_pixel = 1,
+            .scanline_pad = 32,
+        },
+        .{
+            .depth = 4,
+            .bits_per_pixel = 8,
+            .scanline_pad = 32,
+        },
+        .{
+            .depth = 8,
+            .bits_per_pixel = 8,
+            .scanline_pad = 32,
+        },
+        .{
+            .depth = 15,
+            .bits_per_pixel = 16,
+            .scanline_pad = 32,
+        },
+        .{
+            .depth = 16,
+            .bits_per_pixel = 16,
+            .scanline_pad = 32,
+        },
+        .{
             .depth = 24,
             .bits_per_pixel = 32,
             .scanline_pad = 32,

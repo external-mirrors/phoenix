@@ -40,59 +40,185 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
     defer req.deinit();
 
     const screen_visual = request_context.server.get_visual_by_id(phx.Server.screen_true_color_visual_id) orelse unreachable;
-    const pict_format24: PictFormatId = @enumFromInt(35);
-    const pict_format32: PictFormatId = @enumFromInt(36);
+
+    var pict_format_id_counter: x11.Card32 = 35;
+
+    const pict_format_a1: PictFormatId = @enumFromInt(pict_format_id_counter);
+    pict_format_id_counter += 1;
+
+    const pict_format_a8: PictFormatId = @enumFromInt(pict_format_id_counter);
+    pict_format_id_counter += 1;
+
+    const pict_format_rgb15: PictFormatId = @enumFromInt(pict_format_id_counter);
+    pict_format_id_counter += 1;
+
+    const pict_format_rgb16: PictFormatId = @enumFromInt(pict_format_id_counter);
+    pict_format_id_counter += 1;
+
+    const pict_format_rgb24: PictFormatId = @enumFromInt(pict_format_id_counter);
+    pict_format_id_counter += 1;
+
+    const pict_format_argb32: PictFormatId = @enumFromInt(pict_format_id_counter);
+    pict_format_id_counter += 1;
 
     var formats = [_]PictFormInfo{
         .{
-            .id = pict_format24,
+            .id = pict_format_a1,
             .type = .direct,
-            .depth = 24,
+            .depth = 1,
             .direct = .{
-                .red_shift = 16,
-                .red_mask = 0xff,
-                .green_shift = 8,
-                .green_mask = 0xff,
+                .red_shift = 0,
+                .red_mask = 0x0000,
+                .green_shift = 0,
+                .green_mask = 0x0000,
                 .blue_shift = 0,
-                .blue_mask = 0xff,
+                .blue_mask = 0x0000,
                 .alpha_shift = 0,
-                .alpha_mask = 0,
+                .alpha_mask = 0x0001,
             },
             .colormap = @enumFromInt(0),
         },
         .{
-            .id = pict_format32,
+            .id = pict_format_a8,
+            .type = .direct,
+            .depth = 8,
+            .direct = .{
+                .red_shift = 0,
+                .red_mask = 0x0000,
+                .green_shift = 0,
+                .green_mask = 0x0000,
+                .blue_shift = 0,
+                .blue_mask = 0x0000,
+                .alpha_shift = 0,
+                .alpha_mask = 0x00ff,
+            },
+            .colormap = @enumFromInt(0),
+        },
+        .{
+            .id = pict_format_rgb15,
+            .type = .direct,
+            .depth = 15,
+            .direct = .{
+                .red_shift = 8,
+                .red_mask = 0x000f,
+                .green_shift = 4,
+                .green_mask = 0x000f,
+                .blue_shift = 0,
+                .blue_mask = 0x000f,
+                .alpha_shift = 0,
+                .alpha_mask = 0x0000,
+            },
+            .colormap = @enumFromInt(0),
+        },
+        .{
+            .id = pict_format_rgb16,
+            .type = .direct,
+            .depth = 16,
+            .direct = .{
+                .red_shift = 8,
+                .red_mask = 0x000f,
+                .green_shift = 4,
+                .green_mask = 0x000f,
+                .blue_shift = 0,
+                .blue_mask = 0x000f,
+                .alpha_shift = 0,
+                .alpha_mask = 0x0000,
+            },
+            .colormap = @enumFromInt(0),
+        },
+        .{
+            .id = pict_format_rgb24,
+            .type = .direct,
+            .depth = 24,
+            .direct = .{
+                .red_shift = 16,
+                .red_mask = 0x00ff,
+                .green_shift = 8,
+                .green_mask = 0x00ff,
+                .blue_shift = 0,
+                .blue_mask = 0x00ff,
+                .alpha_shift = 0,
+                .alpha_mask = 0x0000,
+            },
+            .colormap = @enumFromInt(0),
+        },
+        .{
+            .id = pict_format_argb32,
             .type = .direct,
             .depth = 32,
             .direct = .{
                 .red_shift = 16,
-                .red_mask = 0xff,
+                .red_mask = 0x00ff,
                 .green_shift = 8,
-                .green_mask = 0xff,
+                .green_mask = 0x00ff,
                 .blue_shift = 0,
-                .blue_mask = 0xff,
+                .blue_mask = 0x00ff,
                 .alpha_shift = 24,
-                .alpha_mask = 0xff,
+                .alpha_mask = 0x00ff,
             },
             .colormap = @enumFromInt(0),
+        },
+    };
+
+    var depth_visuals1 = [_]PictVisual{
+        .{
+            .visual = screen_visual.id,
+            .format = pict_format_a1,
+        },
+    };
+
+    var depth_visuals8 = [_]PictVisual{
+        .{
+            .visual = screen_visual.id,
+            .format = pict_format_a8,
+        },
+    };
+
+    var depth_visuals15 = [_]PictVisual{
+        .{
+            .visual = screen_visual.id,
+            .format = pict_format_rgb15,
+        },
+    };
+
+    var depth_visuals16 = [_]PictVisual{
+        .{
+            .visual = screen_visual.id,
+            .format = pict_format_rgb16,
         },
     };
 
     var depth_visuals24 = [_]PictVisual{
         .{
             .visual = screen_visual.id,
-            .format = pict_format24,
+            .format = pict_format_rgb24,
         },
     };
 
     var depth_visuals32 = [_]PictVisual{
         .{
             .visual = screen_visual.id,
-            .format = pict_format32,
+            .format = pict_format_argb32,
         },
     };
 
     var screen_depths = [_]PictDepth{
+        .{
+            .depth = 1,
+            .visuals = .{ .items = &depth_visuals1 },
+        },
+        .{
+            .depth = 8,
+            .visuals = .{ .items = &depth_visuals8 },
+        },
+        .{
+            .depth = 15,
+            .visuals = .{ .items = &depth_visuals15 },
+        },
+        .{
+            .depth = 16,
+            .visuals = .{ .items = &depth_visuals16 },
+        },
         .{
             .depth = 24,
             .visuals = .{ .items = &depth_visuals24 },
@@ -105,7 +231,7 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
 
     var screens = [_]PictScreen{
         .{
-            .fallback = pict_format24,
+            .fallback = pict_format_rgb24,
             .depths = .{ .items = &screen_depths },
         },
     };
@@ -119,8 +245,8 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
 
     var rep = Reply.QueryPictFormats{
         .sequence_number = request_context.sequence_number,
-        .num_depths = 2, // Total number of depths in the request (in screen depths)
-        .num_visuals = 2, // Total number of visuals in the request (in screen depths)
+        .num_depths = 6, // Total number of depths in the request (in screen depths)
+        .num_visuals = 6, // Total number of visuals in the request (in screen depths)
         .formats = .{ .items = &formats },
         .screens = .{ .items = &screens },
         .subpixels = .{ .items = if (supports_subpixels) &subpixels else &.{} },

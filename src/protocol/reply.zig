@@ -41,8 +41,9 @@ fn write_reply_field(comptime FieldType: type, value: *FieldType, writer: *std.I
                 const reply_writer: *ReplyWriter = @fieldParentPtr("interface", writer);
                 const slice: []const u8 = &.{ 0, 0, 0, 0 };
                 try writer.writeAll(slice[0..x11.padding(reply_writer.num_bytes_written, 4)]);
-            } else if (s.backing_integer) |backing_integer| {
-                try writer.writeInt(backing_integer, @bitCast(value.*), x11.native_endian);
+            } else if (s.layout == .@"packed") {
+                std.debug.assert(s.backing_integer != null);
+                try writer.writeInt(s.backing_integer.?, @bitCast(value.*), x11.native_endian);
             } else {
                 try write_reply_fields(FieldType, value, writer);
             }

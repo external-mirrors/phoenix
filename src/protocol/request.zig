@@ -36,8 +36,9 @@ fn read_request_field(
             if (FieldType == x11.AlignmentPadding) {
                 const num_bytes_to_skip = x11.padding(reader_context.num_bytes_read(), 4);
                 try reader_context.reader.discardAll(num_bytes_to_skip);
-            } else if (s.backing_integer) |backing_integer| {
-                const bitmask: FieldType = @bitCast(try reader_context.reader.takeInt(backing_integer, x11.native_endian));
+            } else if (s.layout == .@"packed") {
+                std.debug.assert(s.backing_integer != null);
+                const bitmask: FieldType = @bitCast(try reader_context.reader.takeInt(s.backing_integer.?, x11.native_endian));
                 if (@hasDecl(FieldType, "sanitize")) {
                     @field(request, field_name) = bitmask.sanitize();
                 } else {

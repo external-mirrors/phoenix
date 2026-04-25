@@ -444,7 +444,7 @@ fn perform_put_image(self: *Self, op: *phx.Graphics.PutImageOperation) void {
     if (op.depth == 1) {
         // X11 depth-1 wire format is bit-packed (LSB-first per the connection setup)
         // with each row padded to 32 bits. GL has no native 1-bit upload so we
-        // expand each bit to a full byte (0xFF / 0x00) and upload as GL_R.
+        // expand each bit to a full byte (0xFF / 0x00) and upload as GL_RED.
         // Source row stride in bytes (input data still bit-packed):
         const src_row_stride: usize = ((@as(usize, op.total_width) + 31) / 32) * 4;
         const expanded = self.allocator.alloc(u8, @as(usize, op.src_width) * @as(usize, op.src_height)) catch |err| {
@@ -830,8 +830,8 @@ fn get_drawable_target_size(drawable: phx.Graphics.GraphicsDrawable) struct { te
 fn depth_to_texture_format(depth: u8) c_uint {
     return switch (depth) {
         // Depth 1 is bit-packed in the X11 wire format but expanded to 1 byte per
-        // pixel before upload (see perform_put_image), so the GL upload format is GL_R.
-        1, 8 => c.GL_R,
+        // pixel before upload (see perform_put_image), so the GL upload format is GL_RED.
+        1, 8 => c.GL_RED,
         16 => c.GL_RG,
         24 => c.GL_RGB,
         32 => c.GL_RGBA,

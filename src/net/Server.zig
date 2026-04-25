@@ -18,7 +18,7 @@ const screen_true_color_colormap = phx.Colormap{
 
 pub const servertime_counter_id: phx.Sync.CounterId = @enumFromInt(0x30);
 
-const unix_domain_socket_path = "/tmp/.X11-unix/X1";
+const unix_domain_socket_path = "/tmp/.X11-unix/X4";
 
 screen: x11.ScreenId = @enumFromInt(0),
 
@@ -271,7 +271,7 @@ fn create_root_window(self: *Self) !*phx.Window {
 }
 
 pub fn run(self: *Self) !void {
-    std.log.defaultLog(.info, .default, "Phoenix is now running at {s}. You can connect to it by setting the DISPLAY environment variable to :1, for example \"DISPLAY=:1 glxgears\"", .{unix_domain_socket_path});
+    std.log.defaultLog(.info, .default, "Phoenix is now running at {s}. You can connect to it by setting the DISPLAY environment variable to :4, for example \"DISPLAY=:4 glxgears\"", .{unix_domain_socket_path});
 
     self.running = true;
 

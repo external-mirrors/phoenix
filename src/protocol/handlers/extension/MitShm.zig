@@ -18,6 +18,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .attach => attach(request_context),
         .detach => detach(request_context),
         .put_image => put_image(request_context),
+        .create_pixmap => create_pixmap(request_context),
     };
 }
 
@@ -202,6 +203,65 @@ fn put_image(request_context: *phx.RequestContext) !void {
     });
 }
 
+fn create_pixmap(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.CreatePixmap, request_context.allocator);
+    defer req.deinit();
+
+    if (req.request.depth == 0 or req.request.depth > 32) {
+        std.log.err("MitShmCreatePixmap: invalid depth {d}", .{req.request.depth});
+        return request_context.client.write_error(request_context, .value, req.request.depth);
+    }
+
+    const drawable = request_context.server.get_drawable(req.request.drawable) orelse {
+        std.log.err("MitShmCreatePixmap: invalid drawable {d}", .{req.request.drawable});
+        return request_context.client.write_error(request_context, .drawable, req.request.drawable.to_id().to_int());
+    };
+
+    const shm_segment = request_context.server.get_shm_segment(req.request.shmseg) orelse {
+        std.log.err("MitShmCreatePixmap: invalid shmseg {d}", .{req.request.shmseg});
+        return request_context.client.write_error(request_context, .mit_shm_bad_seg, req.request.shmseg.to_id().to_int());
+    };
+
+    if (req.request.width == 0 or req.request.height == 0) {
+        std.log.err("MitShmCreatePixmap: invalid dimensions {d}x{d}", .{ req.request.width, req.request.height });
+        return request_context.client.write_error(request_context, .value, 0);
+    }
+
+    const bpp = drawable.get_bpp();
+    const bytes_per_pixel: u32 = @max(1, @as(u32, bpp) / 8);
+    const stride: u32 = @as(u32, req.request.width) * bytes_per_pixel;
+
+    if (req.request.offset > shm_segment.size)
+        return request_context.client.write_error(request_context, .value, req.request.offset);
+
+    if (stride > (shm_segment.size - req.request.offset) / req.request.height)
+        return request_context.client.write_error(request_context, .value, req.request.offset);
+
+    const import_dmabuf = phx.Graphics.DmabufImport{
+        .fd = undefined,
+        .stride = undefined,
+        .offset = undefined,
+        .modifier = undefined,
+        .width = req.request.width,
+        .height = req.request.height,
+        .depth = req.request.depth,
+        .bpp = bpp,
+        .num_items = 0,
+    };
+
+    var pixmap = try phx.Pixmap.create_from_shm(
+        req.request.pid,
+        &import_dmabuf,
+        shm_segment,
+        req.request.offset,
+        request_context.server,
+        request_context.allocator,
+    );
+    errdefer pixmap.unref();
+
+    try request_context.client.add_pixmap(pixmap);
+}
+
 fn shm_access(request_context: *phx.RequestContext, shm_perm: *const phx.c.ipc_perm, read_only: bool) bool {
     const credentials = request_context.client.get_credentials() orelse {
         const mask: std.posix.mode_t = std.posix.S.IROTH | if (read_only) @as(std.posix.mode_t, 0) else std.posix.S.IWOTH;
@@ -231,6 +291,7 @@ const MinorOpcode = enum(x11.Card8) {
     attach = 1,
     detach = 2,
     put_image = 3,
+    create_pixmap = 5,
 };
 
 pub const SegId = enum(x11.Card32) {
@@ -270,6 +331,21 @@ pub const Request = struct {
         minor_opcode: MinorOpcode = .detach,
         length: x11.Card16,
         shmseg: SegId,
+    };
+
+    pub const CreatePixmap = struct {
+        major_opcode: phx.opcode.Major = .mit_shm,
+        minor_opcode: MinorOpcode = .create_pixmap,
+        length: x11.Card16,
+        pid: x11.PixmapId,
+        drawable: x11.DrawableId,
+        width: x11.Card16,
+        height: x11.Card16,
+        depth: x11.Card8,
+        pad1: x11.Card8,
+        pad2: x11.Card16,
+        shmseg: SegId,
+        offset: x11.Card32,
     };
 
     pub const PutImage = struct {

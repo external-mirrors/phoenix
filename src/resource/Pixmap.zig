@@ -7,6 +7,8 @@ const Self = @This();
 id: x11.PixmapId,
 dmabuf_data: phx.Graphics.DmabufImport,
 texture_id: u32 = 0,
+shm_segment: ?phx.ShmSegment = null,
+shm_offset: u32 = 0,
 server: *phx.Server,
 refcount: phx.Refcount,
 allocator: std.mem.Allocator,
@@ -33,6 +35,35 @@ pub fn create(
     return self;
 }
 
+pub fn create_from_shm(
+    id: x11.PixmapId,
+    dmabuf_data: *const phx.Graphics.DmabufImport,
+    shm_segment: *phx.ShmSegment,
+    offset: u32,
+    server: *phx.Server,
+    allocator: std.mem.Allocator,
+) !*Self {
+    const self = try allocator.create(Self);
+    errdefer allocator.destroy(self);
+
+    var shm_ref = shm_segment.*;
+    shm_ref.ref();
+    errdefer shm_ref.unref();
+
+    self.* = .{
+        .id = id,
+        .dmabuf_data = dmabuf_data.*,
+        .shm_segment = shm_ref,
+        .shm_offset = offset,
+        .server = server,
+        .refcount = .init(),
+        .allocator = allocator,
+    };
+
+    try server.display.create_pixmap(self);
+    return self;
+}
+
 pub fn ref(self: *Self) void {
     self.refcount.ref();
 }
@@ -47,6 +78,8 @@ pub fn unref(self: *Self) void {
             if (dmabuf_fd > 0)
                 std.posix.close(dmabuf_fd);
         }
+
+        if (self.shm_segment) |*shm| shm.unref();
 
         self.allocator.destroy(self);
     }

@@ -109,7 +109,8 @@ pub fn deinit(self: *Self) void {
     self.read_buffer_fds.deinit(self.allocator);
     self.write_buffer_fds.deinit(self.allocator);
 
-    self.server.selection_owner_manager.clear_selections_by_client(self);
+    self.server.xfixes_remove_subscriptions_for_client(self);
+    self.server.selection_owner_manager.clear_selections_by_client(self.server, self);
 }
 
 // Unused right now, but this will be used similarly to how xace works

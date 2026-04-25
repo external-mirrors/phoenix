@@ -68,7 +68,8 @@ pub fn destroy(self: *Self) void {
         property.deinit(self.allocator);
     }
 
-    self.server.selection_owner_manager.clear_selections_by_window(self);
+    self.server.selection_owner_manager.clear_selections_by_window(self.server, self);
+    self.server.xfixes_remove_subscriptions_for_window(self);
     self.revert_input_focus();
 
     self.remove_event_listeners_from_clients();

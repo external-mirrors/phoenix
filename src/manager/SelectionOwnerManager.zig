@@ -69,20 +69,36 @@ pub fn get_owner(self: *Self, selection: phx.Atom) ?*SelectionOwner {
     return null;
 }
 
-pub fn clear_selections_by_window(self: *Self, owner_window: *const phx.Window) void {
+pub fn clear_selections_by_window(self: *Self, server: *phx.Server, owner_window: *const phx.Window) void {
+    const now = server.get_timestamp_milliseconds();
     for (self.selection_owners.items) |*selection_owner| {
         if (selection_owner.owner_window == owner_window) {
             selection_owner.owner_window = null;
             selection_owner.owner_client = null;
+            server.xfixes_notify_selection(
+                .selection_window_destroy,
+                selection_owner.selection.id,
+                .none,
+                now,
+                selection_owner.last_changed_time,
+            );
         }
     }
 }
 
-pub fn clear_selections_by_client(self: *Self, owner_client: *const phx.Client) void {
+pub fn clear_selections_by_client(self: *Self, server: *phx.Server, owner_client: *const phx.Client) void {
+    const now = server.get_timestamp_milliseconds();
     for (self.selection_owners.items) |*selection_owner| {
         if (selection_owner.owner_client == owner_client) {
             selection_owner.owner_window = null;
             selection_owner.owner_client = null;
+            server.xfixes_notify_selection(
+                .selection_client_close,
+                selection_owner.selection.id,
+                .none,
+                now,
+                selection_owner.last_changed_time,
+            );
         }
     }
 }

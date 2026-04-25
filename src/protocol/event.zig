@@ -32,6 +32,31 @@ pub const randr_notify: x11.Card8 = randr_first_event + 1;
 pub const mit_shm_first_event: x11.Card8 = 60;
 pub const mit_shm_put_image_completion: x11.Card8 = mit_shm_first_event + 3;
 
+pub const xfixes_first_event: x11.Card8 = 70;
+pub const xfixes_selection_notify: x11.Card8 = xfixes_first_event + 0;
+
+pub const XFixesSelectionEventSubtype = enum(x11.Card8) {
+    set_selection_owner = 0,
+    selection_window_destroy = 1,
+    selection_client_close = 2,
+};
+
+pub const XFixesSelectionNotifyEvent = extern struct {
+    code: x11.Card8 = xfixes_selection_notify,
+    subtype: XFixesSelectionEventSubtype,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event_static_size
+    window: x11.WindowId,
+    owner: x11.WindowId,
+    selection: x11.AtomId,
+    timestamp: x11.Timestamp,
+    selection_timestamp: x11.Timestamp,
+    pad: [8]x11.Card8 = @splat(0),
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
+
 pub const FocusDetail = enum(x11.Card8) {
     ancestor = 0,
     virtual = 1,

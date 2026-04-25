@@ -15,6 +15,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
 
     return switch (minor_opcode) {
         .query_version => query_version(request_context),
+        .select_selection_input => select_selection_input(request_context),
         .create_region => create_region(request_context),
     };
 }
@@ -35,6 +36,28 @@ fn query_version(request_context: *phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn select_selection_input(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.SelectSelectionInput, request_context.allocator);
+    defer req.deinit();
+
+    const window = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("XfixesSelectSelectionInput: invalid window {d}", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+
+    if (request_context.server.atom_manager.get_atom_by_id(req.request.selection) == null) {
+        std.log.err("XfixesSelectSelectionInput: invalid selection atom {d}", .{req.request.selection});
+        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.selection));
+    }
+
+    try request_context.server.xfixes_select_selection_input(
+        request_context.client,
+        window,
+        req.request.selection,
+        req.request.event_mask,
+    );
+}
+
 fn create_region(_: *phx.RequestContext) !void {
     // TODO: Implement
     std.log.err("TODO: Implement CreateRegion", .{});
@@ -42,7 +65,25 @@ fn create_region(_: *phx.RequestContext) !void {
 
 const MinorOpcode = enum(x11.Card8) {
     query_version = 0,
+    select_selection_input = 2,
     create_region = 5,
+};
+
+pub const SelectionEventMask = packed struct(x11.Card32) {
+    set_selection_owner: bool,
+    selection_window_destroy: bool,
+    selection_client_close: bool,
+    _padding: u29 = 0,
+
+    pub fn sanitize(self: SelectionEventMask) SelectionEventMask {
+        var result = self;
+        result._padding = 0;
+        return result;
+    }
+
+    pub fn to_int(self: SelectionEventMask) x11.Card32 {
+        return @bitCast(self);
+    }
 };
 
 pub const RegionId = enum(x11.Card32) {
@@ -56,6 +97,15 @@ pub const Request = struct {
         length: x11.Card16,
         major_version: x11.Card32,
         minor_version: x11.Card32,
+    };
+
+    pub const SelectSelectionInput = struct {
+        major_opcode: phx.opcode.Major = .xfixes,
+        minor_opcode: MinorOpcode = .select_selection_input,
+        length: x11.Card16,
+        window: x11.WindowId,
+        selection: x11.AtomId,
+        event_mask: SelectionEventMask,
     };
 };
 

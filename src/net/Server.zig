@@ -64,6 +64,15 @@ keys_pressed: KeysPressed = .{},
 
 all_shm_segments: std.ArrayListUnmanaged(phx.ShmSegment) = .empty,
 
+xfixes_selection_subscriptions: std.ArrayListUnmanaged(XFixesSelectionSubscription) = .empty,
+
+pub const XFixesSelectionSubscription = struct {
+    client: *phx.Client,
+    window: *phx.Window,
+    selection: x11.AtomId,
+    mask: phx.Xfixes.SelectionEventMask,
+};
+
 /// The server will catch sigint and close down (if |run| has been executed)
 pub fn create(allocator: std.mem.Allocator) !*Self {
     var self = try allocator.create(Self);
@@ -184,6 +193,7 @@ pub fn destroy(self: *Self) void {
     self.messages.deinit(self.allocator);
     self.messages_back.deinit(self.allocator);
     self.all_shm_segments.deinit(self.allocator);
+    self.xfixes_selection_subscriptions.deinit(self.allocator);
     std.posix.close(self.epoll_fd);
     std.posix.close(self.signal_fd);
     std.posix.close(self.event_fd);
@@ -595,6 +605,87 @@ pub fn get_counter(self: *Self, counter_id: phx.Sync.CounterId) ?*phx.Counter {
 
 pub fn get_picture(self: *Self, picture_id: phx.Render.PictureId) ?*phx.Picture {
     return self.client_manager.get_resource_of_type(picture_id.to_id(), .picture);
+}
+
+pub fn xfixes_select_selection_input(
+    self: *Self,
+    client: *phx.Client,
+    window: *phx.Window,
+    selection: x11.AtomId,
+    mask: phx.Xfixes.SelectionEventMask,
+) !void {
+    for (self.xfixes_selection_subscriptions.items, 0..) |*sub, i| {
+        if (sub.client == client and sub.window == window and sub.selection == selection) {
+            if (mask.to_int() == 0) {
+                _ = self.xfixes_selection_subscriptions.swapRemove(i);
+            } else {
+                sub.mask = mask;
+            }
+            return;
+        }
+    }
+
+    if (mask.to_int() == 0) return;
+
+    try self.xfixes_selection_subscriptions.append(self.allocator, .{
+        .client = client,
+        .window = window,
+        .selection = selection,
+        .mask = mask,
+    });
+}
+
+pub fn xfixes_remove_subscriptions_for_client(self: *Self, client: *const phx.Client) void {
+    var i: usize = 0;
+    while (i < self.xfixes_selection_subscriptions.items.len) {
+        if (self.xfixes_selection_subscriptions.items[i].client == client) {
+            _ = self.xfixes_selection_subscriptions.swapRemove(i);
+        } else {
+            i += 1;
+        }
+    }
+}
+
+pub fn xfixes_remove_subscriptions_for_window(self: *Self, window: *const phx.Window) void {
+    var i: usize = 0;
+    while (i < self.xfixes_selection_subscriptions.items.len) {
+        if (self.xfixes_selection_subscriptions.items[i].window == window) {
+            _ = self.xfixes_selection_subscriptions.swapRemove(i);
+        } else {
+            i += 1;
+        }
+    }
+}
+
+pub fn xfixes_notify_selection(
+    self: *Self,
+    subtype: phx.event.XFixesSelectionEventSubtype,
+    selection: x11.AtomId,
+    owner: x11.WindowId,
+    timestamp: x11.Timestamp,
+    selection_timestamp: x11.Timestamp,
+) void {
+    for (self.xfixes_selection_subscriptions.items) |*sub| {
+        if (sub.selection != selection) continue;
+        const enabled = switch (subtype) {
+            .set_selection_owner => sub.mask.set_selection_owner,
+            .selection_window_destroy => sub.mask.selection_window_destroy,
+            .selection_client_close => sub.mask.selection_client_close,
+        };
+        if (!enabled) continue;
+
+        var ev = phx.event.XFixesSelectionNotifyEvent{
+            .subtype = subtype,
+            .window = sub.window.id,
+            .owner = owner,
+            .selection = selection,
+            .timestamp = timestamp,
+            .selection_timestamp = selection_timestamp,
+        };
+        sub.client.write_event_static_size(&ev) catch |err| {
+            std.log.err("xfixes_notify_selection: failed to write event to client: {s}", .{@errorName(err)});
+        };
+    }
 }
 
 fn swap_message_lists(self: *Self) void {

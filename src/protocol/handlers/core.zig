@@ -908,13 +908,24 @@ fn set_selection_owner(request_context: *phx.RequestContext) !void {
         };
     }
 
+    const server_timestamp = request_context.server.get_timestamp_milliseconds();
     try request_context.server.selection_owner_manager.set_owner(
         selection_atom,
         window,
         request_context.client,
         req.request.time,
-        request_context.server.get_timestamp_milliseconds(),
+        server_timestamp,
     );
+
+    if (request_context.server.selection_owner_manager.get_owner(selection_atom)) |owner| {
+        request_context.server.xfixes_notify_selection(
+            .set_selection_owner,
+            req.request.selection,
+            if (owner.owner_window) |w| w.id else .none,
+            server_timestamp,
+            owner.last_changed_time,
+        );
+    }
 }
 
 fn get_selection_owner(request_context: *phx.RequestContext) !void {
@@ -1230,6 +1241,7 @@ fn query_extension(request_context: *phx.RequestContext) !void {
     } else if (std.mem.eql(u8, req.request.name.items, "XFIXES")) {
         rep.present = true;
         rep.major_opcode = @intFromEnum(phx.opcode.Major.xfixes);
+        rep.first_event = phx.event.xfixes_first_event;
     } else if (std.mem.eql(u8, req.request.name.items, "Present")) {
         rep.present = true;
         rep.major_opcode = @intFromEnum(phx.opcode.Major.present);

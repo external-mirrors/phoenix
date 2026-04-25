@@ -33,6 +33,7 @@ pub const Major = enum(x11.Card8) {
     change_gc = 56,
     free_gc = 60,
     copy_area = 62,
+    put_image = 72,
     create_colormap = 78,
     query_extension = 98,
     get_keyboard_mapping = 101,

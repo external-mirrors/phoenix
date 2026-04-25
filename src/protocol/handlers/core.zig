@@ -45,6 +45,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .change_gc => change_gc(request_context),
         .free_gc => free_gc(request_context),
         .copy_area => copy_area(request_context),
+        .put_image => put_image(request_context),
         .create_colormap => create_colormap(request_context),
         .query_extension => query_extension(request_context),
         .get_keyboard_mapping => get_keyboard_mapping(request_context),
@@ -1286,6 +1287,101 @@ fn copy_area(request_context: *phx.RequestContext) !void {
     });
 }
 
+fn bits_per_pixel_for_depth(depth: u8) u32 {
+    return switch (depth) {
+        1 => 1,
+        4 => 8,
+        8 => 8,
+        15, 16 => 16,
+        24, 32 => 32,
+        else => @max(8, depth),
+    };
+}
+
+fn put_image(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.PutImage, request_context.allocator);
+    defer req.deinit();
+
+    const drawable = request_context.server.get_drawable(req.request.drawable) orelse {
+        std.log.err("PutImage: invalid drawable {d}", .{req.request.drawable});
+        return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.drawable));
+    };
+
+    switch (req.request.format) {
+        .z_pixmap => {
+            if (req.request.depth != drawable.get_depth()) {
+                std.log.err("PutImage: ZPixmap depth {d} does not match drawable depth {d}", .{ req.request.depth, drawable.get_depth() });
+                return request_context.client.write_error(request_context, .match, 0);
+            }
+        },
+        .xy_bitmap => {
+            if (req.request.depth != 1) {
+                std.log.err("PutImage: XYBitmap requires depth 1, got {d}", .{req.request.depth});
+                return request_context.client.write_error(request_context, .match, 0);
+            }
+        },
+        .xy_pixmap => {
+            if (req.request.depth != drawable.get_depth()) {
+                std.log.err("PutImage: XYPixmap depth {d} does not match drawable depth {d}", .{ req.request.depth, drawable.get_depth() });
+                return request_context.client.write_error(request_context, .match, 0);
+            }
+            std.log.err("PutImage: XYPixmap not implemented", .{});
+            return request_context.client.write_error(request_context, .implementation, 0);
+        },
+    }
+
+    if (req.request.width == 0 or req.request.height == 0)
+        return;
+
+    const bits_per_pixel: u32 = switch (req.request.format) {
+        .z_pixmap => bits_per_pixel_for_depth(req.request.depth),
+        .xy_bitmap, .xy_pixmap => 1, // each plane has 1 bit per pixel
+    };
+    const planes: u32 = switch (req.request.format) {
+        .z_pixmap, .xy_bitmap => 1,
+        .xy_pixmap => req.request.depth,
+    };
+
+    const scanline_pad: u32 = 32;
+    const row_bits = @as(u32, req.request.width) * bits_per_pixel;
+    const row_bytes = ((row_bits + scanline_pad - 1) / scanline_pad) * (scanline_pad / 8);
+    const expected_data_len: usize = @as(usize, row_bytes) * @as(usize, req.request.height) * planes;
+
+    if (req.request.data.items.len < expected_data_len) {
+        std.log.err("PutImage: data length {d} is smaller than expected {d}", .{ req.request.data.items.len, expected_data_len });
+        return request_context.client.write_error(request_context, .length, 0);
+    }
+
+    const image_data = req.request.data.items[0..expected_data_len];
+    if (image_data.len == 0)
+        return;
+
+    const owned = try request_context.allocator.dupe(u8, image_data);
+    var owned_used = false;
+    defer if (!owned_used) request_context.allocator.free(owned);
+
+    var shm = try phx.ShmSegment.init_owned(owned, request_context.allocator);
+    owned_used = true;
+    defer shm.unref();
+
+    try request_context.server.display.put_image(&.{
+        .shm = &shm,
+        .drawable = drawable,
+        .total_width = req.request.width,
+        .total_height = req.request.height,
+        .src_x = 0,
+        .src_y = 0,
+        .src_width = req.request.width,
+        .src_height = req.request.height,
+        .dst_x = req.request.dst_x,
+        .dst_y = req.request.dst_y,
+        .depth = req.request.depth,
+        .format = req.request.format,
+        .send_event = false,
+        .offset = 0,
+    });
+}
+
 fn create_gc(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateGC, request_context.allocator);
     defer req.deinit();
@@ -2105,6 +2201,22 @@ pub const Request = struct {
         dst_y: i16,
         width: x11.Card16,
         height: x11.Card16,
+    };
+
+    pub const PutImage = struct {
+        opcode: phx.opcode.Major = .put_image,
+        format: phx.MitShm.ImageFormat,
+        length: x11.Card16,
+        drawable: x11.DrawableId,
+        gc: x11.GContextId,
+        width: x11.Card16,
+        height: x11.Card16,
+        dst_x: i16,
+        dst_y: i16,
+        left_pad: x11.Card8,
+        depth: x11.Card8,
+        pad1: x11.Card16 = 0,
+        data: x11.ListOf(x11.Card8, .{ .length_field = "length", .length_field_type = .request_remainder }),
     };
 
     pub const CreateGC = struct {

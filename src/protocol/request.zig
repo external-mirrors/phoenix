@@ -155,7 +155,9 @@ const ReaderContext = struct {
 
     pub fn num_bytes_read(self: *const Self) usize {
         const limited_reader: *std.Io.Reader.Limited = @fieldParentPtr("interface", self.reader);
-        return self.max_bytes_to_read - @intFromEnum(limited_reader.remaining);
+        const underlying_pulled = self.max_bytes_to_read - @intFromEnum(limited_reader.remaining);
+        const buffered_pending = self.reader.end - self.reader.seek;
+        return underlying_pulled - buffered_pending;
     }
 };
 

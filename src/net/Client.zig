@@ -223,11 +223,17 @@ pub fn read_request_of_size(self: *Self, comptime T: type, request_length: usize
         error.EndOfStream => return error.InvalidRequestLength,
         else => return err,
     };
-    if (@intFromEnum(limited_reader.remaining) != 0)
+    if (limited_reader_has_data_left_to_read(&limited_reader))
         return error.InvalidRequestLength;
 
     std.log.debug("{s} request: {f}", .{ @typeName(T), x11.stringify_fmt(req_data) });
     return phx.message.Request(T).init(&req_data, &arena);
+}
+
+fn limited_reader_has_data_left_to_read(limited_reader: *const std.Io.Reader.Limited) bool {
+    const bytes_remaining = limited_reader.remaining.toInt() orelse return true;
+    const still_in_buffer = limited_reader.interface.end - limited_reader.interface.seek;
+    return bytes_remaining + still_in_buffer > 0;
 }
 
 /// Also flushes the write buffer
@@ -259,7 +265,7 @@ pub fn write_error(self: *Self, request_context: *phx.RequestContext, error_type
         .code = error_type,
         .sequence_number = request_context.sequence_number,
         .value = value,
-        .minor_opcode = request_context.header.minor_opcode,
+        .minor_opcode = if (request_context.header.minor_opcode <= phx.opcode.core_opcode_max) 0 else request_context.header.minor_opcode,
         .major_opcode = request_context.header.major_opcode,
     };
     std.log.err("Replying with error: {f}", .{x11.stringify_fmt(err_reply)});

@@ -371,6 +371,10 @@ pub fn add_picture(self: *Self, picture: phx.Picture) !void {
     return self.add_resource(picture.id.to_id(), .{ .picture = picture });
 }
 
+pub fn add_cursor(self: *Self, cursor: phx.Cursor) !void {
+    return self.add_resource(cursor.id.to_id(), .{ .cursor = cursor });
+}
+
 pub fn remove_resource(self: *Self, id: x11.ResourceId) void {
     _ = self.resources.remove(id);
 }

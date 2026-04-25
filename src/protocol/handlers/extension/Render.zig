@@ -20,6 +20,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .free_picture => free_picture(request_context),
         .composite => composite(request_context),
         .fill_rectangles => fill_rectangles(request_context),
+        .create_cursor => create_cursor(request_context),
     };
 }
 
@@ -444,6 +445,25 @@ fn fill_rectangles(request_context: *phx.RequestContext) !void {
     });
 }
 
+fn create_cursor(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.CreateCursor, request_context.allocator);
+    defer req.deinit();
+
+    const source = request_context.server.get_picture(req.request.source) orelse {
+        std.log.err("RenderCreateCursor: invalid source picture {d}", .{@intFromEnum(req.request.source)});
+        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.source));
+    };
+
+    const cursor = phx.Cursor{
+        .id = req.request.cid,
+        .source_picture = source.id,
+        .hotspot_x = req.request.x,
+        .hotspot_y = req.request.y,
+    };
+
+    try request_context.client.add_cursor(cursor);
+}
+
 const MinorOpcode = enum(x11.Card8) {
     query_version = 0,
     query_pict_formats = 1,
@@ -451,6 +471,7 @@ const MinorOpcode = enum(x11.Card8) {
     free_picture = 7,
     composite = 8,
     fill_rectangles = 26,
+    create_cursor = 27,
 };
 
 pub const PictFormatId = enum(x11.Card32) {
@@ -780,6 +801,16 @@ pub const Request = struct {
         dst: PictureId,
         color: Color,
         rects: x11.ListOf(Rectangle, .{ .length_field = "length", .length_field_type = .request_remainder }),
+    };
+
+    pub const CreateCursor = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .create_cursor,
+        length: x11.Card16,
+        cid: x11.CursorId,
+        source: PictureId,
+        x: x11.Card16,
+        y: x11.Card16,
     };
 
     pub const CreatePicture = struct {

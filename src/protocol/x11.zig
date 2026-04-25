@@ -128,6 +128,15 @@ pub const GContextId = enum(Card32) {
     _,
 };
 
+pub const CursorId = enum(Card32) {
+    none = 0,
+    _,
+
+    pub fn to_id(self: CursorId) ResourceId {
+        return @enumFromInt(@intFromEnum(self));
+    }
+};
+
 pub const KeyCode = enum(Card8) {
     _,
 

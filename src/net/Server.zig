@@ -608,6 +608,10 @@ pub fn get_picture(self: *Self, picture_id: phx.Render.PictureId) ?*phx.Picture 
     return self.client_manager.get_resource_of_type(picture_id.to_id(), .picture);
 }
 
+pub fn get_cursor(self: *Self, cursor_id: x11.CursorId) ?*phx.Cursor {
+    return self.client_manager.get_resource_of_type(cursor_id.to_id(), .cursor);
+}
+
 pub fn xfixes_select_selection_input(
     self: *Self,
     client: *phx.Client,

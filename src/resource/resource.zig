@@ -12,6 +12,7 @@ pub const Resource = union(enum) {
     shm_segment: phx.ShmSegment,
     counter: phx.Counter,
     picture: phx.Picture,
+    cursor: phx.Cursor,
 
     pub fn deinit(self: *Resource) void {
         switch (self.*) {
@@ -23,7 +24,7 @@ pub const Resource = union(enum) {
             .fence => |*item| item.deinit(),
             .shm_segment => |*item| item.unref(),
             .picture => |*item| item.deinit(),
-            .event_context, .colormap, .glx_context, .counter => {},
+            .event_context, .colormap, .glx_context, .counter, .cursor => {},
         }
     }
 };

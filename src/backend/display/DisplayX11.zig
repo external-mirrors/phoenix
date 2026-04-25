@@ -179,6 +179,10 @@ pub fn put_image(self: *Self, op: *const phx.Graphics.PutImageArguments) !void {
     return self.graphics.put_image(op);
 }
 
+pub fn fill_rectangles(self: *Self, op: *const phx.Graphics.FillRectanglesArguments) !void {
+    return self.graphics.fill_rectangles(op);
+}
+
 pub fn get_keyboard_state(self: *Self, params: *const phx.Xkb.Request.GetState, _: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetState {
     const cookie = c.xcb_xkb_get_state(self.connection, @intFromEnum(params.device_spec));
 

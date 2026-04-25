@@ -355,6 +355,10 @@ pub fn add_counter(self: *Self, counter: phx.Counter) !void {
     return self.add_resource(counter.id.to_id(), .{ .counter = counter });
 }
 
+pub fn add_picture(self: *Self, picture: phx.Picture) !void {
+    return self.add_resource(picture.id.to_id(), .{ .picture = picture });
+}
+
 pub fn remove_resource(self: *Self, id: x11.ResourceId) void {
     _ = self.resources.remove(id);
 }

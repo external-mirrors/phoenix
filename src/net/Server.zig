@@ -593,6 +593,10 @@ pub fn get_counter(self: *Self, counter_id: phx.Sync.CounterId) ?*phx.Counter {
     return self.client_manager.get_resource_of_type(counter_id.to_id(), .counter);
 }
 
+pub fn get_picture(self: *Self, picture_id: phx.Render.PictureId) ?*phx.Picture {
+    return self.client_manager.get_resource_of_type(picture_id.to_id(), .picture);
+}
+
 fn swap_message_lists(self: *Self) void {
     const tmp = self.messages;
     self.messages = self.messages_back;

@@ -32,6 +32,12 @@ pub const ErrorType = enum(x11.Card8) {
     randr_provider = randr_first_error + 3,
 
     mit_shm_bad_seg = mit_shm_first_error + 0,
+
+    render_pict_format = render_first_error + 0,
+    render_picture = render_first_error + 1,
+    render_pict_op = render_first_error + 2,
+    render_glyph_set = render_first_error + 3,
+    render_glyph = render_first_error + 4,
 };
 
 // The X11 protocol doesn't define the value for these, the X11 server does and returns them in core.QueryExtension
@@ -39,6 +45,7 @@ pub const sync_first_error: x11.Card8 = 20;
 pub const glx_first_error: x11.Card8 = 30;
 pub const randr_first_error: x11.Card8 = 40;
 pub const mit_shm_first_error: x11.Card8 = 50;
+pub const render_first_error: x11.Card8 = 60;
 
 pub const Error = extern struct {
     type: x11.Card8 = 0, // 0 = error

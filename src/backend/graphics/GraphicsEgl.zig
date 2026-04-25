@@ -60,6 +60,7 @@ height: u32,
 root_window: ?*phx.Graphics.GraphicsWindow,
 present_pixmap_operations: std.ArrayListUnmanaged(phx.Graphics.PresentPixmapOperation) = .empty,
 put_image_operations: std.ArrayListUnmanaged(phx.Graphics.PutImageOperation) = .empty,
+fill_rectangles_operations: std.ArrayListUnmanaged(phx.Graphics.FillRectanglesOperation) = .empty,
 
 textures_to_delete: std.ArrayListUnmanaged(u32) = .empty,
 
@@ -230,6 +231,11 @@ pub fn deinit(self: *Self) void {
     }
     self.put_image_operations.clearRetainingCapacity();
 
+    for (self.fill_rectangles_operations.items) |*fill_rectangles_operation| {
+        fill_rectangles_operation.unref(self.allocator);
+    }
+    self.fill_rectangles_operations.clearRetainingCapacity();
+
     if (self.root_window) |root_window| {
         self.destroy_window_recursive(root_window);
         self.root_window = null;
@@ -242,6 +248,7 @@ pub fn deinit(self: *Self) void {
     self.pixmap_to_import.deinit(self.allocator);
     self.present_pixmap_operations.deinit(self.allocator);
     self.put_image_operations.deinit(self.allocator);
+    self.fill_rectangles_operations.deinit(self.allocator);
     self.textures_to_delete.deinit(self.allocator);
 
     if (self.dri_card_fd > 0) {
@@ -258,6 +265,7 @@ pub fn deinit(self: *Self) void {
 fn destroy_window_recursive(self: *Self, graphics_window: *phx.Graphics.GraphicsWindow) void {
     self.remove_present_pixmap_operations_for_window(graphics_window);
     self.remove_put_image_operations_for_window(graphics_window);
+    self.remove_fill_rectangles_operations_for_window(graphics_window);
 
     for (graphics_window.children.items) |child_window| {
         self.destroy_window_recursive(child_window);
@@ -301,6 +309,20 @@ fn remove_put_image_operations_for_window(self: *Self, graphics_window: *phx.Gra
                 std.log.err("GraphicsEgl.remove_put_image_operations_for_window: failed to append put_image_canceled operation in server, error: {s}", .{@errorName(err)});
             };
             _ = self.put_image_operations.orderedRemove(i);
+        } else {
+            i += 1;
+        }
+    }
+}
+
+// XXX: Optimize
+fn remove_fill_rectangles_operations_for_window(self: *Self, graphics_window: *phx.Graphics.GraphicsWindow) void {
+    var i: usize = 0;
+    while (i < self.fill_rectangles_operations.items.len) {
+        const drawable = self.fill_rectangles_operations.items[i].drawable;
+        if (std.meta.activeTag(drawable) == .window and drawable.window == graphics_window) {
+            self.fill_rectangles_operations.items[i].unref(self.allocator);
+            _ = self.fill_rectangles_operations.orderedRemove(i);
         } else {
             i += 1;
         }
@@ -397,6 +419,97 @@ fn perform_put_image_operations(self: *Self) void {
         }
     }
     self.put_image_operations.clearRetainingCapacity();
+}
+
+fn pict_op_blend_factors(op: phx.Render.PictOp) struct { src: c_uint, dst: c_uint } {
+    return switch (op) {
+        .pict_op_clear => .{ .src = c.GL_ZERO, .dst = c.GL_ZERO },
+        .pict_op_src => .{ .src = c.GL_ONE, .dst = c.GL_ZERO },
+        .pict_op_dst => .{ .src = c.GL_ZERO, .dst = c.GL_ONE },
+        .pict_op_over => .{ .src = c.GL_ONE, .dst = c.GL_ONE_MINUS_SRC_ALPHA },
+        .pict_op_over_reverse => .{ .src = c.GL_ONE_MINUS_DST_ALPHA, .dst = c.GL_ONE },
+        .pict_op_in => .{ .src = c.GL_DST_ALPHA, .dst = c.GL_ZERO },
+        .pict_op_in_reverse => .{ .src = c.GL_ZERO, .dst = c.GL_SRC_ALPHA },
+        .pict_op_out => .{ .src = c.GL_ONE_MINUS_DST_ALPHA, .dst = c.GL_ZERO },
+        .pict_op_out_reverse => .{ .src = c.GL_ZERO, .dst = c.GL_ONE_MINUS_SRC_ALPHA },
+        .pict_op_atop => .{ .src = c.GL_DST_ALPHA, .dst = c.GL_ONE_MINUS_SRC_ALPHA },
+        .pict_op_atop_reverse => .{ .src = c.GL_ONE_MINUS_DST_ALPHA, .dst = c.GL_SRC_ALPHA },
+        .pict_op_xor => .{ .src = c.GL_ONE_MINUS_DST_ALPHA, .dst = c.GL_ONE_MINUS_SRC_ALPHA },
+        .pict_op_add => .{ .src = c.GL_ONE, .dst = c.GL_ONE },
+        .pict_op_saturate => .{ .src = c.GL_SRC_ALPHA_SATURATE, .dst = c.GL_ONE },
+    };
+}
+
+fn get_drawable_target_size(drawable: phx.Graphics.GraphicsDrawable) struct { texture_id: u32, width: u32, height: u32 } {
+    return switch (drawable) {
+        .window => |window| .{ .texture_id = window.texture_id, .width = window.width, .height = window.height },
+        .pixmap => |pixmap| .{ .texture_id = pixmap.texture_id, .width = pixmap.dmabuf_data.width, .height = pixmap.dmabuf_data.height },
+    };
+}
+
+fn perform_fill_rectangles_operations(self: *Self) void {
+    if (self.fill_rectangles_operations.items.len == 0) return;
+
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.framebuffer);
+    c.glDisable(c.GL_SCISSOR_TEST);
+    c.glDisable(c.GL_TEXTURE_2D);
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glPushMatrix();
+    c.glMatrixMode(c.GL_MODELVIEW);
+    c.glPushMatrix();
+    c.glLoadIdentity();
+
+    for (self.fill_rectangles_operations.items) |*op| {
+        defer op.unref(self.allocator);
+
+        const target = get_drawable_target_size(op.drawable);
+        if (target.texture_id == 0 or target.width == 0 or target.height == 0)
+            continue;
+
+        c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT0, c.GL_TEXTURE_2D, target.texture_id, 0);
+        c.glViewport(0, 0, @intCast(target.width), @intCast(target.height));
+
+        c.glMatrixMode(c.GL_PROJECTION);
+        c.glLoadIdentity();
+        c.glOrtho(0.0, @floatFromInt(target.width), @floatFromInt(target.height), 0.0, -1.0, 1.0);
+        c.glMatrixMode(c.GL_MODELVIEW);
+
+        const blend = pict_op_blend_factors(op.op);
+        c.glBlendFunc(blend.src, blend.dst);
+
+        const a: f32 = @as(f32, @floatFromInt(op.color.alpha)) / 65535.0;
+        const r: f32 = (@as(f32, @floatFromInt(op.color.red)) / 65535.0) * a;
+        const g: f32 = (@as(f32, @floatFromInt(op.color.green)) / 65535.0) * a;
+        const b: f32 = (@as(f32, @floatFromInt(op.color.blue)) / 65535.0) * a;
+        c.glColor4f(r, g, b, a);
+
+        c.glBegin(c.GL_QUADS);
+        for (op.rects) |rect| {
+            const x0: f32 = @floatFromInt(rect.x);
+            const y0: f32 = @floatFromInt(rect.y);
+            const x1: f32 = @floatFromInt(@as(i32, rect.x) + @as(i32, rect.width));
+            const y1: f32 = @floatFromInt(@as(i32, rect.y) + @as(i32, rect.height));
+            c.glVertex2f(x0, y0);
+            c.glVertex2f(x1, y0);
+            c.glVertex2f(x1, y1);
+            c.glVertex2f(x0, y1);
+        }
+        c.glEnd();
+    }
+    self.fill_rectangles_operations.clearRetainingCapacity();
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glPopMatrix();
+    c.glMatrixMode(c.GL_MODELVIEW);
+    c.glPopMatrix();
+
+    c.glColor4f(1.0, 1.0, 1.0, 1.0);
+    c.glBlendFuncSeparate(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA, c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
+    c.glViewport(0, 0, @intCast(self.width), @intCast(self.height));
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+    c.glEnable(c.GL_TEXTURE_2D);
+    c.glEnable(c.GL_SCISSOR_TEST);
 }
 
 fn depth_to_texture_format(depth: u8) c_uint {
@@ -530,6 +643,7 @@ pub fn render(self: *Self) void {
         if (self.root_window) |root_window| {
             self.perform_put_image_operations();
             self.perform_present_pixmap_operations();
+            self.perform_fill_rectangles_operations();
             self.render_graphics_windows(root_window, @Vector(2, i32){ 0, 0 }, @Vector(2, i32){ @intCast(self.width), @intCast(self.height) });
             c.glBindTexture(c.GL_TEXTURE_2D, 0);
             c.glScissor(0, 0, @intCast(self.width), @intCast(self.height));
@@ -706,6 +820,29 @@ pub fn put_image(self: *Self, op: *const phx.Graphics.PutImageArguments) !void {
     });
 
     op.shm.ref();
+    graphics_drawable.ref();
+    self.dirty.store(true, .release);
+}
+
+pub fn fill_rectangles(self: *Self, op: *const phx.Graphics.FillRectanglesArguments) !void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    var graphics_drawable: phx.Graphics.GraphicsDrawable = switch (op.drawable.item) {
+        .window => |window| .{ .window = window.graphics_window },
+        .pixmap => |pixmap| .{ .pixmap = pixmap },
+    };
+
+    const rects_copy = try self.allocator.dupe(phx.Render.Rectangle, op.rects);
+    errdefer self.allocator.free(rects_copy);
+
+    try self.fill_rectangles_operations.append(self.allocator, .{
+        .drawable = graphics_drawable,
+        .op = op.op,
+        .color = op.color,
+        .rects = rects_copy,
+    });
+
     graphics_drawable.ref();
     self.dirty.store(true, .release);
 }

@@ -16,6 +16,8 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
     return switch (minor_opcode) {
         .query_version => query_version(request_context),
         .query_pict_formats => query_pict_formats(request_context),
+        .create_picture => create_picture(request_context),
+        .fill_rectangles => fill_rectangles(request_context),
     };
 }
 
@@ -254,14 +256,195 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn create_picture(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.CreatePicture, request_context.allocator);
+    defer req.deinit();
+
+    const drawable = request_context.server.get_drawable(req.request.drawable) orelse {
+        std.log.err("RenderCreatePicture: invalid drawable {d}", .{req.request.drawable});
+        return request_context.client.write_error(request_context, .drawable, req.request.drawable.to_id().to_int());
+    };
+
+    const format_depth = get_pict_format_depth(req.request.format) orelse {
+        std.log.err("RenderCreatePicture: invalid pict format {d}", .{@intFromEnum(req.request.format)});
+        return request_context.client.write_error(request_context, .render_pict_format, @intFromEnum(req.request.format));
+    };
+
+    if (format_depth != drawable.get_depth()) {
+        std.log.err("RenderCreatePicture: format depth {d} does not match drawable depth {d}", .{ format_depth, drawable.get_depth() });
+        return request_context.client.write_error(request_context, .match, 0);
+    }
+
+    var picture = phx.Picture{
+        .id = req.request.pid,
+        .drawable = drawable,
+        .format = req.request.format,
+    };
+
+    if (req.request.get_value(x11.Card8, "repeat")) |v| {
+        picture.repeat = std.meta.intToEnum(Repeat, v) catch |err| switch (err) {
+            error.InvalidEnumTag => return request_context.client.write_error(request_context, .value, v),
+        };
+    }
+
+    if (req.request.get_value(x11.Card32, "alpha_map")) |v| {
+        const alpha_map_id: PictureId = @enumFromInt(v);
+        if (alpha_map_id != .none and request_context.server.get_picture(alpha_map_id) == null) {
+            std.log.err("RenderCreatePicture: invalid alpha_map picture {d}", .{v});
+            return request_context.client.write_error(request_context, .render_picture, v);
+        }
+        picture.alpha_map = alpha_map_id;
+    }
+
+    if (req.request.get_value(i16, "alpha_x_origin")) |v| picture.alpha_x_origin = v;
+    if (req.request.get_value(i16, "alpha_y_origin")) |v| picture.alpha_y_origin = v;
+    if (req.request.get_value(i16, "clip_x_origin")) |v| picture.clip_x_origin = v;
+    if (req.request.get_value(i16, "clip_y_origin")) |v| picture.clip_y_origin = v;
+
+    if (req.request.get_value(x11.Card32, "clip_mask")) |v| {
+        const clip_mask_id: x11.PixmapId = @enumFromInt(v);
+        if (clip_mask_id != .none) {
+            const clip_pixmap = request_context.server.get_pixmap(clip_mask_id) orelse {
+                std.log.err("RenderCreatePicture: invalid clip_mask pixmap {d}", .{v});
+                return request_context.client.write_error(request_context, .pixmap, v);
+            };
+            if (clip_pixmap.dmabuf_data.depth != 1) {
+                std.log.err("RenderCreatePicture: clip_mask pixmap must have depth 1, got {d}", .{clip_pixmap.dmabuf_data.depth});
+                return request_context.client.write_error(request_context, .match, v);
+            }
+        }
+        picture.clip_mask = clip_mask_id;
+    }
+
+    if (req.request.get_value(bool, "graphics_exposure")) |v| picture.graphics_exposure = v;
+
+    if (req.request.get_value(x11.Card8, "subwindow_mode")) |v| {
+        picture.subwindow_mode = std.meta.intToEnum(SubwindowMode, v) catch |err| switch (err) {
+            error.InvalidEnumTag => return request_context.client.write_error(request_context, .value, v),
+        };
+    }
+
+    if (req.request.get_value(x11.Card8, "poly_edge")) |v| {
+        picture.poly_edge = std.meta.intToEnum(PolyEdge, v) catch |err| switch (err) {
+            error.InvalidEnumTag => return request_context.client.write_error(request_context, .value, v),
+        };
+    }
+
+    if (req.request.get_value(x11.Card8, "poly_mode")) |v| {
+        picture.poly_mode = std.meta.intToEnum(PolyMode, v) catch |err| switch (err) {
+            error.InvalidEnumTag => return request_context.client.write_error(request_context, .value, v),
+        };
+    }
+
+    if (req.request.get_value(x11.Card32, "dither")) |v| picture.dither = @enumFromInt(v);
+    if (req.request.get_value(bool, "component_alpha")) |v| picture.component_alpha = v;
+
+    switch (drawable.item) {
+        .pixmap => |pixmap| pixmap.ref(),
+        .window => {},
+    }
+    errdefer picture.deinit();
+
+    try request_context.client.add_picture(picture);
+}
+
+fn fill_rectangles(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.FillRectangles, request_context.allocator);
+    defer req.deinit();
+
+    const op_int: x11.Card8 = @intFromEnum(req.request.op);
+    if (op_int < pict_op_minimum or op_int > pict_op_maximum) {
+        std.log.err("RenderFillRectangles: invalid pict op {d}", .{op_int});
+        return request_context.client.write_error(request_context, .render_pict_op, op_int);
+    }
+
+    const picture = request_context.server.get_picture(req.request.dst) orelse {
+        std.log.err("RenderFillRectangles: invalid dst picture {d}", .{@intFromEnum(req.request.dst)});
+        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.dst));
+    };
+
+    if (req.request.rects.items.len == 0)
+        return;
+
+    try request_context.server.display.fill_rectangles(&.{
+        .drawable = picture.drawable,
+        .op = req.request.op,
+        .color = req.request.color,
+        .rects = req.request.rects.items,
+    });
+}
+
 const MinorOpcode = enum(x11.Card8) {
     query_version = 0,
     query_pict_formats = 1,
+    create_picture = 4,
+    fill_rectangles = 26,
 };
 
-const PictFormatId = enum(x11.Card32) {
+pub const PictFormatId = enum(x11.Card32) {
+    none = 0,
     _,
 };
+
+pub const PictureId = enum(x11.Card32) {
+    none = 0,
+    _,
+
+    pub fn to_id(self: PictureId) x11.ResourceId {
+        return @enumFromInt(@intFromEnum(self));
+    }
+};
+
+pub const Repeat = enum(x11.Card8) {
+    none = 0,
+    normal = 1,
+    pad = 2,
+    reflect = 3,
+};
+
+pub const PolyEdge = enum(x11.Card8) {
+    sharp = 0,
+    smooth = 1,
+};
+
+pub const PolyMode = enum(x11.Card8) {
+    precise = 0,
+    imprecise = 1,
+};
+
+pub const SubwindowMode = enum(x11.Card8) {
+    clip_by_children = 0,
+    include_inferiors = 1,
+};
+
+pub const Rectangle = struct {
+    x: i16,
+    y: i16,
+    width: x11.Card16,
+    height: x11.Card16,
+};
+
+pub const Color = struct {
+    red: x11.Card16,
+    green: x11.Card16,
+    blue: x11.Card16,
+    alpha: x11.Card16,
+};
+
+pub const pict_format_id_first: x11.Card32 = 35;
+pub const pict_format_id_last: x11.Card32 = 40;
+
+pub fn get_pict_format_depth(id: PictFormatId) ?u8 {
+    return switch (@intFromEnum(id)) {
+        35 => 1,
+        36 => 8,
+        37 => 15,
+        38 => 16,
+        39 => 24,
+        40 => 32,
+        else => null,
+    };
+}
 
 const PictType = enum(x11.Card8) {
     indexed = 0,
@@ -403,6 +586,58 @@ const SubPixel = enum(x11.Card32) {
     none = 5,
 };
 
+pub const CreatePictureValueMask = packed struct(x11.Card32) {
+    repeat: bool,
+    alpha_map: bool,
+    alpha_x_origin: bool,
+    alpha_y_origin: bool,
+    clip_x_origin: bool,
+    clip_y_origin: bool,
+    clip_mask: bool,
+    graphics_exposure: bool,
+    subwindow_mode: bool,
+    poly_edge: bool,
+    poly_mode: bool,
+    dither: bool,
+    component_alpha: bool,
+
+    _padding: u19 = 0,
+
+    pub fn sanitize(self: CreatePictureValueMask) CreatePictureValueMask {
+        var result = self;
+        result._padding = 0;
+        return result;
+    }
+
+    pub fn get_value_index_by_field(self: CreatePictureValueMask, comptime field_name: []const u8) ?usize {
+        if (!@field(self, field_name))
+            return null;
+
+        const index_count_mask: u32 = (1 << @bitOffsetOf(CreatePictureValueMask, field_name)) - 1;
+        return @popCount(self.to_int() & index_count_mask);
+    }
+
+    pub fn to_int(self: CreatePictureValueMask) x11.Card32 {
+        return @bitCast(self);
+    }
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == @sizeOf(x11.Card32));
+        std.debug.assert(@bitSizeOf(@This()) == @bitSizeOf(x11.Card32));
+    }
+};
+
+fn downcast_integer(comptime T: type, value: x11.Card32) T {
+    const target_int_info = @typeInfo(T);
+    const UnsignedType = switch (target_int_info) {
+        .int => |int_info| @Type(.{ .int = .{ .signedness = .unsigned, .bits = int_info.bits } }),
+        .bool => u1,
+        .@"enum" => |enum_info| enum_info.tag_type,
+        else => @compileError("downcast_integer only supports integer, bool and enum types"),
+    };
+    return @bitCast(@as(UnsignedType, @truncate(value)));
+}
+
 pub const Request = struct {
     pub const QueryVersion = struct {
         major_opcode: phx.opcode.Major = .render,
@@ -416,6 +651,37 @@ pub const Request = struct {
         major_opcode: phx.opcode.Major = .render,
         minor_opcode: MinorOpcode = .query_pict_formats,
         length: x11.Card16,
+    };
+
+    pub const FillRectangles = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .fill_rectangles,
+        length: x11.Card16,
+        op: PictOp,
+        pad1: x11.Card8 = 0,
+        pad2: x11.Card16 = 0,
+        dst: PictureId,
+        color: Color,
+        rects: x11.ListOf(Rectangle, .{ .length_field = "length", .length_field_type = .request_remainder }),
+    };
+
+    pub const CreatePicture = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .create_picture,
+        length: x11.Card16,
+        pid: PictureId,
+        drawable: x11.DrawableId,
+        format: PictFormatId,
+        value_mask: CreatePictureValueMask,
+        value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
+
+        pub fn get_value(self: *const CreatePicture, comptime T: type, comptime value_mask_field: []const u8) ?T {
+            if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
+                return downcast_integer(T, self.value_list.items[index]);
+            } else {
+                return null;
+            }
+        }
     };
 };
 

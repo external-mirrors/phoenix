@@ -132,6 +132,12 @@ pub fn put_image(self: *Self, op: *const PutImageArguments) !void {
     };
 }
 
+pub fn fill_rectangles(self: *Self, op: *const FillRectanglesArguments) !void {
+    return switch (self.impl) {
+        inline else => |item| item.fill_rectangles(op),
+    };
+}
+
 pub fn set_dirty(self: *Self) void {
     switch (self.impl) {
         inline else => |item| item.set_dirty(),
@@ -200,6 +206,25 @@ pub const PutImageOperation = struct {
     pub fn unref(self: *PutImageOperation) void {
         self.shm_segment.unref();
         self.drawable.unref();
+    }
+};
+
+pub const FillRectanglesArguments = struct {
+    drawable: phx.Drawable,
+    op: phx.Render.PictOp,
+    color: phx.Render.Color,
+    rects: []const phx.Render.Rectangle,
+};
+
+pub const FillRectanglesOperation = struct {
+    drawable: GraphicsDrawable,
+    op: phx.Render.PictOp,
+    color: phx.Render.Color,
+    rects: []phx.Render.Rectangle,
+
+    pub fn unref(self: *FillRectanglesOperation, allocator: std.mem.Allocator) void {
+        self.drawable.unref();
+        allocator.free(self.rects);
     }
 };
 

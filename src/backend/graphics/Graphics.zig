@@ -144,6 +144,12 @@ pub fn copy_area(self: *Self, op: *const CopyAreaArguments) !void {
     };
 }
 
+pub fn composite(self: *Self, op: *const CompositeArguments) !void {
+    return switch (self.impl) {
+        inline else => |item| item.composite(op),
+    };
+}
+
 pub fn set_dirty(self: *Self) void {
     switch (self.impl) {
         inline else => |item| item.set_dirty(),
@@ -243,6 +249,77 @@ pub const CopyAreaArguments = struct {
     dst_y: i16,
     width: x11.Card16,
     height: x11.Card16,
+};
+
+pub const CompositeArguments = struct {
+    src_drawable: phx.Drawable,
+    src_alpha_map_drawable: ?phx.Drawable,
+    src_alpha_x_origin: i16,
+    src_alpha_y_origin: i16,
+    src_alpha_swizzle: [4]f32,
+
+    mask_drawable: ?phx.Drawable,
+    mask_alpha_map_drawable: ?phx.Drawable,
+    mask_alpha_x_origin: i16,
+    mask_alpha_y_origin: i16,
+    mask_alpha_swizzle: [4]f32,
+    mask_component_alpha: bool,
+
+    dst_drawable: phx.Drawable,
+    clip_mask_drawable: ?phx.Drawable,
+    clip_x_origin: i16,
+    clip_y_origin: i16,
+    clip_swizzle: [4]f32,
+
+    op: phx.Render.PictOp,
+    src_x: i16,
+    src_y: i16,
+    mask_x: i16,
+    mask_y: i16,
+    dst_x: i16,
+    dst_y: i16,
+    width: x11.Card16,
+    height: x11.Card16,
+};
+
+pub const CompositeOperation = struct {
+    src_drawable: GraphicsDrawable,
+    src_alpha_map_drawable: ?GraphicsDrawable,
+    src_alpha_x_origin: i16,
+    src_alpha_y_origin: i16,
+    src_alpha_swizzle: [4]f32,
+
+    mask_drawable: ?GraphicsDrawable,
+    mask_alpha_map_drawable: ?GraphicsDrawable,
+    mask_alpha_x_origin: i16,
+    mask_alpha_y_origin: i16,
+    mask_alpha_swizzle: [4]f32,
+    mask_component_alpha: bool,
+
+    dst_drawable: GraphicsDrawable,
+    clip_mask_drawable: ?GraphicsDrawable,
+    clip_x_origin: i16,
+    clip_y_origin: i16,
+    clip_swizzle: [4]f32,
+
+    op: phx.Render.PictOp,
+    src_x: i16,
+    src_y: i16,
+    mask_x: i16,
+    mask_y: i16,
+    dst_x: i16,
+    dst_y: i16,
+    width: x11.Card16,
+    height: x11.Card16,
+
+    pub fn unref(self: *CompositeOperation) void {
+        self.src_drawable.unref();
+        if (self.src_alpha_map_drawable) |*d| d.unref();
+        if (self.mask_drawable) |*d| d.unref();
+        if (self.mask_alpha_map_drawable) |*d| d.unref();
+        self.dst_drawable.unref();
+        if (self.clip_mask_drawable) |*d| d.unref();
+    }
 };
 
 pub const CopyAreaOperation = struct {

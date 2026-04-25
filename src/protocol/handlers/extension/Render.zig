@@ -17,6 +17,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .query_version => query_version(request_context),
         .query_pict_formats => query_pict_formats(request_context),
         .create_picture => create_picture(request_context),
+        .composite => composite(request_context),
         .fill_rectangles => fill_rectangles(request_context),
     };
 }
@@ -43,29 +44,9 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
 
     const screen_visual = request_context.server.get_visual_by_id(phx.Server.screen_true_color_visual_id) orelse unreachable;
 
-    var pict_format_id_counter: x11.Card32 = 35;
-
-    const pict_format_a1: PictFormatId = @enumFromInt(pict_format_id_counter);
-    pict_format_id_counter += 1;
-
-    const pict_format_a8: PictFormatId = @enumFromInt(pict_format_id_counter);
-    pict_format_id_counter += 1;
-
-    const pict_format_rgb15: PictFormatId = @enumFromInt(pict_format_id_counter);
-    pict_format_id_counter += 1;
-
-    const pict_format_rgb16: PictFormatId = @enumFromInt(pict_format_id_counter);
-    pict_format_id_counter += 1;
-
-    const pict_format_rgb24: PictFormatId = @enumFromInt(pict_format_id_counter);
-    pict_format_id_counter += 1;
-
-    const pict_format_argb32: PictFormatId = @enumFromInt(pict_format_id_counter);
-    pict_format_id_counter += 1;
-
     var formats = [_]PictFormInfo{
         .{
-            .id = pict_format_a1,
+            .id = .a1,
             .type = .direct,
             .depth = 1,
             .direct = .{
@@ -81,7 +62,7 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
             .colormap = @enumFromInt(0),
         },
         .{
-            .id = pict_format_a8,
+            .id = .a8,
             .type = .direct,
             .depth = 8,
             .direct = .{
@@ -97,7 +78,7 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
             .colormap = @enumFromInt(0),
         },
         .{
-            .id = pict_format_rgb15,
+            .id = .rgb15,
             .type = .direct,
             .depth = 15,
             .direct = .{
@@ -113,7 +94,7 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
             .colormap = @enumFromInt(0),
         },
         .{
-            .id = pict_format_rgb16,
+            .id = .rgb16,
             .type = .direct,
             .depth = 16,
             .direct = .{
@@ -129,7 +110,7 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
             .colormap = @enumFromInt(0),
         },
         .{
-            .id = pict_format_rgb24,
+            .id = .rgb24,
             .type = .direct,
             .depth = 24,
             .direct = .{
@@ -145,7 +126,7 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
             .colormap = @enumFromInt(0),
         },
         .{
-            .id = pict_format_argb32,
+            .id = .argb32,
             .type = .direct,
             .depth = 32,
             .direct = .{
@@ -165,42 +146,42 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
     var depth_visuals1 = [_]PictVisual{
         .{
             .visual = screen_visual.id,
-            .format = pict_format_a1,
+            .format = .a1,
         },
     };
 
     var depth_visuals8 = [_]PictVisual{
         .{
             .visual = screen_visual.id,
-            .format = pict_format_a8,
+            .format = .a8,
         },
     };
 
     var depth_visuals15 = [_]PictVisual{
         .{
             .visual = screen_visual.id,
-            .format = pict_format_rgb15,
+            .format = .rgb15,
         },
     };
 
     var depth_visuals16 = [_]PictVisual{
         .{
             .visual = screen_visual.id,
-            .format = pict_format_rgb16,
+            .format = .rgb16,
         },
     };
 
     var depth_visuals24 = [_]PictVisual{
         .{
             .visual = screen_visual.id,
-            .format = pict_format_rgb24,
+            .format = .rgb24,
         },
     };
 
     var depth_visuals32 = [_]PictVisual{
         .{
             .visual = screen_visual.id,
-            .format = pict_format_argb32,
+            .format = .argb32,
         },
     };
 
@@ -233,7 +214,7 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
 
     var screens = [_]PictScreen{
         .{
-            .fallback = pict_format_rgb24,
+            .fallback = .rgb24,
             .depths = .{ .items = &screen_depths },
         },
     };
@@ -348,6 +329,109 @@ fn create_picture(request_context: *phx.RequestContext) !void {
     try request_context.client.add_picture(picture);
 }
 
+fn composite(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.Composite, request_context.allocator);
+    defer req.deinit();
+
+    const op_int: x11.Card8 = @intFromEnum(req.request.op);
+    if (op_int < pict_op_minimum or op_int > pict_op_maximum) {
+        std.log.err("RenderComposite: invalid pict op {d}", .{op_int});
+        return request_context.client.write_error(request_context, .render_pict_op, op_int);
+    }
+
+    const src = request_context.server.get_picture(req.request.src) orelse {
+        std.log.err("RenderComposite: invalid src picture {d}", .{@intFromEnum(req.request.src)});
+        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.src));
+    };
+
+    const dst = request_context.server.get_picture(req.request.dst) orelse {
+        std.log.err("RenderComposite: invalid dst picture {d}", .{@intFromEnum(req.request.dst)});
+        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.dst));
+    };
+
+    var mask: ?*phx.Picture = null;
+    if (req.request.mask != .none) {
+        mask = request_context.server.get_picture(req.request.mask) orelse {
+            std.log.err("RenderComposite: invalid mask picture {d}", .{@intFromEnum(req.request.mask)});
+            return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.mask));
+        };
+    }
+
+    if (req.request.width == 0 or req.request.height == 0)
+        return;
+
+    const src_alpha = resolve_alpha_map(request_context, src);
+    const mask_alpha = if (mask) |m| resolve_alpha_map(request_context, m) else AlphaMapBinding{};
+    const clip = resolve_clip_mask(request_context, dst);
+
+    try request_context.server.display.composite(&.{
+        .src_drawable = src.drawable,
+        .src_alpha_map_drawable = src_alpha.drawable,
+        .src_alpha_x_origin = src_alpha.x_origin,
+        .src_alpha_y_origin = src_alpha.y_origin,
+        .src_alpha_swizzle = src_alpha.swizzle,
+
+        .mask_drawable = if (mask) |m| m.drawable else null,
+        .mask_alpha_map_drawable = mask_alpha.drawable,
+        .mask_alpha_x_origin = mask_alpha.x_origin,
+        .mask_alpha_y_origin = mask_alpha.y_origin,
+        .mask_alpha_swizzle = mask_alpha.swizzle,
+        .mask_component_alpha = if (mask) |m| m.component_alpha else false,
+
+        .dst_drawable = dst.drawable,
+        .clip_mask_drawable = clip.drawable,
+        .clip_x_origin = clip.x_origin,
+        .clip_y_origin = clip.y_origin,
+        .clip_swizzle = clip.swizzle,
+
+        .op = req.request.op,
+        .src_x = req.request.src_x,
+        .src_y = req.request.src_y,
+        .mask_x = req.request.mask_x,
+        .mask_y = req.request.mask_y,
+        .dst_x = req.request.dst_x,
+        .dst_y = req.request.dst_y,
+        .width = req.request.width,
+        .height = req.request.height,
+    });
+}
+
+const AlphaMapBinding = struct {
+    drawable: ?phx.Drawable = null,
+    x_origin: i16 = 0,
+    y_origin: i16 = 0,
+    swizzle: [4]f32 = .{ 0, 0, 0, 1 },
+};
+
+fn resolve_alpha_map(request_context: *phx.RequestContext, picture: *phx.Picture) AlphaMapBinding {
+    if (picture.alpha_map == .none) return .{};
+    const alpha_picture = request_context.server.get_picture(picture.alpha_map) orelse return .{};
+    return .{
+        .drawable = alpha_picture.drawable,
+        .x_origin = picture.alpha_x_origin,
+        .y_origin = picture.alpha_y_origin,
+        .swizzle = alpha_swizzle_for_depth(alpha_picture.drawable.get_depth()),
+    };
+}
+
+const ClipMaskBinding = struct {
+    drawable: ?phx.Drawable = null,
+    x_origin: i16 = 0,
+    y_origin: i16 = 0,
+    swizzle: [4]f32 = .{ 0, 0, 0, 1 },
+};
+
+fn resolve_clip_mask(request_context: *phx.RequestContext, picture: *phx.Picture) ClipMaskBinding {
+    if (picture.clip_mask == .none) return .{};
+    const clip_pixmap = request_context.server.get_pixmap(picture.clip_mask) orelse return .{};
+    return .{
+        .drawable = phx.Drawable.init_pixmap(clip_pixmap),
+        .x_origin = picture.clip_x_origin,
+        .y_origin = picture.clip_y_origin,
+        .swizzle = alpha_swizzle_for_depth(clip_pixmap.dmabuf_data.depth),
+    };
+}
+
 fn fill_rectangles(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.FillRectangles, request_context.allocator);
     defer req.deinit();
@@ -378,12 +462,20 @@ const MinorOpcode = enum(x11.Card8) {
     query_version = 0,
     query_pict_formats = 1,
     create_picture = 4,
+    composite = 8,
     fill_rectangles = 26,
 };
 
 pub const PictFormatId = enum(x11.Card32) {
     none = 0,
-    _,
+    // The value for these are not defined in the X11 protocol. They are instead defined by the display server
+    // and returned in QueryPictFormats. As long as each one is unique it doesn't matter what value they have.
+    a1 = 1,
+    a8 = 2,
+    rgb15 = 3,
+    rgb16 = 4,
+    rgb24 = 5,
+    argb32 = 6,
 };
 
 pub const PictureId = enum(x11.Card32) {
@@ -434,14 +526,25 @@ pub const Color = struct {
 pub const pict_format_id_first: x11.Card32 = 35;
 pub const pict_format_id_last: x11.Card32 = 40;
 
+/// Returns a swizzle vector that, when dot'd with a texture sample, gives the
+/// alpha value for a drawable of the given depth. The depth determines how the
+/// pixel data is laid out in the GL texture (see depth_to_texture_format).
+pub fn alpha_swizzle_for_depth(depth: u8) [4]f32 {
+    return switch (depth) {
+        1, 8 => .{ 1.0, 0.0, 0.0, 0.0 },
+        32 => .{ 0.0, 0.0, 0.0, 1.0 },
+        else => .{ 0.0, 0.0, 0.0, 1.0 },
+    };
+}
+
 pub fn get_pict_format_depth(id: PictFormatId) ?u8 {
-    return switch (@intFromEnum(id)) {
-        35 => 1,
-        36 => 8,
-        37 => 15,
-        38 => 16,
-        39 => 24,
-        40 => 32,
+    return switch (id) {
+        .a1 => 1,
+        .a8 => 8,
+        .rgb15 => 15,
+        .rgb16 => 16,
+        .rgb24 => 24,
+        .argb32 => 32,
         else => null,
     };
 }
@@ -651,6 +754,26 @@ pub const Request = struct {
         major_opcode: phx.opcode.Major = .render,
         minor_opcode: MinorOpcode = .query_pict_formats,
         length: x11.Card16,
+    };
+
+    pub const Composite = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .composite,
+        length: x11.Card16,
+        op: PictOp,
+        pad1: x11.Card8 = 0,
+        pad2: x11.Card16 = 0,
+        src: PictureId,
+        mask: PictureId,
+        dst: PictureId,
+        src_x: i16,
+        src_y: i16,
+        mask_x: i16,
+        mask_y: i16,
+        dst_x: i16,
+        dst_y: i16,
+        width: x11.Card16,
+        height: x11.Card16,
     };
 
     pub const FillRectangles = struct {

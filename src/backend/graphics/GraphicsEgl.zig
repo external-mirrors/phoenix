@@ -1,5 +1,6 @@
 const std = @import("std");
 const phx = @import("../../phoenix.zig");
+const graphics_utils = @import("utils.zig");
 const c = phx.c;
 
 const Self = @This();
@@ -62,6 +63,22 @@ present_pixmap_operations: std.ArrayListUnmanaged(phx.Graphics.PresentPixmapOper
 put_image_operations: std.ArrayListUnmanaged(phx.Graphics.PutImageOperation) = .empty,
 fill_rectangles_operations: std.ArrayListUnmanaged(phx.Graphics.FillRectanglesOperation) = .empty,
 copy_area_operations: std.ArrayListUnmanaged(phx.Graphics.CopyAreaOperation) = .empty,
+composite_operations: std.ArrayListUnmanaged(phx.Graphics.CompositeOperation) = .empty,
+
+mask_program: c.GLuint = 0,
+mask_program_loc_src: c.GLint = -1,
+mask_program_loc_src_alpha_map: c.GLint = -1,
+mask_program_loc_use_src_alpha_map: c.GLint = -1,
+mask_program_loc_src_alpha_swizzle: c.GLint = -1,
+mask_program_loc_mask: c.GLint = -1,
+mask_program_loc_use_mask: c.GLint = -1,
+mask_program_loc_component_alpha: c.GLint = -1,
+mask_program_loc_mask_alpha_map: c.GLint = -1,
+mask_program_loc_use_mask_alpha_map: c.GLint = -1,
+mask_program_loc_mask_alpha_swizzle: c.GLint = -1,
+mask_program_loc_clip_mask: c.GLint = -1,
+mask_program_loc_use_clip_mask: c.GLint = -1,
+mask_program_loc_clip_swizzle: c.GLint = -1,
 
 textures_to_delete: std.ArrayListUnmanaged(u32) = .empty,
 
@@ -190,6 +207,22 @@ pub fn init(
     c.glDrawBuffers(1, &draw_buffer);
     c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
 
+    const mask_program: c.GLuint = try graphics_utils.create_shader_program(graphics_utils.mask_vertex_shader_src, graphics_utils.mask_fragment_shader_src);
+    errdefer c.glDeleteProgram(mask_program);
+    const mask_program_loc_src: c.GLint = c.glGetUniformLocation(mask_program, "u_src");
+    const mask_program_loc_src_alpha_map: c.GLint = c.glGetUniformLocation(mask_program, "u_src_alpha_map");
+    const mask_program_loc_use_src_alpha_map: c.GLint = c.glGetUniformLocation(mask_program, "u_use_src_alpha_map");
+    const mask_program_loc_src_alpha_swizzle: c.GLint = c.glGetUniformLocation(mask_program, "u_src_alpha_swizzle");
+    const mask_program_loc_mask: c.GLint = c.glGetUniformLocation(mask_program, "u_mask");
+    const mask_program_loc_use_mask: c.GLint = c.glGetUniformLocation(mask_program, "u_use_mask");
+    const mask_program_loc_component_alpha: c.GLint = c.glGetUniformLocation(mask_program, "u_component_alpha");
+    const mask_program_loc_mask_alpha_map: c.GLint = c.glGetUniformLocation(mask_program, "u_mask_alpha_map");
+    const mask_program_loc_use_mask_alpha_map: c.GLint = c.glGetUniformLocation(mask_program, "u_use_mask_alpha_map");
+    const mask_program_loc_mask_alpha_swizzle: c.GLint = c.glGetUniformLocation(mask_program, "u_mask_alpha_swizzle");
+    const mask_program_loc_clip_mask: c.GLint = c.glGetUniformLocation(mask_program, "u_clip_mask");
+    const mask_program_loc_use_clip_mask: c.GLint = c.glGetUniformLocation(mask_program, "u_use_clip_mask");
+    const mask_program_loc_clip_swizzle: c.GLint = c.glGetUniformLocation(mask_program, "u_clip_swizzle");
+
     if (c.eglMakeCurrent(egl_display, null, null, null) == c.EGL_FALSE)
         return error.FailedToMakeEglContextCurrent;
 
@@ -213,14 +246,36 @@ pub fn init(
         .glEGLImageTargetTexture2DOES = glEGLImageTargetTexture2DOES,
         .eglQueryDmaBufModifiersEXT = eglQueryDmaBufModifiersEXT,
         .glCopyImageSubData = glCopyImageSubData,
+
+        .mask_program = mask_program,
+        .mask_program_loc_src = mask_program_loc_src,
+        .mask_program_loc_src_alpha_map = mask_program_loc_src_alpha_map,
+        .mask_program_loc_use_src_alpha_map = mask_program_loc_use_src_alpha_map,
+        .mask_program_loc_src_alpha_swizzle = mask_program_loc_src_alpha_swizzle,
+        .mask_program_loc_mask = mask_program_loc_mask,
+        .mask_program_loc_use_mask = mask_program_loc_use_mask,
+        .mask_program_loc_component_alpha = mask_program_loc_component_alpha,
+        .mask_program_loc_mask_alpha_map = mask_program_loc_mask_alpha_map,
+        .mask_program_loc_use_mask_alpha_map = mask_program_loc_use_mask_alpha_map,
+        .mask_program_loc_mask_alpha_swizzle = mask_program_loc_mask_alpha_swizzle,
+        .mask_program_loc_clip_mask = mask_program_loc_clip_mask,
+        .mask_program_loc_use_clip_mask = mask_program_loc_use_clip_mask,
+        .mask_program_loc_clip_swizzle = mask_program_loc_clip_swizzle,
     };
 }
 
 pub fn deinit(self: *Self) void {
     self.make_current_thread_active() catch {};
 
-    if (self.framebuffer > 0)
+    if (self.framebuffer > 0) {
         c.glDeleteFramebuffers(1, &self.framebuffer);
+        self.framebuffer = 0;
+    }
+
+    if (self.mask_program > 0) {
+        c.glDeleteProgram(self.mask_program);
+        self.mask_program = 0;
+    }
 
     for (self.present_pixmap_operations.items) |*present_pixmap_operation| {
         present_pixmap_operation.unref();
@@ -242,6 +297,11 @@ pub fn deinit(self: *Self) void {
     }
     self.copy_area_operations.clearRetainingCapacity();
 
+    for (self.composite_operations.items) |*composite_operation| {
+        composite_operation.unref();
+    }
+    self.composite_operations.clearRetainingCapacity();
+
     if (self.root_window) |root_window| {
         self.destroy_window_recursive(root_window);
         self.root_window = null;
@@ -256,6 +316,7 @@ pub fn deinit(self: *Self) void {
     self.put_image_operations.deinit(self.allocator);
     self.fill_rectangles_operations.deinit(self.allocator);
     self.copy_area_operations.deinit(self.allocator);
+    self.composite_operations.deinit(self.allocator);
     self.textures_to_delete.deinit(self.allocator);
 
     if (self.dri_card_fd > 0) {
@@ -274,6 +335,7 @@ fn destroy_window_recursive(self: *Self, graphics_window: *phx.Graphics.Graphics
     self.remove_put_image_operations_for_window(graphics_window);
     self.remove_fill_rectangles_operations_for_window(graphics_window);
     self.remove_copy_area_operations_for_window(graphics_window);
+    self.remove_composite_operations_for_window(graphics_window);
 
     for (graphics_window.children.items) |child_window| {
         self.destroy_window_recursive(child_window);
@@ -349,6 +411,33 @@ fn remove_copy_area_operations_for_window(self: *Self, graphics_window: *phx.Gra
                 std.log.err("GraphicsEgl.remove_copy_area_operations_for_window: failed to append copy_area_canceled operation in server, error: {s}", .{@errorName(err)});
             };
             _ = self.copy_area_operations.orderedRemove(i);
+        } else {
+            i += 1;
+        }
+    }
+}
+
+// XXX: Optimize
+fn remove_composite_operations_for_window(self: *Self, graphics_window: *phx.Graphics.GraphicsWindow) void {
+    var i: usize = 0;
+    while (i < self.composite_operations.items.len) {
+        const op = &self.composite_operations.items[i];
+        const matches_window = struct {
+            fn f(d: phx.Graphics.GraphicsDrawable, w: *phx.Graphics.GraphicsWindow) bool {
+                return std.meta.activeTag(d) == .window and d.window == w;
+            }
+        }.f;
+        const src_match = matches_window(op.src_drawable, graphics_window);
+        const dst_match = matches_window(op.dst_drawable, graphics_window);
+        const mask_match = if (op.mask_drawable) |d| matches_window(d, graphics_window) else false;
+        const src_amap_match = if (op.src_alpha_map_drawable) |d| matches_window(d, graphics_window) else false;
+        const mask_amap_match = if (op.mask_alpha_map_drawable) |d| matches_window(d, graphics_window) else false;
+        const clip_match = if (op.clip_mask_drawable) |d| matches_window(d, graphics_window) else false;
+        if (src_match or dst_match or mask_match or src_amap_match or mask_amap_match or clip_match) {
+            self.server.append_message(&.{ .composite_canceled = .{ .operation = op.* } }) catch |err| {
+                std.log.err("GraphicsEgl.remove_composite_operations_for_window: failed to append composite_canceled operation in server, error: {s}", .{@errorName(err)});
+            };
+            _ = self.composite_operations.orderedRemove(i);
         } else {
             i += 1;
         }
@@ -519,6 +608,170 @@ fn perform_copy_area_operations(self: *Self) void {
         );
     }
     self.copy_area_operations.clearRetainingCapacity();
+}
+
+fn perform_composite_operations(self: *Self) void {
+    if (self.composite_operations.items.len == 0) return;
+
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.framebuffer);
+    c.glDisable(c.GL_SCISSOR_TEST);
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glPushMatrix();
+    c.glMatrixMode(c.GL_MODELVIEW);
+    c.glPushMatrix();
+    c.glLoadIdentity();
+
+    c.glUseProgram(self.mask_program);
+    c.glUniform1i(self.mask_program_loc_src, 0);
+    c.glUniform1i(self.mask_program_loc_src_alpha_map, 1);
+    c.glUniform1i(self.mask_program_loc_mask, 2);
+    c.glUniform1i(self.mask_program_loc_mask_alpha_map, 3);
+    c.glUniform1i(self.mask_program_loc_clip_mask, 4);
+
+    for (self.composite_operations.items) |*op| {
+        defer {
+            self.server.append_message(&.{ .composite_finished = .{ .operation = op.* } }) catch |err| {
+                std.log.err("GraphicsEgl.perform_composite_operations: failed to append composite_finished operation in server, error: {s}", .{@errorName(err)});
+            };
+        }
+
+        const src = get_drawable_target_size(op.src_drawable);
+        const dst = get_drawable_target_size(op.dst_drawable);
+        if (src.texture_id == 0 or dst.texture_id == 0 or dst.width == 0 or dst.height == 0 or src.width == 0 or src.height == 0)
+            continue;
+
+        const src_amap = if (op.src_alpha_map_drawable) |d| get_drawable_target_size(d) else null;
+        const use_src_amap = if (src_amap) |a| (a.texture_id != 0 and a.width != 0 and a.height != 0) else false;
+
+        const mask = if (op.mask_drawable) |d| get_drawable_target_size(d) else null;
+        const use_mask = if (mask) |m| (m.texture_id != 0 and m.width != 0 and m.height != 0) else false;
+
+        const mask_amap = if (op.mask_alpha_map_drawable) |d| get_drawable_target_size(d) else null;
+        const use_mask_amap = use_mask and if (mask_amap) |a| (a.texture_id != 0 and a.width != 0 and a.height != 0) else false;
+
+        const clip = if (op.clip_mask_drawable) |d| get_drawable_target_size(d) else null;
+        const use_clip = if (clip) |cl| (cl.texture_id != 0 and cl.width != 0 and cl.height != 0) else false;
+
+        c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT0, c.GL_TEXTURE_2D, dst.texture_id, 0);
+        c.glViewport(0, 0, @intCast(dst.width), @intCast(dst.height));
+
+        c.glMatrixMode(c.GL_PROJECTION);
+        c.glLoadIdentity();
+        c.glOrtho(0.0, @floatFromInt(dst.width), @floatFromInt(dst.height), 0.0, -1.0, 1.0);
+        c.glMatrixMode(c.GL_MODELVIEW);
+
+        const blend = pict_op_blend_factors(op.op);
+        c.glBlendFunc(blend.src, blend.dst);
+
+        c.glActiveTexture(c.GL_TEXTURE0);
+        c.glBindTexture(c.GL_TEXTURE_2D, src.texture_id);
+        c.glActiveTexture(c.GL_TEXTURE1);
+        c.glBindTexture(c.GL_TEXTURE_2D, if (use_src_amap) src_amap.?.texture_id else 0);
+        c.glActiveTexture(c.GL_TEXTURE2);
+        c.glBindTexture(c.GL_TEXTURE_2D, if (use_mask) mask.?.texture_id else 0);
+        c.glActiveTexture(c.GL_TEXTURE3);
+        c.glBindTexture(c.GL_TEXTURE_2D, if (use_mask_amap) mask_amap.?.texture_id else 0);
+        c.glActiveTexture(c.GL_TEXTURE4);
+        c.glBindTexture(c.GL_TEXTURE_2D, if (use_clip) clip.?.texture_id else 0);
+        c.glActiveTexture(c.GL_TEXTURE0);
+
+        c.glUniform1i(self.mask_program_loc_use_src_alpha_map, if (use_src_amap) 1 else 0);
+        c.glUniform4fv(self.mask_program_loc_src_alpha_swizzle, 1, &op.src_alpha_swizzle);
+        c.glUniform1i(self.mask_program_loc_use_mask, if (use_mask) 1 else 0);
+        c.glUniform1i(self.mask_program_loc_component_alpha, if (op.mask_component_alpha) 1 else 0);
+        c.glUniform1i(self.mask_program_loc_use_mask_alpha_map, if (use_mask_amap) 1 else 0);
+        c.glUniform4fv(self.mask_program_loc_mask_alpha_swizzle, 1, &op.mask_alpha_swizzle);
+        c.glUniform1i(self.mask_program_loc_use_clip_mask, if (use_clip) 1 else 0);
+        c.glUniform4fv(self.mask_program_loc_clip_swizzle, 1, &op.clip_swizzle);
+
+        const src_w_f: f32 = @floatFromInt(src.width);
+        const src_h_f: f32 = @floatFromInt(src.height);
+
+        // Compute texcoords at each of the 4 corners of the dst rect (1:1 src->dst mapping)
+        // Corner offsets within the rect: (0,0), (w,0), (w,h), (0,h)
+        const corners = [_]@Vector(2, i32){
+            .{ 0, 0 },
+            .{ @intCast(op.width), 0 },
+            .{ @intCast(op.width), @intCast(op.height) },
+            .{ 0, @intCast(op.height) },
+        };
+
+        c.glBegin(c.GL_QUADS);
+        for (corners) |corner| {
+            const cx: i32 = corner[0];
+            const cy: i32 = corner[1];
+
+            const sx: f32 = @as(f32, @floatFromInt(@as(i32, op.src_x) + cx)) / src_w_f;
+            const sy: f32 = @as(f32, @floatFromInt(@as(i32, op.src_y) + cy)) / src_h_f;
+            c.glMultiTexCoord2f(c.GL_TEXTURE0, sx, sy);
+
+            if (use_src_amap) {
+                const a = src_amap.?;
+                const ax: f32 = @as(f32, @floatFromInt(@as(i32, op.src_x) + cx - @as(i32, op.src_alpha_x_origin))) / @as(f32, @floatFromInt(a.width));
+                const ay: f32 = @as(f32, @floatFromInt(@as(i32, op.src_y) + cy - @as(i32, op.src_alpha_y_origin))) / @as(f32, @floatFromInt(a.height));
+                c.glMultiTexCoord2f(c.GL_TEXTURE1, ax, ay);
+            } else {
+                c.glMultiTexCoord2f(c.GL_TEXTURE1, 0, 0);
+            }
+
+            if (use_mask) {
+                const m = mask.?;
+                const mx: f32 = @as(f32, @floatFromInt(@as(i32, op.mask_x) + cx)) / @as(f32, @floatFromInt(m.width));
+                const my: f32 = @as(f32, @floatFromInt(@as(i32, op.mask_y) + cy)) / @as(f32, @floatFromInt(m.height));
+                c.glMultiTexCoord2f(c.GL_TEXTURE2, mx, my);
+            } else {
+                c.glMultiTexCoord2f(c.GL_TEXTURE2, 0, 0);
+            }
+
+            if (use_mask_amap) {
+                const a = mask_amap.?;
+                const ax: f32 = @as(f32, @floatFromInt(@as(i32, op.mask_x) + cx - @as(i32, op.mask_alpha_x_origin))) / @as(f32, @floatFromInt(a.width));
+                const ay: f32 = @as(f32, @floatFromInt(@as(i32, op.mask_y) + cy - @as(i32, op.mask_alpha_y_origin))) / @as(f32, @floatFromInt(a.height));
+                c.glMultiTexCoord2f(c.GL_TEXTURE3, ax, ay);
+            } else {
+                c.glMultiTexCoord2f(c.GL_TEXTURE3, 0, 0);
+            }
+
+            if (use_clip) {
+                const cl = clip.?;
+                const px: f32 = @as(f32, @floatFromInt(@as(i32, op.dst_x) + cx - @as(i32, op.clip_x_origin))) / @as(f32, @floatFromInt(cl.width));
+                const py: f32 = @as(f32, @floatFromInt(@as(i32, op.dst_y) + cy - @as(i32, op.clip_y_origin))) / @as(f32, @floatFromInt(cl.height));
+                c.glMultiTexCoord2f(c.GL_TEXTURE4, px, py);
+            } else {
+                c.glMultiTexCoord2f(c.GL_TEXTURE4, 0, 0);
+            }
+
+            const dx: f32 = @floatFromInt(@as(i32, op.dst_x) + cx);
+            const dy: f32 = @floatFromInt(@as(i32, op.dst_y) + cy);
+            c.glVertex2f(dx, dy);
+        }
+        c.glEnd();
+    }
+    self.composite_operations.clearRetainingCapacity();
+
+    // Unbind extra texture units and restore default unit
+    c.glActiveTexture(c.GL_TEXTURE4);
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    c.glActiveTexture(c.GL_TEXTURE3);
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    c.glActiveTexture(c.GL_TEXTURE2);
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    c.glActiveTexture(c.GL_TEXTURE1);
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    c.glActiveTexture(c.GL_TEXTURE0);
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    c.glUseProgram(0);
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glPopMatrix();
+    c.glMatrixMode(c.GL_MODELVIEW);
+    c.glPopMatrix();
+
+    c.glBlendFuncSeparate(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA, c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
+    c.glViewport(0, 0, @intCast(self.width), @intCast(self.height));
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+    c.glEnable(c.GL_SCISSOR_TEST);
 }
 
 fn pict_op_blend_factors(op: phx.Render.PictOp) struct { src: c_uint, dst: c_uint } {
@@ -745,6 +998,7 @@ pub fn render(self: *Self) void {
             self.perform_copy_area_operations();
             self.perform_present_pixmap_operations();
             self.perform_fill_rectangles_operations();
+            self.perform_composite_operations();
             self.render_graphics_windows(root_window, @Vector(2, i32){ 0, 0 }, @Vector(2, i32){ @intCast(self.width), @intCast(self.height) });
             c.glBindTexture(c.GL_TEXTURE_2D, 0);
             c.glScissor(0, 0, @intCast(self.width), @intCast(self.height));
@@ -953,6 +1207,68 @@ pub fn copy_area(self: *Self, op: *const phx.Graphics.CopyAreaArguments) !void {
     src_drawable.ref();
     dst_drawable.ref();
     self.dirty.store(true, .release);
+}
+
+pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    var src_drawable = to_graphics_drawable(op.src_drawable);
+    var dst_drawable = to_graphics_drawable(op.dst_drawable);
+    var src_alpha_map_drawable: ?phx.Graphics.GraphicsDrawable =
+        if (op.src_alpha_map_drawable) |d| to_graphics_drawable(d) else null;
+    var mask_drawable: ?phx.Graphics.GraphicsDrawable =
+        if (op.mask_drawable) |d| to_graphics_drawable(d) else null;
+    var mask_alpha_map_drawable: ?phx.Graphics.GraphicsDrawable =
+        if (op.mask_alpha_map_drawable) |d| to_graphics_drawable(d) else null;
+    var clip_mask_drawable: ?phx.Graphics.GraphicsDrawable =
+        if (op.clip_mask_drawable) |d| to_graphics_drawable(d) else null;
+
+    try self.composite_operations.append(self.allocator, .{
+        .src_drawable = src_drawable,
+        .src_alpha_map_drawable = src_alpha_map_drawable,
+        .src_alpha_x_origin = op.src_alpha_x_origin,
+        .src_alpha_y_origin = op.src_alpha_y_origin,
+        .src_alpha_swizzle = op.src_alpha_swizzle,
+
+        .mask_drawable = mask_drawable,
+        .mask_alpha_map_drawable = mask_alpha_map_drawable,
+        .mask_alpha_x_origin = op.mask_alpha_x_origin,
+        .mask_alpha_y_origin = op.mask_alpha_y_origin,
+        .mask_alpha_swizzle = op.mask_alpha_swizzle,
+        .mask_component_alpha = op.mask_component_alpha,
+
+        .dst_drawable = dst_drawable,
+        .clip_mask_drawable = clip_mask_drawable,
+        .clip_x_origin = op.clip_x_origin,
+        .clip_y_origin = op.clip_y_origin,
+        .clip_swizzle = op.clip_swizzle,
+
+        .op = op.op,
+        .src_x = op.src_x,
+        .src_y = op.src_y,
+        .mask_x = op.mask_x,
+        .mask_y = op.mask_y,
+        .dst_x = op.dst_x,
+        .dst_y = op.dst_y,
+        .width = op.width,
+        .height = op.height,
+    });
+
+    src_drawable.ref();
+    dst_drawable.ref();
+    if (src_alpha_map_drawable) |*d| d.ref();
+    if (mask_drawable) |*d| d.ref();
+    if (mask_alpha_map_drawable) |*d| d.ref();
+    if (clip_mask_drawable) |*d| d.ref();
+    self.dirty.store(true, .release);
+}
+
+fn to_graphics_drawable(drawable: phx.Drawable) phx.Graphics.GraphicsDrawable {
+    return switch (drawable.item) {
+        .window => |window| .{ .window = window.graphics_window },
+        .pixmap => |pixmap| .{ .pixmap = pixmap },
+    };
 }
 
 pub fn fill_rectangles(self: *Self, op: *const phx.Graphics.FillRectanglesArguments) !void {

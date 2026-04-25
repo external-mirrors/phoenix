@@ -654,6 +654,12 @@ fn handle_messages(self: *Self) void {
             .copy_area_canceled => |*copy_area_canceled| {
                 copy_area_canceled.operation.unref();
             },
+            .composite_finished => |*composite_finished| {
+                composite_finished.operation.unref();
+            },
+            .composite_canceled => |*composite_canceled| {
+                composite_canceled.operation.unref();
+            },
         }
     }
 }
@@ -673,6 +679,8 @@ fn cleanup_message_resources(message: *Message) void {
         .put_image_canceled => |*put_image_canceled| put_image_canceled.operation.unref(),
         .copy_area_finished => |*copy_area_finished| copy_area_finished.operation.unref(),
         .copy_area_canceled => |*copy_area_canceled| copy_area_canceled.operation.unref(),
+        .composite_finished => |*composite_finished| composite_finished.operation.unref(),
+        .composite_canceled => |*composite_canceled| composite_canceled.operation.unref(),
     }
 }
 
@@ -897,6 +905,8 @@ pub const Message = union(enum) {
     put_image_canceled: PutImageCanceledMessage,
     copy_area_finished: CopyAreaFinishedMessage,
     copy_area_canceled: CopyAreaCanceledMessage,
+    composite_finished: CompositeFinishedMessage,
+    composite_canceled: CompositeCanceledMessage,
 };
 
 pub const VsyncFinishedMessage = struct {
@@ -952,4 +962,12 @@ pub const CopyAreaFinishedMessage = struct {
 
 pub const CopyAreaCanceledMessage = struct {
     operation: phx.Graphics.CopyAreaOperation,
+};
+
+pub const CompositeFinishedMessage = struct {
+    operation: phx.Graphics.CompositeOperation,
+};
+
+pub const CompositeCanceledMessage = struct {
+    operation: phx.Graphics.CompositeOperation,
 };

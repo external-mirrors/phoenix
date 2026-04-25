@@ -435,8 +435,41 @@ fn perform_put_image(self: *Self, op: *phx.Graphics.PutImageOperation) void {
     if (texture_id == 0)
         return;
 
+    c.glBindTexture(c.GL_TEXTURE_2D, texture_id);
+    defer c.glBindTexture(c.GL_TEXTURE_2D, 0);
+
     // XXX: Optimize with asynchronous upload with pixel buffer object
     const texture_format = depth_to_texture_format(op.depth);
+
+    if (op.depth == 1) {
+        // X11 depth-1 wire format is bit-packed (LSB-first per the connection setup)
+        // with each row padded to 32 bits. GL has no native 1-bit upload so we
+        // expand each bit to a full byte (0xFF / 0x00) and upload as GL_R.
+        // Source row stride in bytes (input data still bit-packed):
+        const src_row_stride: usize = ((@as(usize, op.total_width) + 31) / 32) * 4;
+        const expanded = self.allocator.alloc(u8, @as(usize, op.src_width) * @as(usize, op.src_height)) catch |err| {
+            std.log.err("GraphicsEgl.perform_put_image: failed to allocate expansion buffer for depth-1 upload, error: {s}", .{@errorName(err)});
+            return;
+        };
+        defer self.allocator.free(expanded);
+
+        const base = @as([*]const u8, @ptrCast(op.shm_segment.addr));
+        for (0..op.src_height) |row| {
+            const src_y = @as(usize, op.src_y) + row;
+            const row_base = src_y * src_row_stride;
+            const dst_row_base = row * @as(usize, op.src_width);
+            for (0..op.src_width) |col| {
+                const src_x = @as(usize, op.src_x) + col;
+                const byte = base[row_base + (src_x / 8)];
+                const bit: u3 = @intCast(src_x % 8);
+                expanded[dst_row_base + col] = if (((byte >> bit) & 1) != 0) 0xFF else 0x00;
+            }
+        }
+
+        c.glTexSubImage2D(c.GL_TEXTURE_2D, 0, op.dst_x, op.dst_y, op.src_width, op.src_height, texture_format, c.GL_UNSIGNED_BYTE, expanded.ptr);
+        return;
+    }
+
     if (op.src_x == 0 and op.src_y == 0 and op.src_width == op.total_width and op.src_height == op.total_height) {
         c.glTexSubImage2D(c.GL_TEXTURE_2D, 0, op.dst_x, op.dst_y, op.total_width, op.total_height, texture_format, c.GL_UNSIGNED_BYTE, op.shm_segment.addr);
     } else {
@@ -796,10 +829,22 @@ fn get_drawable_target_size(drawable: phx.Graphics.GraphicsDrawable) struct { te
 
 fn depth_to_texture_format(depth: u8) c_uint {
     return switch (depth) {
-        8 => c.GL_R,
+        // Depth 1 is bit-packed in the X11 wire format but expanded to 1 byte per
+        // pixel before upload (see perform_put_image), so the GL upload format is GL_R.
+        1, 8 => c.GL_R,
         16 => c.GL_RG,
         24 => c.GL_RGB,
         32 => c.GL_RGBA,
+        else => unreachable,
+    };
+}
+
+fn depth_to_internal_format(depth: u8) c_int {
+    return switch (depth) {
+        1, 8 => c.GL_R8,
+        16 => c.GL_RG8,
+        24 => c.GL_RGB8,
+        32 => c.GL_RGBA8,
         else => unreachable,
     };
 }
@@ -1257,8 +1302,14 @@ fn create_texture_from_dmabuf(self: *Self, pixmap: *const phx.Pixmap) !u32 {
 
 fn create_textures_from_dmabufs(self: *Self) void {
     for (self.pixmap_to_import.items) |pixmap_to_import| {
-        if (pixmap_to_import.dmabuf_data.num_items == 0)
+        if (pixmap_to_import.dmabuf_data.num_items == 0) {
+            // Pixmaps without a dmabuf backing (SHM-backed, core CreatePixmap, etc.)
+            // get a plain GL texture allocated here so PutImage and Composite can use them.
+            self.create_plain_pixmap_texture(pixmap_to_import) catch |err| {
+                std.log.err("GraphicsEgl.create_textures_from_dmabufs: failed to allocate texture for pixmap (depth={d}, {d}x{d}), error: {s}", .{ pixmap_to_import.dmabuf_data.depth, pixmap_to_import.dmabuf_data.width, pixmap_to_import.dmabuf_data.height, @errorName(err) });
+            };
             continue;
+        }
 
         // TODO: Report success/failure back to x11 protocol handler
         pixmap_to_import.texture_id = self.create_texture_from_dmabuf(pixmap_to_import) catch |err| {
@@ -1268,6 +1319,40 @@ fn create_textures_from_dmabufs(self: *Self) void {
         };
     }
     self.pixmap_to_import.clearRetainingCapacity();
+}
+
+fn create_plain_pixmap_texture(self: *Self, pixmap: *phx.Pixmap) !void {
+    _ = self;
+    const depth = pixmap.dmabuf_data.depth;
+    const width = pixmap.dmabuf_data.width;
+    const height = pixmap.dmabuf_data.height;
+    if (width == 0 or height == 0)
+        return error.InvalidPixmapDimensions;
+
+    var texture: c.GLuint = 0;
+    c.glGenTextures(1, &texture);
+    if (texture == 0) return error.FailedToGenTexture;
+    errdefer c.glDeleteTextures(1, &texture);
+
+    c.glBindTexture(c.GL_TEXTURE_2D, texture);
+    c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, c.GL_LINEAR);
+    c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_LINEAR);
+    c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_WRAP_S, c.GL_CLAMP_TO_EDGE);
+    c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_WRAP_T, c.GL_CLAMP_TO_EDGE);
+    c.glTexImage2D(
+        c.GL_TEXTURE_2D,
+        0,
+        depth_to_internal_format(depth),
+        @intCast(width),
+        @intCast(height),
+        0,
+        depth_to_texture_format(depth),
+        c.GL_UNSIGNED_BYTE,
+        null,
+    );
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+
+    pixmap.texture_id = texture;
 }
 
 fn process_pending_textures_to_delete(self: *Self) void {

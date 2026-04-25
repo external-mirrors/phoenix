@@ -355,6 +355,47 @@ pub const PutImageArguments = struct {
     offset: u32,
 };
 
+pub const GraphicsOperation = union(enum) {
+    present_pixmap: PresentPixmapOperation,
+    put_image: PutImageOperation,
+    copy_area: CopyAreaOperation,
+    fill_rectangles: FillRectanglesOperation,
+    composite: CompositeOperation,
+
+    pub fn unref(self: *GraphicsOperation, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .present_pixmap => |*op| op.unref(),
+            .put_image => |*op| op.unref(),
+            .copy_area => |*op| op.unref(),
+            .fill_rectangles => |*op| op.unref(allocator),
+            .composite => |*op| op.unref(),
+        }
+    }
+
+    pub fn references_window(self: *const GraphicsOperation, window: *const GraphicsWindow) bool {
+        const matches = struct {
+            fn f(d: GraphicsDrawable, w: *const GraphicsWindow) bool {
+                return std.meta.activeTag(d) == .window and d.window == w;
+            }
+        }.f;
+        switch (self.*) {
+            .present_pixmap => |op| return op.window == window,
+            .put_image => |op| return matches(op.drawable, window),
+            .copy_area => |op| return matches(op.src_drawable, window) or matches(op.dst_drawable, window),
+            .fill_rectangles => |op| return matches(op.drawable, window),
+            .composite => |op| {
+                if (matches(op.src_drawable, window)) return true;
+                if (matches(op.dst_drawable, window)) return true;
+                if (op.src_alpha_map_drawable) |d| if (matches(d, window)) return true;
+                if (op.mask_drawable) |d| if (matches(d, window)) return true;
+                if (op.mask_alpha_map_drawable) |d| if (matches(d, window)) return true;
+                if (op.clip_mask_drawable) |d| if (matches(d, window)) return true;
+                return false;
+            },
+        }
+    }
+};
+
 pub const GraphicsDrawable = union(enum) {
     window: *GraphicsWindow,
     pixmap: *phx.Pixmap,

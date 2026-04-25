@@ -59,26 +59,9 @@ width: u32,
 height: u32,
 
 root_window: ?*phx.Graphics.GraphicsWindow,
-present_pixmap_operations: std.ArrayListUnmanaged(phx.Graphics.PresentPixmapOperation) = .empty,
-put_image_operations: std.ArrayListUnmanaged(phx.Graphics.PutImageOperation) = .empty,
-fill_rectangles_operations: std.ArrayListUnmanaged(phx.Graphics.FillRectanglesOperation) = .empty,
-copy_area_operations: std.ArrayListUnmanaged(phx.Graphics.CopyAreaOperation) = .empty,
-composite_operations: std.ArrayListUnmanaged(phx.Graphics.CompositeOperation) = .empty,
+operations: std.ArrayListUnmanaged(phx.Graphics.GraphicsOperation) = .empty,
 
-mask_program: c.GLuint = 0,
-mask_program_loc_src: c.GLint = -1,
-mask_program_loc_src_alpha_map: c.GLint = -1,
-mask_program_loc_use_src_alpha_map: c.GLint = -1,
-mask_program_loc_src_alpha_swizzle: c.GLint = -1,
-mask_program_loc_mask: c.GLint = -1,
-mask_program_loc_use_mask: c.GLint = -1,
-mask_program_loc_component_alpha: c.GLint = -1,
-mask_program_loc_mask_alpha_map: c.GLint = -1,
-mask_program_loc_use_mask_alpha_map: c.GLint = -1,
-mask_program_loc_mask_alpha_swizzle: c.GLint = -1,
-mask_program_loc_clip_mask: c.GLint = -1,
-mask_program_loc_use_clip_mask: c.GLint = -1,
-mask_program_loc_clip_swizzle: c.GLint = -1,
+mask_program: MaskProgram = .{},
 
 textures_to_delete: std.ArrayListUnmanaged(u32) = .empty,
 
@@ -87,6 +70,50 @@ eglQueryDmaBufModifiersEXT: PFNEGLQUERYDMABUFMODIFIERSEXTPROC,
 glCopyImageSubData: PFNGLCOPYIMAGESUBDATAPROC,
 
 dirty: std.atomic.Value(bool) = .init(true),
+
+const MaskProgram = struct {
+    program: c.GLuint = 0,
+    loc_src: c.GLint = -1,
+    loc_src_alpha_map: c.GLint = -1,
+    loc_use_src_alpha_map: c.GLint = -1,
+    loc_src_alpha_swizzle: c.GLint = -1,
+    loc_mask: c.GLint = -1,
+    loc_use_mask: c.GLint = -1,
+    loc_component_alpha: c.GLint = -1,
+    loc_mask_alpha_map: c.GLint = -1,
+    loc_use_mask_alpha_map: c.GLint = -1,
+    loc_mask_alpha_swizzle: c.GLint = -1,
+    loc_clip_mask: c.GLint = -1,
+    loc_use_clip_mask: c.GLint = -1,
+    loc_clip_swizzle: c.GLint = -1,
+
+    fn build() !MaskProgram {
+        const program = try graphics_utils.create_shader_program(graphics_utils.mask_vertex_shader_src, graphics_utils.mask_fragment_shader_src);
+        return .{
+            .program = program,
+            .loc_src = c.glGetUniformLocation(program, "u_src"),
+            .loc_src_alpha_map = c.glGetUniformLocation(program, "u_src_alpha_map"),
+            .loc_use_src_alpha_map = c.glGetUniformLocation(program, "u_use_src_alpha_map"),
+            .loc_src_alpha_swizzle = c.glGetUniformLocation(program, "u_src_alpha_swizzle"),
+            .loc_mask = c.glGetUniformLocation(program, "u_mask"),
+            .loc_use_mask = c.glGetUniformLocation(program, "u_use_mask"),
+            .loc_component_alpha = c.glGetUniformLocation(program, "u_component_alpha"),
+            .loc_mask_alpha_map = c.glGetUniformLocation(program, "u_mask_alpha_map"),
+            .loc_use_mask_alpha_map = c.glGetUniformLocation(program, "u_use_mask_alpha_map"),
+            .loc_mask_alpha_swizzle = c.glGetUniformLocation(program, "u_mask_alpha_swizzle"),
+            .loc_clip_mask = c.glGetUniformLocation(program, "u_clip_mask"),
+            .loc_use_clip_mask = c.glGetUniformLocation(program, "u_use_clip_mask"),
+            .loc_clip_swizzle = c.glGetUniformLocation(program, "u_clip_swizzle"),
+        };
+    }
+
+    fn deinit(self: *MaskProgram) void {
+        if (self.program > 0) {
+            c.glDeleteProgram(self.program);
+            self.program = 0;
+        }
+    }
+};
 
 pub fn init(
     server: *phx.Server,
@@ -207,21 +234,8 @@ pub fn init(
     c.glDrawBuffers(1, &draw_buffer);
     c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
 
-    const mask_program: c.GLuint = try graphics_utils.create_shader_program(graphics_utils.mask_vertex_shader_src, graphics_utils.mask_fragment_shader_src);
-    errdefer c.glDeleteProgram(mask_program);
-    const mask_program_loc_src: c.GLint = c.glGetUniformLocation(mask_program, "u_src");
-    const mask_program_loc_src_alpha_map: c.GLint = c.glGetUniformLocation(mask_program, "u_src_alpha_map");
-    const mask_program_loc_use_src_alpha_map: c.GLint = c.glGetUniformLocation(mask_program, "u_use_src_alpha_map");
-    const mask_program_loc_src_alpha_swizzle: c.GLint = c.glGetUniformLocation(mask_program, "u_src_alpha_swizzle");
-    const mask_program_loc_mask: c.GLint = c.glGetUniformLocation(mask_program, "u_mask");
-    const mask_program_loc_use_mask: c.GLint = c.glGetUniformLocation(mask_program, "u_use_mask");
-    const mask_program_loc_component_alpha: c.GLint = c.glGetUniformLocation(mask_program, "u_component_alpha");
-    const mask_program_loc_mask_alpha_map: c.GLint = c.glGetUniformLocation(mask_program, "u_mask_alpha_map");
-    const mask_program_loc_use_mask_alpha_map: c.GLint = c.glGetUniformLocation(mask_program, "u_use_mask_alpha_map");
-    const mask_program_loc_mask_alpha_swizzle: c.GLint = c.glGetUniformLocation(mask_program, "u_mask_alpha_swizzle");
-    const mask_program_loc_clip_mask: c.GLint = c.glGetUniformLocation(mask_program, "u_clip_mask");
-    const mask_program_loc_use_clip_mask: c.GLint = c.glGetUniformLocation(mask_program, "u_use_clip_mask");
-    const mask_program_loc_clip_swizzle: c.GLint = c.glGetUniformLocation(mask_program, "u_clip_swizzle");
+    var mask_program = try MaskProgram.build();
+    errdefer mask_program.deinit();
 
     if (c.eglMakeCurrent(egl_display, null, null, null) == c.EGL_FALSE)
         return error.FailedToMakeEglContextCurrent;
@@ -248,19 +262,6 @@ pub fn init(
         .glCopyImageSubData = glCopyImageSubData,
 
         .mask_program = mask_program,
-        .mask_program_loc_src = mask_program_loc_src,
-        .mask_program_loc_src_alpha_map = mask_program_loc_src_alpha_map,
-        .mask_program_loc_use_src_alpha_map = mask_program_loc_use_src_alpha_map,
-        .mask_program_loc_src_alpha_swizzle = mask_program_loc_src_alpha_swizzle,
-        .mask_program_loc_mask = mask_program_loc_mask,
-        .mask_program_loc_use_mask = mask_program_loc_use_mask,
-        .mask_program_loc_component_alpha = mask_program_loc_component_alpha,
-        .mask_program_loc_mask_alpha_map = mask_program_loc_mask_alpha_map,
-        .mask_program_loc_use_mask_alpha_map = mask_program_loc_use_mask_alpha_map,
-        .mask_program_loc_mask_alpha_swizzle = mask_program_loc_mask_alpha_swizzle,
-        .mask_program_loc_clip_mask = mask_program_loc_clip_mask,
-        .mask_program_loc_use_clip_mask = mask_program_loc_use_clip_mask,
-        .mask_program_loc_clip_swizzle = mask_program_loc_clip_swizzle,
     };
 }
 
@@ -272,35 +273,12 @@ pub fn deinit(self: *Self) void {
         self.framebuffer = 0;
     }
 
-    if (self.mask_program > 0) {
-        c.glDeleteProgram(self.mask_program);
-        self.mask_program = 0;
-    }
+    self.mask_program.deinit();
 
-    for (self.present_pixmap_operations.items) |*present_pixmap_operation| {
-        present_pixmap_operation.unref();
+    for (self.operations.items) |*op| {
+        op.unref(self.allocator);
     }
-    self.present_pixmap_operations.clearRetainingCapacity();
-
-    for (self.put_image_operations.items) |*put_image_operation| {
-        put_image_operation.unref();
-    }
-    self.put_image_operations.clearRetainingCapacity();
-
-    for (self.fill_rectangles_operations.items) |*fill_rectangles_operation| {
-        fill_rectangles_operation.unref(self.allocator);
-    }
-    self.fill_rectangles_operations.clearRetainingCapacity();
-
-    for (self.copy_area_operations.items) |*copy_area_operation| {
-        copy_area_operation.unref();
-    }
-    self.copy_area_operations.clearRetainingCapacity();
-
-    for (self.composite_operations.items) |*composite_operation| {
-        composite_operation.unref();
-    }
-    self.composite_operations.clearRetainingCapacity();
+    self.operations.clearRetainingCapacity();
 
     if (self.root_window) |root_window| {
         self.destroy_window_recursive(root_window);
@@ -312,11 +290,7 @@ pub fn deinit(self: *Self) void {
     }
 
     self.pixmap_to_import.deinit(self.allocator);
-    self.present_pixmap_operations.deinit(self.allocator);
-    self.put_image_operations.deinit(self.allocator);
-    self.fill_rectangles_operations.deinit(self.allocator);
-    self.copy_area_operations.deinit(self.allocator);
-    self.composite_operations.deinit(self.allocator);
+    self.operations.deinit(self.allocator);
     self.textures_to_delete.deinit(self.allocator);
 
     if (self.dri_card_fd > 0) {
@@ -331,11 +305,7 @@ pub fn deinit(self: *Self) void {
 }
 
 fn destroy_window_recursive(self: *Self, graphics_window: *phx.Graphics.GraphicsWindow) void {
-    self.remove_present_pixmap_operations_for_window(graphics_window);
-    self.remove_put_image_operations_for_window(graphics_window);
-    self.remove_fill_rectangles_operations_for_window(graphics_window);
-    self.remove_copy_area_operations_for_window(graphics_window);
-    self.remove_composite_operations_for_window(graphics_window);
+    self.remove_operations_for_window(graphics_window);
 
     for (graphics_window.children.items) |child_window| {
         self.destroy_window_recursive(child_window);
@@ -355,93 +325,32 @@ fn destroy_window_recursive(self: *Self, graphics_window: *phx.Graphics.Graphics
 }
 
 // XXX: Optimize
-fn remove_present_pixmap_operations_for_window(self: *Self, graphics_window: *phx.Graphics.GraphicsWindow) void {
+fn remove_operations_for_window(self: *Self, graphics_window: *phx.Graphics.GraphicsWindow) void {
     var i: usize = 0;
-    while (i < self.present_pixmap_operations.items.len) {
-        if (self.present_pixmap_operations.items[i].window == graphics_window) {
-            self.server.append_message(&.{ .present_pixmap_canceled = .{ .operation = self.present_pixmap_operations.items[i] } }) catch |err| {
-                std.log.err("GraphicsEgl.remove_present_pixmap_operations_for_window: failed to append present_pixmap_canceled operation in server, error: {s}", .{@errorName(err)});
-            };
-            _ = self.present_pixmap_operations.orderedRemove(i);
-        } else {
+    while (i < self.operations.items.len) {
+        const op = &self.operations.items[i];
+        if (!op.references_window(graphics_window)) {
             i += 1;
+            continue;
         }
+        // Notify the server so it can unref the operation outside the graphics mutex
+        // (matches the existing finished/canceled pattern used to avoid deadlocks).
+        // FillRectangles has no "canceled" message upstream so unref it inline instead.
+        switch (op.*) {
+            .present_pixmap => |po| self.append_message(.{ .present_pixmap_canceled = .{ .operation = po } }),
+            .put_image => |po| self.append_message(.{ .put_image_canceled = .{ .operation = po } }),
+            .copy_area => |po| self.append_message(.{ .copy_area_canceled = .{ .operation = po } }),
+            .composite => |po| self.append_message(.{ .composite_canceled = .{ .operation = po } }),
+            .fill_rectangles => |po| self.append_message(.{ .fill_rectangles_canceled = .{ .operation = po } }),
+        }
+        _ = self.operations.orderedRemove(i);
     }
 }
 
-// XXX: Optimize
-fn remove_put_image_operations_for_window(self: *Self, graphics_window: *phx.Graphics.GraphicsWindow) void {
-    var i: usize = 0;
-    while (i < self.put_image_operations.items.len) {
-        const drawable = self.put_image_operations.items[i].drawable;
-        if (std.meta.activeTag(drawable) == .window and drawable.window == graphics_window) {
-            self.server.append_message(&.{ .put_image_canceled = .{ .operation = self.put_image_operations.items[i] } }) catch |err| {
-                std.log.err("GraphicsEgl.remove_put_image_operations_for_window: failed to append put_image_canceled operation in server, error: {s}", .{@errorName(err)});
-            };
-            _ = self.put_image_operations.orderedRemove(i);
-        } else {
-            i += 1;
-        }
-    }
-}
-
-// XXX: Optimize
-fn remove_fill_rectangles_operations_for_window(self: *Self, graphics_window: *phx.Graphics.GraphicsWindow) void {
-    var i: usize = 0;
-    while (i < self.fill_rectangles_operations.items.len) {
-        const drawable = self.fill_rectangles_operations.items[i].drawable;
-        if (std.meta.activeTag(drawable) == .window and drawable.window == graphics_window) {
-            self.fill_rectangles_operations.items[i].unref(self.allocator);
-            _ = self.fill_rectangles_operations.orderedRemove(i);
-        } else {
-            i += 1;
-        }
-    }
-}
-
-// XXX: Optimize
-fn remove_copy_area_operations_for_window(self: *Self, graphics_window: *phx.Graphics.GraphicsWindow) void {
-    var i: usize = 0;
-    while (i < self.copy_area_operations.items.len) {
-        const op = &self.copy_area_operations.items[i];
-        const src_match = std.meta.activeTag(op.src_drawable) == .window and op.src_drawable.window == graphics_window;
-        const dst_match = std.meta.activeTag(op.dst_drawable) == .window and op.dst_drawable.window == graphics_window;
-        if (src_match or dst_match) {
-            self.server.append_message(&.{ .copy_area_canceled = .{ .operation = op.* } }) catch |err| {
-                std.log.err("GraphicsEgl.remove_copy_area_operations_for_window: failed to append copy_area_canceled operation in server, error: {s}", .{@errorName(err)});
-            };
-            _ = self.copy_area_operations.orderedRemove(i);
-        } else {
-            i += 1;
-        }
-    }
-}
-
-// XXX: Optimize
-fn remove_composite_operations_for_window(self: *Self, graphics_window: *phx.Graphics.GraphicsWindow) void {
-    var i: usize = 0;
-    while (i < self.composite_operations.items.len) {
-        const op = &self.composite_operations.items[i];
-        const matches_window = struct {
-            fn f(d: phx.Graphics.GraphicsDrawable, w: *phx.Graphics.GraphicsWindow) bool {
-                return std.meta.activeTag(d) == .window and d.window == w;
-            }
-        }.f;
-        const src_match = matches_window(op.src_drawable, graphics_window);
-        const dst_match = matches_window(op.dst_drawable, graphics_window);
-        const mask_match = if (op.mask_drawable) |d| matches_window(d, graphics_window) else false;
-        const src_amap_match = if (op.src_alpha_map_drawable) |d| matches_window(d, graphics_window) else false;
-        const mask_amap_match = if (op.mask_alpha_map_drawable) |d| matches_window(d, graphics_window) else false;
-        const clip_match = if (op.clip_mask_drawable) |d| matches_window(d, graphics_window) else false;
-        if (src_match or dst_match or mask_match or src_amap_match or mask_amap_match or clip_match) {
-            self.server.append_message(&.{ .composite_canceled = .{ .operation = op.* } }) catch |err| {
-                std.log.err("GraphicsEgl.remove_composite_operations_for_window: failed to append composite_canceled operation in server, error: {s}", .{@errorName(err)});
-            };
-            _ = self.composite_operations.orderedRemove(i);
-        } else {
-            i += 1;
-        }
-    }
+inline fn append_message(self: *Self, message: phx.Server.Message) void {
+    self.server.append_message(&message) catch |err| {
+        std.log.err("GraphicsEgl: failed to append message in server, error: {s}", .{@errorName(err)});
+    };
 }
 
 pub fn get_dri_card_fd(self: *Self) std.posix.fd_t {
@@ -503,115 +412,227 @@ fn rectangle_intersects(pos1: @Vector(2, i32), size1: @Vector(2, i32), pos2: @Ve
     return (pos1[0] + size1[0] >= pos2[0] and pos1[0] <= pos2[0] + size2[0]) and (pos1[1] + size1[1] >= pos2[1] and pos1[1] <= pos2[1] + size2[1]);
 }
 
-fn perform_put_image_operations(self: *Self) void {
-    for (self.put_image_operations.items) |*op| {
-        defer {
-            self.server.append_message(&.{ .put_image_finished = .{ .operation = op.* } }) catch |err| {
-                std.log.err("GraphicsEgl.perform_put_image_operations: failed to append put_image_finished operation in server, error: {s}", .{@errorName(err)});
-            };
-        }
-
-        const texture_id = switch (op.drawable) {
-            .window => |window| window.texture_id,
-            .pixmap => |pixmap| pixmap.texture_id,
-        };
-        if (texture_id == 0)
-            continue;
-
-        //std.debug.print("perform put image: {d}\n", .{texture_id});
-        // XXX: Optimize with asynchronous upload with pixel buffer object
-        const texture_format = depth_to_texture_format(op.depth);
-        if (op.src_x == 0 and op.src_y == 0 and op.src_width == op.total_width and op.src_height == op.total_height) {
-            c.glTexSubImage2D(c.GL_TEXTURE_2D, 0, op.dst_x, op.dst_y, op.total_width, op.total_height, texture_format, c.GL_UNSIGNED_BYTE, op.shm_segment.addr);
-        } else {
-            const depth_bytes_per_pixel: usize = @max(1, op.depth / 8);
-            for (0..op.src_height) |i| {
-                var addr_num = @intFromPtr(op.shm_segment.addr);
-                addr_num += @as(usize, op.src_x) * depth_bytes_per_pixel;
-                addr_num += (@as(usize, op.src_y) + i) * (depth_bytes_per_pixel * op.total_width);
-                c.glTexSubImage2D(c.GL_TEXTURE_2D, 0, op.dst_x, op.dst_y + @as(i32, @intCast(i)), op.src_width, op.src_height, texture_format, c.GL_UNSIGNED_BYTE, @ptrFromInt(addr_num));
-            }
+fn perform_operations(self: *Self) void {
+    for (self.operations.items) |*op| {
+        switch (op.*) {
+            .put_image => |*po| self.perform_put_image(po),
+            .copy_area => |*po| self.perform_copy_area(po),
+            .present_pixmap => |*po| self.perform_present_pixmap(po),
+            .fill_rectangles => |*po| self.perform_fill_rectangles(po),
+            .composite => |*po| self.perform_composite(po),
         }
     }
-    self.put_image_operations.clearRetainingCapacity();
+    self.operations.clearRetainingCapacity();
 }
 
-fn perform_copy_area_operations(self: *Self) void {
-    for (self.copy_area_operations.items) |*op| {
-        defer {
-            self.server.append_message(&.{ .copy_area_finished = .{ .operation = op.* } }) catch |err| {
-                std.log.err("GraphicsEgl.perform_copy_area_operations: failed to append copy_area_finished operation in server, error: {s}", .{@errorName(err)});
-            };
+fn perform_put_image(self: *Self, op: *phx.Graphics.PutImageOperation) void {
+    defer self.append_message(.{ .put_image_finished = .{ .operation = op.* } });
+
+    const texture_id = switch (op.drawable) {
+        .window => |window| window.texture_id,
+        .pixmap => |pixmap| pixmap.texture_id,
+    };
+    if (texture_id == 0)
+        return;
+
+    // XXX: Optimize with asynchronous upload with pixel buffer object
+    const texture_format = depth_to_texture_format(op.depth);
+    if (op.src_x == 0 and op.src_y == 0 and op.src_width == op.total_width and op.src_height == op.total_height) {
+        c.glTexSubImage2D(c.GL_TEXTURE_2D, 0, op.dst_x, op.dst_y, op.total_width, op.total_height, texture_format, c.GL_UNSIGNED_BYTE, op.shm_segment.addr);
+    } else {
+        const depth_bytes_per_pixel: usize = @max(1, op.depth / 8);
+        for (0..op.src_height) |i| {
+            var addr_num = @intFromPtr(op.shm_segment.addr);
+            addr_num += @as(usize, op.src_x) * depth_bytes_per_pixel;
+            addr_num += (@as(usize, op.src_y) + i) * (depth_bytes_per_pixel * op.total_width);
+            c.glTexSubImage2D(c.GL_TEXTURE_2D, 0, op.dst_x, op.dst_y + @as(i32, @intCast(i)), op.src_width, op.src_height, texture_format, c.GL_UNSIGNED_BYTE, @ptrFromInt(addr_num));
         }
-
-        const src = get_drawable_target_size(op.src_drawable);
-        const dst = get_drawable_target_size(op.dst_drawable);
-        if (src.texture_id == 0 or dst.texture_id == 0)
-            continue;
-
-        var src_x: i32 = op.src_x;
-        var src_y: i32 = op.src_y;
-        var dst_x: i32 = op.dst_x;
-        var dst_y: i32 = op.dst_y;
-        var width: i32 = op.width;
-        var height: i32 = op.height;
-
-        if (src_x < 0) {
-            dst_x -= src_x;
-            width += src_x;
-            src_x = 0;
-        }
-        if (src_y < 0) {
-            dst_y -= src_y;
-            height += src_y;
-            src_y = 0;
-        }
-        if (dst_x < 0) {
-            src_x -= dst_x;
-            width += dst_x;
-            dst_x = 0;
-        }
-        if (dst_y < 0) {
-            src_y -= dst_y;
-            height += dst_y;
-            dst_y = 0;
-        }
-
-        const src_w_i32: i32 = @intCast(src.width);
-        const src_h_i32: i32 = @intCast(src.height);
-        const dst_w_i32: i32 = @intCast(dst.width);
-        const dst_h_i32: i32 = @intCast(dst.height);
-        width = @min(width, src_w_i32 - src_x);
-        width = @min(width, dst_w_i32 - dst_x);
-        height = @min(height, src_h_i32 - src_y);
-        height = @min(height, dst_h_i32 - dst_y);
-
-        if (width <= 0 or height <= 0)
-            continue;
-
-        self.glCopyImageSubData(
-            src.texture_id,
-            c.GL_TEXTURE_2D,
-            0,
-            src_x,
-            src_y,
-            0,
-            dst.texture_id,
-            c.GL_TEXTURE_2D,
-            0,
-            dst_x,
-            dst_y,
-            0,
-            width,
-            height,
-            1,
-        );
     }
-    self.copy_area_operations.clearRetainingCapacity();
 }
 
-fn perform_composite_operations(self: *Self) void {
-    if (self.composite_operations.items.len == 0) return;
+fn perform_copy_area(self: *Self, op: *phx.Graphics.CopyAreaOperation) void {
+    defer self.append_message(.{ .copy_area_finished = .{ .operation = op.* } });
+
+    const src = get_drawable_target_size(op.src_drawable);
+    const dst = get_drawable_target_size(op.dst_drawable);
+    if (src.texture_id == 0 or dst.texture_id == 0)
+        return;
+
+    var src_x: i32 = op.src_x;
+    var src_y: i32 = op.src_y;
+    var dst_x: i32 = op.dst_x;
+    var dst_y: i32 = op.dst_y;
+    var width: i32 = op.width;
+    var height: i32 = op.height;
+
+    if (src_x < 0) {
+        dst_x -= src_x;
+        width += src_x;
+        src_x = 0;
+    }
+    if (src_y < 0) {
+        dst_y -= src_y;
+        height += src_y;
+        src_y = 0;
+    }
+    if (dst_x < 0) {
+        src_x -= dst_x;
+        width += dst_x;
+        dst_x = 0;
+    }
+    if (dst_y < 0) {
+        src_y -= dst_y;
+        height += dst_y;
+        dst_y = 0;
+    }
+
+    const src_w_i32: i32 = @intCast(src.width);
+    const src_h_i32: i32 = @intCast(src.height);
+    const dst_w_i32: i32 = @intCast(dst.width);
+    const dst_h_i32: i32 = @intCast(dst.height);
+    width = @min(width, src_w_i32 - src_x);
+    width = @min(width, dst_w_i32 - dst_x);
+    height = @min(height, src_h_i32 - src_y);
+    height = @min(height, dst_h_i32 - dst_y);
+
+    if (width <= 0 or height <= 0)
+        return;
+
+    self.glCopyImageSubData(
+        src.texture_id,
+        c.GL_TEXTURE_2D,
+        0,
+        src_x,
+        src_y,
+        0,
+        dst.texture_id,
+        c.GL_TEXTURE_2D,
+        0,
+        dst_x,
+        dst_y,
+        0,
+        width,
+        height,
+        1,
+    );
+}
+
+fn perform_present_pixmap(self: *Self, op: *phx.Graphics.PresentPixmapOperation) void {
+    // TODO: Only render and remove items if target_msc is <= current_msc
+    defer self.append_message(.{ .present_pixmap_finished = .{ .operation = op.* } });
+
+    if (op.pixmap.texture_id == 0)
+        return;
+
+    // TODO: Use copy coordinates and size from present pixmap request if available, otherwise use 0, 0, window_width, window_height.
+    // TODO: Use framebuffer and regular shader rendering code instead of glCopyImageSubData which is only avaiable since OpenGL 4.3.
+    // TODO: Dont do this copy if the pixmap fills the whole window. Instead draw the pixmap as the window.
+    // TODO: If there is a fullscreen window (with no transparency) then present the pixmap directly on the screen instead of any copying.
+    // TODO: Only clear window background before copying if the pixmap doesn't fill the whole window or has transparency.
+    self.clear_graphics_window(op.window);
+    // TODO: The client application draws background with 0, 0, 0, 1; which the driver interprets as fully transparent (it ignores the alpha value).
+    // The reason why the window background gets replaced as well is because glCopyImageSubData doesn't do alpha blending. When this is replaced with shader rendering code
+    // then the window will correctly have the window background instead of it getting replaced.
+
+    // TODO: Use phx.Present.PresentPixmap fields, such as x_off
+    self.glCopyImageSubData(
+        op.pixmap.texture_id,
+        c.GL_TEXTURE_2D,
+        0,
+        0,
+        0,
+        0,
+        op.window.texture_id,
+        c.GL_TEXTURE_2D,
+        0,
+        0,
+        0,
+        0,
+        @intCast(op.window.width),
+        @intCast(op.window.height),
+        1,
+    );
+}
+
+fn perform_fill_rectangles(self: *Self, op: *phx.Graphics.FillRectanglesOperation) void {
+    defer self.append_message(.{ .fill_rectangles_finished = .{ .operation = op.* } });
+
+    const target = get_drawable_target_size(op.drawable);
+    if (target.texture_id == 0 or target.width == 0 or target.height == 0)
+        return;
+
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.framebuffer);
+    c.glDisable(c.GL_SCISSOR_TEST);
+    c.glDisable(c.GL_TEXTURE_2D);
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glPushMatrix();
+    c.glMatrixMode(c.GL_MODELVIEW);
+    c.glPushMatrix();
+    c.glLoadIdentity();
+
+    c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT0, c.GL_TEXTURE_2D, target.texture_id, 0);
+    c.glViewport(0, 0, @intCast(target.width), @intCast(target.height));
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glLoadIdentity();
+    c.glOrtho(0.0, @floatFromInt(target.width), @floatFromInt(target.height), 0.0, -1.0, 1.0);
+    c.glMatrixMode(c.GL_MODELVIEW);
+
+    const blend = pict_op_blend_factors(op.op);
+    c.glBlendFunc(blend.src, blend.dst);
+
+    const a: f32 = @as(f32, @floatFromInt(op.color.alpha)) / 65535.0;
+    const r: f32 = (@as(f32, @floatFromInt(op.color.red)) / 65535.0) * a;
+    const g: f32 = (@as(f32, @floatFromInt(op.color.green)) / 65535.0) * a;
+    const b: f32 = (@as(f32, @floatFromInt(op.color.blue)) / 65535.0) * a;
+    c.glColor4f(r, g, b, a);
+
+    c.glBegin(c.GL_QUADS);
+    for (op.rects) |rect| {
+        const x0: f32 = @floatFromInt(rect.x);
+        const y0: f32 = @floatFromInt(rect.y);
+        const x1: f32 = @floatFromInt(@as(i32, rect.x) + @as(i32, rect.width));
+        const y1: f32 = @floatFromInt(@as(i32, rect.y) + @as(i32, rect.height));
+        c.glVertex2f(x0, y0);
+        c.glVertex2f(x1, y0);
+        c.glVertex2f(x1, y1);
+        c.glVertex2f(x0, y1);
+    }
+    c.glEnd();
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glPopMatrix();
+    c.glMatrixMode(c.GL_MODELVIEW);
+    c.glPopMatrix();
+
+    c.glColor4f(1.0, 1.0, 1.0, 1.0);
+    c.glBlendFuncSeparate(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA, c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
+    c.glViewport(0, 0, @intCast(self.width), @intCast(self.height));
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+    c.glEnable(c.GL_TEXTURE_2D);
+    c.glEnable(c.GL_SCISSOR_TEST);
+}
+
+fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
+    defer self.append_message(.{ .composite_finished = .{ .operation = op.* } });
+
+    const src = get_drawable_target_size(op.src_drawable);
+    const dst = get_drawable_target_size(op.dst_drawable);
+    if (src.texture_id == 0 or dst.texture_id == 0 or dst.width == 0 or dst.height == 0 or src.width == 0 or src.height == 0)
+        return;
+
+    const src_amap = if (op.src_alpha_map_drawable) |d| get_drawable_target_size(d) else null;
+    const use_src_amap = if (src_amap) |a| (a.texture_id != 0 and a.width != 0 and a.height != 0) else false;
+
+    const mask = if (op.mask_drawable) |d| get_drawable_target_size(d) else null;
+    const use_mask = if (mask) |m| (m.texture_id != 0 and m.width != 0 and m.height != 0) else false;
+
+    const mask_amap = if (op.mask_alpha_map_drawable) |d| get_drawable_target_size(d) else null;
+    const use_mask_amap = use_mask and if (mask_amap) |a| (a.texture_id != 0 and a.width != 0 and a.height != 0) else false;
+
+    const clip = if (op.clip_mask_drawable) |d| get_drawable_target_size(d) else null;
+    const use_clip = if (clip) |cl| (cl.texture_id != 0 and cl.width != 0 and cl.height != 0) else false;
 
     c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.framebuffer);
     c.glDisable(c.GL_SCISSOR_TEST);
@@ -622,133 +643,106 @@ fn perform_composite_operations(self: *Self) void {
     c.glPushMatrix();
     c.glLoadIdentity();
 
-    c.glUseProgram(self.mask_program);
-    c.glUniform1i(self.mask_program_loc_src, 0);
-    c.glUniform1i(self.mask_program_loc_src_alpha_map, 1);
-    c.glUniform1i(self.mask_program_loc_mask, 2);
-    c.glUniform1i(self.mask_program_loc_mask_alpha_map, 3);
-    c.glUniform1i(self.mask_program_loc_clip_mask, 4);
+    c.glUseProgram(self.mask_program.program);
+    c.glUniform1i(self.mask_program.loc_src, 0);
+    c.glUniform1i(self.mask_program.loc_src_alpha_map, 1);
+    c.glUniform1i(self.mask_program.loc_mask, 2);
+    c.glUniform1i(self.mask_program.loc_mask_alpha_map, 3);
+    c.glUniform1i(self.mask_program.loc_clip_mask, 4);
 
-    for (self.composite_operations.items) |*op| {
-        defer {
-            self.server.append_message(&.{ .composite_finished = .{ .operation = op.* } }) catch |err| {
-                std.log.err("GraphicsEgl.perform_composite_operations: failed to append composite_finished operation in server, error: {s}", .{@errorName(err)});
-            };
+    c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT0, c.GL_TEXTURE_2D, dst.texture_id, 0);
+    c.glViewport(0, 0, @intCast(dst.width), @intCast(dst.height));
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glLoadIdentity();
+    c.glOrtho(0.0, @floatFromInt(dst.width), @floatFromInt(dst.height), 0.0, -1.0, 1.0);
+    c.glMatrixMode(c.GL_MODELVIEW);
+
+    const blend = pict_op_blend_factors(op.op);
+    c.glBlendFunc(blend.src, blend.dst);
+
+    c.glActiveTexture(c.GL_TEXTURE0);
+    c.glBindTexture(c.GL_TEXTURE_2D, src.texture_id);
+    c.glActiveTexture(c.GL_TEXTURE1);
+    c.glBindTexture(c.GL_TEXTURE_2D, if (use_src_amap) src_amap.?.texture_id else 0);
+    c.glActiveTexture(c.GL_TEXTURE2);
+    c.glBindTexture(c.GL_TEXTURE_2D, if (use_mask) mask.?.texture_id else 0);
+    c.glActiveTexture(c.GL_TEXTURE3);
+    c.glBindTexture(c.GL_TEXTURE_2D, if (use_mask_amap) mask_amap.?.texture_id else 0);
+    c.glActiveTexture(c.GL_TEXTURE4);
+    c.glBindTexture(c.GL_TEXTURE_2D, if (use_clip) clip.?.texture_id else 0);
+    c.glActiveTexture(c.GL_TEXTURE0);
+
+    c.glUniform1i(self.mask_program.loc_use_src_alpha_map, if (use_src_amap) 1 else 0);
+    c.glUniform4fv(self.mask_program.loc_src_alpha_swizzle, 1, &op.src_alpha_swizzle);
+    c.glUniform1i(self.mask_program.loc_use_mask, if (use_mask) 1 else 0);
+    c.glUniform1i(self.mask_program.loc_component_alpha, if (op.mask_component_alpha) 1 else 0);
+    c.glUniform1i(self.mask_program.loc_use_mask_alpha_map, if (use_mask_amap) 1 else 0);
+    c.glUniform4fv(self.mask_program.loc_mask_alpha_swizzle, 1, &op.mask_alpha_swizzle);
+    c.glUniform1i(self.mask_program.loc_use_clip_mask, if (use_clip) 1 else 0);
+    c.glUniform4fv(self.mask_program.loc_clip_swizzle, 1, &op.clip_swizzle);
+
+    const src_w_f: f32 = @floatFromInt(src.width);
+    const src_h_f: f32 = @floatFromInt(src.height);
+
+    // Compute texcoords at each of the 4 corners of the dst rect (1:1 src->dst mapping)
+    const corners = [_]@Vector(2, i32){
+        .{ 0, 0 },
+        .{ @intCast(op.width), 0 },
+        .{ @intCast(op.width), @intCast(op.height) },
+        .{ 0, @intCast(op.height) },
+    };
+
+    c.glBegin(c.GL_QUADS);
+    for (corners) |corner| {
+        const cx: i32 = corner[0];
+        const cy: i32 = corner[1];
+
+        const sx: f32 = @as(f32, @floatFromInt(@as(i32, op.src_x) + cx)) / src_w_f;
+        const sy: f32 = @as(f32, @floatFromInt(@as(i32, op.src_y) + cy)) / src_h_f;
+        c.glMultiTexCoord2f(c.GL_TEXTURE0, sx, sy);
+
+        if (use_src_amap) {
+            const a = src_amap.?;
+            const ax: f32 = @as(f32, @floatFromInt(@as(i32, op.src_x) + cx - @as(i32, op.src_alpha_x_origin))) / @as(f32, @floatFromInt(a.width));
+            const ay: f32 = @as(f32, @floatFromInt(@as(i32, op.src_y) + cy - @as(i32, op.src_alpha_y_origin))) / @as(f32, @floatFromInt(a.height));
+            c.glMultiTexCoord2f(c.GL_TEXTURE1, ax, ay);
+        } else {
+            c.glMultiTexCoord2f(c.GL_TEXTURE1, 0, 0);
         }
 
-        const src = get_drawable_target_size(op.src_drawable);
-        const dst = get_drawable_target_size(op.dst_drawable);
-        if (src.texture_id == 0 or dst.texture_id == 0 or dst.width == 0 or dst.height == 0 or src.width == 0 or src.height == 0)
-            continue;
-
-        const src_amap = if (op.src_alpha_map_drawable) |d| get_drawable_target_size(d) else null;
-        const use_src_amap = if (src_amap) |a| (a.texture_id != 0 and a.width != 0 and a.height != 0) else false;
-
-        const mask = if (op.mask_drawable) |d| get_drawable_target_size(d) else null;
-        const use_mask = if (mask) |m| (m.texture_id != 0 and m.width != 0 and m.height != 0) else false;
-
-        const mask_amap = if (op.mask_alpha_map_drawable) |d| get_drawable_target_size(d) else null;
-        const use_mask_amap = use_mask and if (mask_amap) |a| (a.texture_id != 0 and a.width != 0 and a.height != 0) else false;
-
-        const clip = if (op.clip_mask_drawable) |d| get_drawable_target_size(d) else null;
-        const use_clip = if (clip) |cl| (cl.texture_id != 0 and cl.width != 0 and cl.height != 0) else false;
-
-        c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT0, c.GL_TEXTURE_2D, dst.texture_id, 0);
-        c.glViewport(0, 0, @intCast(dst.width), @intCast(dst.height));
-
-        c.glMatrixMode(c.GL_PROJECTION);
-        c.glLoadIdentity();
-        c.glOrtho(0.0, @floatFromInt(dst.width), @floatFromInt(dst.height), 0.0, -1.0, 1.0);
-        c.glMatrixMode(c.GL_MODELVIEW);
-
-        const blend = pict_op_blend_factors(op.op);
-        c.glBlendFunc(blend.src, blend.dst);
-
-        c.glActiveTexture(c.GL_TEXTURE0);
-        c.glBindTexture(c.GL_TEXTURE_2D, src.texture_id);
-        c.glActiveTexture(c.GL_TEXTURE1);
-        c.glBindTexture(c.GL_TEXTURE_2D, if (use_src_amap) src_amap.?.texture_id else 0);
-        c.glActiveTexture(c.GL_TEXTURE2);
-        c.glBindTexture(c.GL_TEXTURE_2D, if (use_mask) mask.?.texture_id else 0);
-        c.glActiveTexture(c.GL_TEXTURE3);
-        c.glBindTexture(c.GL_TEXTURE_2D, if (use_mask_amap) mask_amap.?.texture_id else 0);
-        c.glActiveTexture(c.GL_TEXTURE4);
-        c.glBindTexture(c.GL_TEXTURE_2D, if (use_clip) clip.?.texture_id else 0);
-        c.glActiveTexture(c.GL_TEXTURE0);
-
-        c.glUniform1i(self.mask_program_loc_use_src_alpha_map, if (use_src_amap) 1 else 0);
-        c.glUniform4fv(self.mask_program_loc_src_alpha_swizzle, 1, &op.src_alpha_swizzle);
-        c.glUniform1i(self.mask_program_loc_use_mask, if (use_mask) 1 else 0);
-        c.glUniform1i(self.mask_program_loc_component_alpha, if (op.mask_component_alpha) 1 else 0);
-        c.glUniform1i(self.mask_program_loc_use_mask_alpha_map, if (use_mask_amap) 1 else 0);
-        c.glUniform4fv(self.mask_program_loc_mask_alpha_swizzle, 1, &op.mask_alpha_swizzle);
-        c.glUniform1i(self.mask_program_loc_use_clip_mask, if (use_clip) 1 else 0);
-        c.glUniform4fv(self.mask_program_loc_clip_swizzle, 1, &op.clip_swizzle);
-
-        const src_w_f: f32 = @floatFromInt(src.width);
-        const src_h_f: f32 = @floatFromInt(src.height);
-
-        // Compute texcoords at each of the 4 corners of the dst rect (1:1 src->dst mapping)
-        // Corner offsets within the rect: (0,0), (w,0), (w,h), (0,h)
-        const corners = [_]@Vector(2, i32){
-            .{ 0, 0 },
-            .{ @intCast(op.width), 0 },
-            .{ @intCast(op.width), @intCast(op.height) },
-            .{ 0, @intCast(op.height) },
-        };
-
-        c.glBegin(c.GL_QUADS);
-        for (corners) |corner| {
-            const cx: i32 = corner[0];
-            const cy: i32 = corner[1];
-
-            const sx: f32 = @as(f32, @floatFromInt(@as(i32, op.src_x) + cx)) / src_w_f;
-            const sy: f32 = @as(f32, @floatFromInt(@as(i32, op.src_y) + cy)) / src_h_f;
-            c.glMultiTexCoord2f(c.GL_TEXTURE0, sx, sy);
-
-            if (use_src_amap) {
-                const a = src_amap.?;
-                const ax: f32 = @as(f32, @floatFromInt(@as(i32, op.src_x) + cx - @as(i32, op.src_alpha_x_origin))) / @as(f32, @floatFromInt(a.width));
-                const ay: f32 = @as(f32, @floatFromInt(@as(i32, op.src_y) + cy - @as(i32, op.src_alpha_y_origin))) / @as(f32, @floatFromInt(a.height));
-                c.glMultiTexCoord2f(c.GL_TEXTURE1, ax, ay);
-            } else {
-                c.glMultiTexCoord2f(c.GL_TEXTURE1, 0, 0);
-            }
-
-            if (use_mask) {
-                const m = mask.?;
-                const mx: f32 = @as(f32, @floatFromInt(@as(i32, op.mask_x) + cx)) / @as(f32, @floatFromInt(m.width));
-                const my: f32 = @as(f32, @floatFromInt(@as(i32, op.mask_y) + cy)) / @as(f32, @floatFromInt(m.height));
-                c.glMultiTexCoord2f(c.GL_TEXTURE2, mx, my);
-            } else {
-                c.glMultiTexCoord2f(c.GL_TEXTURE2, 0, 0);
-            }
-
-            if (use_mask_amap) {
-                const a = mask_amap.?;
-                const ax: f32 = @as(f32, @floatFromInt(@as(i32, op.mask_x) + cx - @as(i32, op.mask_alpha_x_origin))) / @as(f32, @floatFromInt(a.width));
-                const ay: f32 = @as(f32, @floatFromInt(@as(i32, op.mask_y) + cy - @as(i32, op.mask_alpha_y_origin))) / @as(f32, @floatFromInt(a.height));
-                c.glMultiTexCoord2f(c.GL_TEXTURE3, ax, ay);
-            } else {
-                c.glMultiTexCoord2f(c.GL_TEXTURE3, 0, 0);
-            }
-
-            if (use_clip) {
-                const cl = clip.?;
-                const px: f32 = @as(f32, @floatFromInt(@as(i32, op.dst_x) + cx - @as(i32, op.clip_x_origin))) / @as(f32, @floatFromInt(cl.width));
-                const py: f32 = @as(f32, @floatFromInt(@as(i32, op.dst_y) + cy - @as(i32, op.clip_y_origin))) / @as(f32, @floatFromInt(cl.height));
-                c.glMultiTexCoord2f(c.GL_TEXTURE4, px, py);
-            } else {
-                c.glMultiTexCoord2f(c.GL_TEXTURE4, 0, 0);
-            }
-
-            const dx: f32 = @floatFromInt(@as(i32, op.dst_x) + cx);
-            const dy: f32 = @floatFromInt(@as(i32, op.dst_y) + cy);
-            c.glVertex2f(dx, dy);
+        if (use_mask) {
+            const m = mask.?;
+            const mx: f32 = @as(f32, @floatFromInt(@as(i32, op.mask_x) + cx)) / @as(f32, @floatFromInt(m.width));
+            const my: f32 = @as(f32, @floatFromInt(@as(i32, op.mask_y) + cy)) / @as(f32, @floatFromInt(m.height));
+            c.glMultiTexCoord2f(c.GL_TEXTURE2, mx, my);
+        } else {
+            c.glMultiTexCoord2f(c.GL_TEXTURE2, 0, 0);
         }
-        c.glEnd();
+
+        if (use_mask_amap) {
+            const a = mask_amap.?;
+            const ax: f32 = @as(f32, @floatFromInt(@as(i32, op.mask_x) + cx - @as(i32, op.mask_alpha_x_origin))) / @as(f32, @floatFromInt(a.width));
+            const ay: f32 = @as(f32, @floatFromInt(@as(i32, op.mask_y) + cy - @as(i32, op.mask_alpha_y_origin))) / @as(f32, @floatFromInt(a.height));
+            c.glMultiTexCoord2f(c.GL_TEXTURE3, ax, ay);
+        } else {
+            c.glMultiTexCoord2f(c.GL_TEXTURE3, 0, 0);
+        }
+
+        if (use_clip) {
+            const cl = clip.?;
+            const px: f32 = @as(f32, @floatFromInt(@as(i32, op.dst_x) + cx - @as(i32, op.clip_x_origin))) / @as(f32, @floatFromInt(cl.width));
+            const py: f32 = @as(f32, @floatFromInt(@as(i32, op.dst_y) + cy - @as(i32, op.clip_y_origin))) / @as(f32, @floatFromInt(cl.height));
+            c.glMultiTexCoord2f(c.GL_TEXTURE4, px, py);
+        } else {
+            c.glMultiTexCoord2f(c.GL_TEXTURE4, 0, 0);
+        }
+
+        const dx: f32 = @floatFromInt(@as(i32, op.dst_x) + cx);
+        const dy: f32 = @floatFromInt(@as(i32, op.dst_y) + cy);
+        c.glVertex2f(dx, dy);
     }
-    self.composite_operations.clearRetainingCapacity();
+    c.glEnd();
 
     // Unbind extra texture units and restore default unit
     c.glActiveTexture(c.GL_TEXTURE4);
@@ -800,71 +794,6 @@ fn get_drawable_target_size(drawable: phx.Graphics.GraphicsDrawable) struct { te
     };
 }
 
-fn perform_fill_rectangles_operations(self: *Self) void {
-    if (self.fill_rectangles_operations.items.len == 0) return;
-
-    c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.framebuffer);
-    c.glDisable(c.GL_SCISSOR_TEST);
-    c.glDisable(c.GL_TEXTURE_2D);
-
-    c.glMatrixMode(c.GL_PROJECTION);
-    c.glPushMatrix();
-    c.glMatrixMode(c.GL_MODELVIEW);
-    c.glPushMatrix();
-    c.glLoadIdentity();
-
-    for (self.fill_rectangles_operations.items) |*op| {
-        defer op.unref(self.allocator);
-
-        const target = get_drawable_target_size(op.drawable);
-        if (target.texture_id == 0 or target.width == 0 or target.height == 0)
-            continue;
-
-        c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT0, c.GL_TEXTURE_2D, target.texture_id, 0);
-        c.glViewport(0, 0, @intCast(target.width), @intCast(target.height));
-
-        c.glMatrixMode(c.GL_PROJECTION);
-        c.glLoadIdentity();
-        c.glOrtho(0.0, @floatFromInt(target.width), @floatFromInt(target.height), 0.0, -1.0, 1.0);
-        c.glMatrixMode(c.GL_MODELVIEW);
-
-        const blend = pict_op_blend_factors(op.op);
-        c.glBlendFunc(blend.src, blend.dst);
-
-        const a: f32 = @as(f32, @floatFromInt(op.color.alpha)) / 65535.0;
-        const r: f32 = (@as(f32, @floatFromInt(op.color.red)) / 65535.0) * a;
-        const g: f32 = (@as(f32, @floatFromInt(op.color.green)) / 65535.0) * a;
-        const b: f32 = (@as(f32, @floatFromInt(op.color.blue)) / 65535.0) * a;
-        c.glColor4f(r, g, b, a);
-
-        c.glBegin(c.GL_QUADS);
-        for (op.rects) |rect| {
-            const x0: f32 = @floatFromInt(rect.x);
-            const y0: f32 = @floatFromInt(rect.y);
-            const x1: f32 = @floatFromInt(@as(i32, rect.x) + @as(i32, rect.width));
-            const y1: f32 = @floatFromInt(@as(i32, rect.y) + @as(i32, rect.height));
-            c.glVertex2f(x0, y0);
-            c.glVertex2f(x1, y0);
-            c.glVertex2f(x1, y1);
-            c.glVertex2f(x0, y1);
-        }
-        c.glEnd();
-    }
-    self.fill_rectangles_operations.clearRetainingCapacity();
-
-    c.glMatrixMode(c.GL_PROJECTION);
-    c.glPopMatrix();
-    c.glMatrixMode(c.GL_MODELVIEW);
-    c.glPopMatrix();
-
-    c.glColor4f(1.0, 1.0, 1.0, 1.0);
-    c.glBlendFuncSeparate(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA, c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
-    c.glViewport(0, 0, @intCast(self.width), @intCast(self.height));
-    c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
-    c.glEnable(c.GL_TEXTURE_2D);
-    c.glEnable(c.GL_SCISSOR_TEST);
-}
-
 fn depth_to_texture_format(depth: u8) c_uint {
     return switch (depth) {
         8 => c.GL_R,
@@ -873,50 +802,6 @@ fn depth_to_texture_format(depth: u8) c_uint {
         32 => c.GL_RGBA,
         else => unreachable,
     };
-}
-
-fn perform_present_pixmap_operations(self: *Self) void {
-    // TODO: Only render and remove items if target_msc is <= current_msc
-    for (self.present_pixmap_operations.items) |*op| {
-        defer {
-            self.server.append_message(&.{ .present_pixmap_finished = .{ .operation = op.* } }) catch |err| {
-                std.log.err("GraphicsEgl.perform_present_pixmap_operations: failed to append present_pixmap_finished operation in server, error: {s}", .{@errorName(err)});
-            };
-        }
-
-        if (op.pixmap.texture_id == 0)
-            continue;
-
-        // TODO: Use copy coordinates and size from present pixmap request if available, otherwise use 0, 0, window_width, window_height.
-        // TODO: Use framebuffer and regular shader rendering code instead of glCopyImageSubData which is only avaiable since OpenGL 4.3.
-        // TODO: Dont do this copy if the pixmap fills the whole window. Instead draw the pixmap as the window.
-        // TODO: If there is a fullscreen window (with no transparency) then present the pixmap directly on the screen instead of any copying.
-        // TODO: Only clear window background before copying if the pixmap doesn't fill the whole window or has transparency.
-        self.clear_graphics_window(op.window);
-        // TODO: The client application draws background with 0, 0, 0, 1; which the driver interprets as fully transparent (it ignores the alpha value).
-        // The reason why the window background gets replaced as well is because glCopyImageSubData doesn't do alpha blending. When this is replaced with shader rendering code
-        // then the window will correctly have the window background instead of it getting replaced.
-
-        // TODO: Use phx.Present.PresentPixmap fields, such as x_off
-        self.glCopyImageSubData(
-            op.pixmap.texture_id,
-            c.GL_TEXTURE_2D,
-            0,
-            0,
-            0,
-            0,
-            op.window.texture_id,
-            c.GL_TEXTURE_2D,
-            0,
-            0,
-            0,
-            0,
-            @intCast(op.window.width),
-            @intCast(op.window.height),
-            1,
-        );
-    }
-    self.present_pixmap_operations.clearRetainingCapacity();
 }
 
 fn render_graphics_windows(self: *Self, graphics_window: *phx.Graphics.GraphicsWindow, parent_pos: @Vector(2, i32), parent_size: @Vector(2, i32)) void {
@@ -994,11 +879,7 @@ pub fn render(self: *Self) void {
 
         self.mutex.lock();
         if (self.root_window) |root_window| {
-            self.perform_put_image_operations();
-            self.perform_copy_area_operations();
-            self.perform_present_pixmap_operations();
-            self.perform_fill_rectangles_operations();
-            self.perform_composite_operations();
+            self.perform_operations();
             self.render_graphics_windows(root_window, @Vector(2, i32){ 0, 0 }, @Vector(2, i32){ @intCast(self.width), @intCast(self.height) });
             c.glBindTexture(c.GL_TEXTURE_2D, 0);
             c.glScissor(0, 0, @intCast(self.width), @intCast(self.height));
@@ -1139,11 +1020,11 @@ pub fn present_pixmap(self: *Self, pixmap: *phx.Pixmap, window: *const phx.Windo
     self.mutex.lock();
     defer self.mutex.unlock();
 
-    try self.present_pixmap_operations.append(self.allocator, .{
+    try self.operations.append(self.allocator, .{ .present_pixmap = .{
         .pixmap = pixmap,
         .window = window.graphics_window,
         .target_msc = target_msc,
-    });
+    } });
     pixmap.ref();
     self.dirty.store(true, .release);
 }
@@ -1152,12 +1033,9 @@ pub fn put_image(self: *Self, op: *const phx.Graphics.PutImageArguments) !void {
     self.mutex.lock();
     defer self.mutex.unlock();
 
-    var graphics_drawable: phx.Graphics.GraphicsDrawable = switch (op.drawable.item) {
-        .window => |window| .{ .window = window.graphics_window },
-        .pixmap => |pixmap| .{ .pixmap = pixmap },
-    };
+    var graphics_drawable = to_graphics_drawable(op.drawable);
 
-    try self.put_image_operations.append(self.allocator, .{
+    try self.operations.append(self.allocator, .{ .put_image = .{
         .shm_segment = op.shm.*,
         .drawable = graphics_drawable,
         .total_width = op.total_width,
@@ -1172,7 +1050,7 @@ pub fn put_image(self: *Self, op: *const phx.Graphics.PutImageArguments) !void {
         .format = op.format,
         .send_event = op.send_event,
         .offset = op.offset,
-    });
+    } });
 
     op.shm.ref();
     graphics_drawable.ref();
@@ -1183,17 +1061,10 @@ pub fn copy_area(self: *Self, op: *const phx.Graphics.CopyAreaArguments) !void {
     self.mutex.lock();
     defer self.mutex.unlock();
 
-    var src_drawable: phx.Graphics.GraphicsDrawable = switch (op.src_drawable.item) {
-        .window => |window| .{ .window = window.graphics_window },
-        .pixmap => |pixmap| .{ .pixmap = pixmap },
-    };
+    var src_drawable = to_graphics_drawable(op.src_drawable);
+    var dst_drawable = to_graphics_drawable(op.dst_drawable);
 
-    var dst_drawable: phx.Graphics.GraphicsDrawable = switch (op.dst_drawable.item) {
-        .window => |window| .{ .window = window.graphics_window },
-        .pixmap => |pixmap| .{ .pixmap = pixmap },
-    };
-
-    try self.copy_area_operations.append(self.allocator, .{
+    try self.operations.append(self.allocator, .{ .copy_area = .{
         .src_drawable = src_drawable,
         .dst_drawable = dst_drawable,
         .src_x = op.src_x,
@@ -1202,7 +1073,7 @@ pub fn copy_area(self: *Self, op: *const phx.Graphics.CopyAreaArguments) !void {
         .dst_y = op.dst_y,
         .width = op.width,
         .height = op.height,
-    });
+    } });
 
     src_drawable.ref();
     dst_drawable.ref();
@@ -1224,7 +1095,7 @@ pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void 
     var clip_mask_drawable: ?phx.Graphics.GraphicsDrawable =
         if (op.clip_mask_drawable) |d| to_graphics_drawable(d) else null;
 
-    try self.composite_operations.append(self.allocator, .{
+    try self.operations.append(self.allocator, .{ .composite = .{
         .src_drawable = src_drawable,
         .src_alpha_map_drawable = src_alpha_map_drawable,
         .src_alpha_x_origin = op.src_alpha_x_origin,
@@ -1253,7 +1124,7 @@ pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void 
         .dst_y = op.dst_y,
         .width = op.width,
         .height = op.height,
-    });
+    } });
 
     src_drawable.ref();
     dst_drawable.ref();
@@ -1275,20 +1146,17 @@ pub fn fill_rectangles(self: *Self, op: *const phx.Graphics.FillRectanglesArgume
     self.mutex.lock();
     defer self.mutex.unlock();
 
-    var graphics_drawable: phx.Graphics.GraphicsDrawable = switch (op.drawable.item) {
-        .window => |window| .{ .window = window.graphics_window },
-        .pixmap => |pixmap| .{ .pixmap = pixmap },
-    };
+    var graphics_drawable = to_graphics_drawable(op.drawable);
 
     const rects_copy = try self.allocator.dupe(phx.Render.Rectangle, op.rects);
     errdefer self.allocator.free(rects_copy);
 
-    try self.fill_rectangles_operations.append(self.allocator, .{
+    try self.operations.append(self.allocator, .{ .fill_rectangles = .{
         .drawable = graphics_drawable,
         .op = op.op,
         .color = op.color,
         .rects = rects_copy,
-    });
+    } });
 
     graphics_drawable.ref();
     self.dirty.store(true, .release);

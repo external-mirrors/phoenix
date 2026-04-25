@@ -660,17 +660,23 @@ fn handle_messages(self: *Self) void {
             .composite_canceled => |*composite_canceled| {
                 composite_canceled.operation.unref();
             },
+            .fill_rectangles_finished => |*fill_rectangles_finished| {
+                fill_rectangles_finished.operation.unref(self.allocator);
+            },
+            .fill_rectangles_canceled => |*fill_rectangles_canceled| {
+                fill_rectangles_canceled.operation.unref(self.allocator);
+            },
         }
     }
 }
 
 fn cleanup_messages_resources(self: *Self) void {
     for (self.messages.items) |*message| {
-        cleanup_message_resources(message);
+        cleanup_message_resources(message, self.allocator);
     }
 }
 
-fn cleanup_message_resources(message: *Message) void {
+fn cleanup_message_resources(message: *Message, allocator: std.mem.Allocator) void {
     switch (message.*) {
         .shutdown, .vsync_finished, .mouse_move, .mouse_click, .key => {},
         .present_pixmap_finished => |*present_pixmap_finished| present_pixmap_finished.operation.unref(),
@@ -681,6 +687,8 @@ fn cleanup_message_resources(message: *Message) void {
         .copy_area_canceled => |*copy_area_canceled| copy_area_canceled.operation.unref(),
         .composite_finished => |*composite_finished| composite_finished.operation.unref(),
         .composite_canceled => |*composite_canceled| composite_canceled.operation.unref(),
+        .fill_rectangles_finished => |*fill_rectangles_finished| fill_rectangles_finished.operation.unref(allocator),
+        .fill_rectangles_canceled => |*fill_rectangles_canceled| fill_rectangles_canceled.operation.unref(allocator),
     }
 }
 
@@ -845,7 +853,7 @@ fn handle_key(self: *Self, key: *KeyMessage) void {
 /// Thread-safe
 pub fn append_message(self: *Self, message: *const Message) !void {
     if (self.shutting_down.load(.acquire)) {
-        cleanup_message_resources(@constCast(message));
+        cleanup_message_resources(@constCast(message), self.allocator);
         return;
     }
 
@@ -907,6 +915,8 @@ pub const Message = union(enum) {
     copy_area_canceled: CopyAreaCanceledMessage,
     composite_finished: CompositeFinishedMessage,
     composite_canceled: CompositeCanceledMessage,
+    fill_rectangles_finished: FillRectanglesFinishedMessage,
+    fill_rectangles_canceled: FillRectanglesCanceledMessage,
 };
 
 pub const VsyncFinishedMessage = struct {
@@ -970,4 +980,12 @@ pub const CompositeFinishedMessage = struct {
 
 pub const CompositeCanceledMessage = struct {
     operation: phx.Graphics.CompositeOperation,
+};
+
+pub const FillRectanglesFinishedMessage = struct {
+    operation: phx.Graphics.FillRectanglesOperation,
+};
+
+pub const FillRectanglesCanceledMessage = struct {
+    operation: phx.Graphics.FillRectanglesOperation,
 };

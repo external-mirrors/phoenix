@@ -443,7 +443,7 @@ pub fn add_core_event_listener(self: *Self, client: *phx.Client, event_mask: phx
 
     std.debug.assert(self.get_core_event_listener_index(client) == null);
 
-    if (!self.validate_event_exclusivity(event_mask))
+    if (!self.validate_event_exclusivity(event_mask, null))
         return error.ExclusiveEventListenerTaken;
 
     try self.core_event_listeners.append(self.allocator, .{ .client = client, .event_mask = event_mask });
@@ -459,7 +459,7 @@ pub fn modify_core_event_listener_by_index(self: *Self, index: usize, event_mask
         return;
     }
 
-    if (!self.validate_event_exclusivity(event_mask))
+    if (!self.validate_event_exclusivity(event_mask, index))
         return error.ExclusiveEventListenerTaken;
 
     self.core_event_listeners.items[index].event_mask = event_mask;
@@ -478,11 +478,13 @@ pub fn get_core_event_listener_index(self: *Self, client: *const phx.Client) ?us
     return null;
 }
 
-fn validate_event_exclusivity(self: *Self, event_mask: phx.core.EventMask) bool {
-    if (!event_mask.substructure_notify and !event_mask.resize_redirect and !event_mask.button_press)
+fn validate_event_exclusivity(self: *Self, event_mask: phx.core.EventMask, ignore_index: ?usize) bool {
+    if (!event_mask.substructure_redirect and !event_mask.resize_redirect and !event_mask.button_press)
         return true;
 
-    for (self.core_event_listeners.items) |*event_listener| {
+    for (self.core_event_listeners.items, 0..) |*event_listener, i| {
+        if (ignore_index != null and ignore_index.? == i)
+            continue;
         if (event_mask.substructure_redirect and event_listener.event_mask.substructure_redirect) {
             return false;
         } else if (event_mask.resize_redirect and event_listener.event_mask.resize_redirect) {

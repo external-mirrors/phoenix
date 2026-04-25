@@ -11,6 +11,8 @@ pub const EventCode = enum(x11.Card8) {
     focus_in = 9,
     focus_out = 10,
     expose = 12,
+    graphics_exposure = 13,
+    no_exposure = 14,
     create_notify = 16,
     map_notify = 19,
     map_request = 20,
@@ -22,6 +24,7 @@ pub const EventCode = enum(x11.Card8) {
     selection_request = 30,
     selection_notify = 31,
     colormap_notify = 32,
+    client_message = 33,
     // TODO: Clients need support for this (Generic Event Extension), but clients like mesa with opengl graphics expect present events
     // with this even when they dont tell the server it supports this
     generic_event_extension = 35,
@@ -266,6 +269,39 @@ pub const ExposeEvent = extern struct {
     }
 };
 
+pub const GraphicsExposureEvent = extern struct {
+    code: EventCode = .graphics_exposure,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+    drawable: x11.DrawableId,
+    x: x11.Card16,
+    y: x11.Card16,
+    width: x11.Card16,
+    height: x11.Card16,
+    minor_opcode: x11.Card16,
+    count: x11.Card16,
+    major_opcode: x11.Card8,
+    pad2: [11]x11.Card8 = @splat(0),
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
+
+pub const NoExposureEvent = extern struct {
+    code: EventCode = .no_exposure,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+    drawable: x11.DrawableId,
+    minor_opcode: x11.Card16,
+    major_opcode: x11.Card8,
+    pad2: [21]x11.Card8 = @splat(0),
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
+
 pub const CreateNotifyEvent = extern struct {
     code: EventCode = .create_notify,
     pad1: x11.Card8 = 0,
@@ -455,6 +491,20 @@ pub const ColormapNotifyEvent = extern struct {
     }
 };
 
+pub const ClientMessageEvent = extern struct {
+    code: EventCode = .client_message,
+    format: x11.Card8, // 8, 16, or 32 (most callers use 32)
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+    window: x11.WindowId,
+    type: x11.AtomId,
+    /// 20 bytes of caller-defined payload. Layout depends on `format`.
+    data: [20]x11.Card8 = @splat(0),
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
+
 pub const Event = extern union {
     any: AnyEvent,
     key_press: KeyPressEvent,
@@ -465,6 +515,8 @@ pub const Event = extern union {
     focus_in: FocusInEvent,
     focus_out: FocusOutEvent,
     expose: ExposeEvent,
+    graphics_exposure: GraphicsExposureEvent,
+    no_exposure: NoExposureEvent,
     create_notify: CreateNotifyEvent,
     map_notify: MapNotifyEvent,
     map_request: MapRequestEvent,
@@ -476,14 +528,19 @@ pub const Event = extern union {
     selection_request: SelectionRequestEvent,
     selection_notify: SelectionNotifyEvent,
     colormap_notify: ColormapNotifyEvent,
+    client_message: ClientMessageEvent,
 
     pub fn set_event_window(self: *Event, event: x11.WindowId) void {
-        return switch (self.any.code) {
-            inline else => |*ev| {
-                if (@hasField(@TypeOf(ev.*), "event"))
-                    @field(ev.*, "event") = event;
+        switch (self.any.code) {
+            inline else => |tag| {
+                const tag_name = @tagName(tag);
+                if (comptime @hasField(Event, tag_name)) {
+                    const variant = &@field(self, tag_name);
+                    if (comptime @hasField(@TypeOf(variant.*), "event"))
+                        @field(variant.*, "event") = event;
+                }
             },
-        };
+        }
     }
 
     pub fn format(self: *const Event, writer: *std.Io.Writer) std.Io.Writer.Error!void {

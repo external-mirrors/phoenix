@@ -654,7 +654,7 @@ fn get_geometry(request_context: *phx.RequestContext) !void {
     const geometry = drawable.get_geometry();
 
     var rep = Reply.GetGeometry{
-        .depth = 32, // TODO: Use real value
+        .depth = drawable.get_depth(),
         .sequence_number = request_context.sequence_number,
         .root = request_context.server.root_window.id,
         .x = @intCast(geometry.x),
@@ -1267,24 +1267,46 @@ fn copy_area(request_context: *phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.dst_drawable));
     };
 
+    const gc = request_context.server.get_graphics_context(req.request.gc) orelse {
+        std.log.err("CopyArea: invalid gc {d}", .{req.request.gc});
+        return request_context.client.write_error(request_context, .g_context, @intFromEnum(req.request.gc));
+    };
+
     if (src_drawable.get_depth() != dst_drawable.get_depth()) {
         std.log.err("CopyArea: src depth {d} does not match dst depth {d}", .{ src_drawable.get_depth(), dst_drawable.get_depth() });
         return request_context.client.write_error(request_context, .match, 0);
     }
 
-    if (req.request.width == 0 or req.request.height == 0)
-        return;
+    if (req.request.width != 0 and req.request.height != 0) {
+        try request_context.server.display.copy_area(&.{
+            .src_drawable = src_drawable,
+            .dst_drawable = dst_drawable,
+            .src_x = req.request.src_x,
+            .src_y = req.request.src_y,
+            .dst_x = req.request.dst_x,
+            .dst_y = req.request.dst_y,
+            .width = req.request.width,
+            .height = req.request.height,
+        });
+    }
 
-    try request_context.server.display.copy_area(&.{
-        .src_drawable = src_drawable,
-        .dst_drawable = dst_drawable,
-        .src_x = req.request.src_x,
-        .src_y = req.request.src_y,
-        .dst_x = req.request.dst_x,
-        .dst_y = req.request.dst_y,
-        .width = req.request.width,
-        .height = req.request.height,
-    });
+    // Per the X11 core protocol, CopyArea must emit a NoExposure event when
+    // the GC has graphics_exposures enabled and no source pixels were
+    // obscured. Phoenix has no concept of obscured source regions (windows
+    // are backed by full off-screen pixmaps in the compositor), so the copy
+    // is always treated as fully successful — emit NoExposure. Toolkits like
+    // GTK rely on this event to drive their frame clock; without it, the
+    // first paint never happens.
+    if (gc.graphics_exposures) {
+        var event = phx.event.NoExposureEvent{
+            .drawable = req.request.dst_drawable,
+            .minor_opcode = 0,
+            .major_opcode = @intFromEnum(phx.opcode.Major.copy_area),
+        };
+        request_context.client.write_event_static_size(&event) catch |err| {
+            std.log.err("CopyArea: failed to send NoExposure event: {s}", .{@errorName(err)});
+        };
+    }
 }
 
 fn bits_per_pixel_for_depth(depth: u8) u32 {
@@ -1386,21 +1408,54 @@ fn create_gc(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateGC, request_context.allocator);
     defer req.deinit();
 
-    std.log.err("TODO: Implement CreateGC (or maybe not)", .{});
+    if (request_context.server.get_drawable(req.request.drawable) == null) {
+        std.log.err("CreateGC: invalid drawable {d}", .{req.request.drawable});
+        return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.drawable));
+    }
+
+    var gc = phx.GraphicsContext{
+        .id = req.request.gc,
+        .drawable = req.request.drawable,
+    };
+    apply_gc_value_list_create(&gc, &req.request);
+
+    try request_context.client.add_graphics_context(gc);
 }
 
 fn change_gc(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.ChangeGC, request_context.allocator);
     defer req.deinit();
 
-    std.log.err("TODO: Implement ChangeGC (or maybe not)", .{});
+    const gc = request_context.server.get_graphics_context(req.request.gc) orelse {
+        std.log.err("ChangeGC: invalid gc {d}", .{req.request.gc});
+        return request_context.client.write_error(request_context, .g_context, @intFromEnum(req.request.gc));
+    };
+
+    apply_gc_value_list_change(gc, &req.request);
 }
 
 fn free_gc(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.FreeGC, request_context.allocator);
     defer req.deinit();
 
-    std.log.err("TODO: Implement FreeGC (or maybe not)", .{});
+    if (request_context.server.get_graphics_context(req.request.gc) == null) {
+        std.log.err("FreeGC: invalid gc {d}", .{req.request.gc});
+        return request_context.client.write_error(request_context, .g_context, @intFromEnum(req.request.gc));
+    }
+
+    request_context.server.remove_resource(req.request.gc.to_id());
+}
+
+fn apply_gc_value_list_create(gc: *phx.GraphicsContext, req: *const Request.CreateGC) void {
+    if (req.get_value(u32, "graphics_exposures")) |v| gc.graphics_exposures = v != 0;
+    if (req.get_value(i16, "clip_x_origin")) |v| gc.clip_x_origin = v;
+    if (req.get_value(i16, "clip_y_origin")) |v| gc.clip_y_origin = v;
+}
+
+fn apply_gc_value_list_change(gc: *phx.GraphicsContext, req: *const Request.ChangeGC) void {
+    if (req.get_value(u32, "graphics_exposures")) |v| gc.graphics_exposures = v != 0;
+    if (req.get_value(i16, "clip_x_origin")) |v| gc.clip_x_origin = v;
+    if (req.get_value(i16, "clip_y_origin")) |v| gc.clip_y_origin = v;
 }
 
 fn create_colormap(request_context: *phx.RequestContext) !void {
@@ -2246,7 +2301,7 @@ pub const Request = struct {
         value_mask: CreateGCValueMask,
         value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
 
-        pub fn get_value(self: *const CreateGC, comptime T: type, comptime value_mask_field: []const u8) ?T {
+        pub fn get_value(self: *const ChangeGC, comptime T: type, comptime value_mask_field: []const u8) ?T {
             if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
                 // The protocol specifies that all uninteresting bits are undefined, so we need to set them to 0
                 return downcast_integer(T, self.value_list.items[index]);

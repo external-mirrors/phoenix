@@ -375,6 +375,10 @@ pub fn add_cursor(self: *Self, cursor: phx.Cursor) !void {
     return self.add_resource(cursor.id.to_id(), .{ .cursor = cursor });
 }
 
+pub fn add_graphics_context(self: *Self, gc: phx.GraphicsContext) !void {
+    return self.add_resource(gc.id.to_id(), .{ .graphics_context = gc });
+}
+
 pub fn remove_resource(self: *Self, id: x11.ResourceId) void {
     _ = self.resources.remove(id);
 }

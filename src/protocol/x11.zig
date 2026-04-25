@@ -126,6 +126,10 @@ pub const FontId = enum(Card32) {
 
 pub const GContextId = enum(Card32) {
     _,
+
+    pub fn to_id(self: GContextId) ResourceId {
+        return @enumFromInt(@intFromEnum(self));
+    }
 };
 
 pub const CursorId = enum(Card32) {

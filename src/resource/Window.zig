@@ -594,6 +594,8 @@ fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, event_code
         .focus_in => return event_mask.focus_change,
         .focus_out => return event_mask.focus_change,
         .expose => return event_mask.exposure,
+        .graphics_exposure => return false, // Delivered directly to the requesting client, not via window event mask
+        .no_exposure => return false, // Delivered directly to the requesting client, not via window event mask
         .create_notify => return false, // This only applies to parents
         .map_notify => return event_mask.structure_notify,
         .map_request => return false, // This only applies to the substructure redirect parent (client)
@@ -605,6 +607,7 @@ fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, event_code
         .selection_request => return false, // Only sent to the selection owner
         .selection_notify => return false, // Only sent to the requestor
         .colormap_notify => return event_mask.colormap_change,
+        .client_message => return false, // Always addressed to a specific client; never selected via the window event mask
         .generic_event_extension => return false, // TODO:
     }
 }
@@ -619,6 +622,8 @@ inline fn core_event_should_propagate_to_parent_substructure_notify(event_code: 
         .focus_in => false,
         .focus_out => false,
         .expose => false, // Only delivered to the exposed window itself
+        .graphics_exposure => false, // Sent directly to the requesting client
+        .no_exposure => false, // Sent directly to the requesting client
         .create_notify => true,
         .map_notify => true,
         .map_request => false,
@@ -630,6 +635,7 @@ inline fn core_event_should_propagate_to_parent_substructure_notify(event_code: 
         .selection_request => false,
         .selection_notify => false,
         .colormap_notify => false,
+        .client_message => false,
         .generic_event_extension => false, // TODO:
     };
 }

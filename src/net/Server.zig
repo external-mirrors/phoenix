@@ -612,6 +612,10 @@ pub fn get_cursor(self: *Self, cursor_id: x11.CursorId) ?*phx.Cursor {
     return self.client_manager.get_resource_of_type(cursor_id.to_id(), .cursor);
 }
 
+pub fn get_graphics_context(self: *Self, gc_id: x11.GContextId) ?*phx.GraphicsContext {
+    return self.client_manager.get_resource_of_type(gc_id.to_id(), .graphics_context);
+}
+
 pub fn xfixes_select_selection_input(
     self: *Self,
     client: *phx.Client,

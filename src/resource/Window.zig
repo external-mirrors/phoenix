@@ -601,6 +601,8 @@ fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, event_code
         .resize_request => return event_mask.resize_redirect,
         .property_notify => return event_mask.property_change,
         .selection_clear => return false, // Clients cant select to listen to this, they always listen to it and it's only sent to a single client
+        .selection_request => return false, // Only sent to the selection owner
+        .selection_notify => return false, // Only sent to the requestor
         .colormap_notify => return event_mask.colormap_change,
         .generic_event_extension => return false, // TODO:
     }
@@ -623,6 +625,8 @@ inline fn core_event_should_propagate_to_parent_substructure_notify(event_code: 
         .resize_request => false,
         .property_notify => false,
         .selection_clear => false,
+        .selection_request => false,
+        .selection_notify => false,
         .colormap_notify => false,
         .generic_event_extension => false, // TODO:
     };

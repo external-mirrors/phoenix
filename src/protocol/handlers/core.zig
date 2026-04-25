@@ -29,6 +29,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .get_property => get_property(request_context),
         .set_selection_owner => set_selection_owner(request_context),
         .get_selection_owner => get_selection_owner(request_context),
+        .convert_selection => convert_selection(request_context),
         .send_event => send_event(request_context),
         .grab_server => grab_server(request_context),
         .ungrab_server => ungrab_server(request_context),
@@ -951,6 +952,62 @@ fn get_selection_owner(request_context: *phx.RequestContext) !void {
         .owner = selection_owner_window,
     };
     try request_context.client.write_reply(&rep);
+}
+
+fn convert_selection(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.ConvertSelection, request_context.allocator);
+    defer req.deinit();
+
+    const requestor = request_context.server.get_window(req.request.requestor) orelse {
+        std.log.err("ConvertSelection: invalid requestor window {d}", .{req.request.requestor});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.requestor));
+    };
+
+    const selection_atom = request_context.server.atom_manager.get_atom_by_id(req.request.selection) orelse {
+        std.log.err("ConvertSelection: invalid selection atom {d}", .{req.request.selection});
+        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.selection));
+    };
+
+    if (request_context.server.atom_manager.get_atom_by_id(req.request.target) == null) {
+        std.log.err("ConvertSelection: invalid target atom {d}", .{req.request.target});
+        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.target));
+    }
+
+    if (@intFromEnum(req.request.property) != 0 and request_context.server.atom_manager.get_atom_by_id(req.request.property) == null) {
+        std.log.err("ConvertSelection: invalid property atom {d}", .{req.request.property});
+        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.property));
+    }
+
+    const owner_opt = request_context.server.selection_owner_manager.get_owner(selection_atom);
+    if (owner_opt) |owner| {
+        if (owner.owner_window) |owner_window| {
+            if (owner.owner_client) |owner_client| {
+                var ev = phx.event.Event{
+                    .selection_request = .{
+                        .time = req.request.time,
+                        .owner = owner_window.id,
+                        .requestor = requestor.id,
+                        .selection = req.request.selection,
+                        .target = req.request.target,
+                        .property = req.request.property,
+                    },
+                };
+                try owner_client.write_event(&ev);
+                return;
+            }
+        }
+    }
+
+    var notify = phx.event.Event{
+        .selection_notify = .{
+            .time = req.request.time,
+            .requestor = requestor.id,
+            .selection = req.request.selection,
+            .target = req.request.target,
+            .property = @enumFromInt(0),
+        },
+    };
+    try request_context.client.write_event(&notify);
 }
 
 fn send_event(request_context: *phx.RequestContext) !void {
@@ -1883,6 +1940,17 @@ pub const Request = struct {
         pad1: x11.Card8 = 0,
         length: x11.Card16,
         selection: x11.AtomId,
+    };
+
+    pub const ConvertSelection = struct {
+        opcode: phx.opcode.Major = .convert_selection,
+        pad1: x11.Card8 = 0,
+        length: x11.Card16,
+        requestor: x11.WindowId,
+        selection: x11.AtomId,
+        target: x11.AtomId,
+        property: x11.AtomId, // Can be .none
+        time: x11.Timestamp, // Can be .current_time
     };
 
     pub const SendEvent = struct {

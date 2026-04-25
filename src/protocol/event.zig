@@ -18,7 +18,8 @@ pub const EventCode = enum(x11.Card8) {
     resize_request = 25,
     property_notify = 28,
     selection_clear = 29,
-    //selection_request = 30,
+    selection_request = 30,
+    selection_notify = 31,
     colormap_notify = 32,
     // TODO: Clients need support for this (Generic Event Extension), but clients like mesa with opengl graphics expect present events
     // with this even when they dont tell the server it supports this
@@ -383,22 +384,38 @@ pub const SelectionClearEvent = extern struct {
     }
 };
 
-// pub const SelectionRequestEvent = extern struct {
-//     code: EventCode = .selection_request,
-//     pad1: x11.Card8 = 0,
-//     sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
-//     time: x11.Timestamp, // Can be .current_time
-//     owner: x11.WindowId,
-//     requestor: x11.WindowId,
-//     selection: x11.AtomId,
-//     target: x11.AtomId,
-//     property: x11.AtomId, // Can be 0
-//     pad2: x11.Card32 = 0,
+pub const SelectionRequestEvent = extern struct {
+    code: EventCode = .selection_request,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+    time: x11.Timestamp, // Can be .current_time
+    owner: x11.WindowId,
+    requestor: x11.WindowId,
+    selection: x11.AtomId,
+    target: x11.AtomId,
+    property: x11.AtomId, // Can be .none
+    pad2: x11.Card32 = 0,
 
-//     comptime {
-//         std.debug.assert(@sizeOf(@This()) == 32);
-//     }
-// };
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
+
+pub const SelectionNotifyEvent = extern struct {
+    code: EventCode = .selection_notify,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+    time: x11.Timestamp,
+    requestor: x11.WindowId,
+    selection: x11.AtomId,
+    target: x11.AtomId,
+    property: x11.AtomId, // .none if the selection could not be converted
+    pad2: [8]x11.Card8 = @splat(0),
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
 
 pub const ColormapNotifyEvent = extern struct {
     code: EventCode = .colormap_notify,
@@ -435,7 +452,8 @@ pub const Event = extern union {
     resize_request: ResizeRequestEvent,
     property_notify: PropertyNotifyEvent,
     selection_clear: SelectionClearEvent,
-    //selection_request: SelectionRequestEvent,
+    selection_request: SelectionRequestEvent,
+    selection_notify: SelectionNotifyEvent,
     colormap_notify: ColormapNotifyEvent,
 
     pub fn set_event_window(self: *Event, event: x11.WindowId) void {

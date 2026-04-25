@@ -97,6 +97,12 @@ pub fn fill_rectangles(self: *Self, op: *const phx.Graphics.FillRectanglesArgume
     };
 }
 
+pub fn copy_area(self: *Self, op: *const phx.Graphics.CopyAreaArguments) !void {
+    return switch (self.impl) {
+        inline else => |item| item.copy_area(op),
+    };
+}
+
 pub fn get_keyboard_state(self: *Self, params: *const phx.Xkb.Request.GetState, arena: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetState {
     return switch (self.impl) {
         inline else => |item| item.get_keyboard_state(params, arena),

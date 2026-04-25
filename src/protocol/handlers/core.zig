@@ -42,6 +42,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .create_gc => create_gc(request_context),
         .change_gc => change_gc(request_context),
         .free_gc => free_gc(request_context),
+        .copy_area => copy_area(request_context),
         .create_colormap => create_colormap(request_context),
         .query_extension => query_extension(request_context),
         .get_keyboard_mapping => get_keyboard_mapping(request_context),
@@ -1134,6 +1135,40 @@ fn free_pixmap(request_context: *phx.RequestContext) !void {
     request_context.server.remove_resource(req.request.pixmap.to_id());
 }
 
+fn copy_area(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.CopyArea, request_context.allocator);
+    defer req.deinit();
+
+    const src_drawable = request_context.server.get_drawable(req.request.src_drawable) orelse {
+        std.log.err("CopyArea: invalid src drawable {d}", .{req.request.src_drawable});
+        return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.src_drawable));
+    };
+
+    const dst_drawable = request_context.server.get_drawable(req.request.dst_drawable) orelse {
+        std.log.err("CopyArea: invalid dst drawable {d}", .{req.request.dst_drawable});
+        return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.dst_drawable));
+    };
+
+    if (src_drawable.get_depth() != dst_drawable.get_depth()) {
+        std.log.err("CopyArea: src depth {d} does not match dst depth {d}", .{ src_drawable.get_depth(), dst_drawable.get_depth() });
+        return request_context.client.write_error(request_context, .match, 0);
+    }
+
+    if (req.request.width == 0 or req.request.height == 0)
+        return;
+
+    try request_context.server.display.copy_area(&.{
+        .src_drawable = src_drawable,
+        .dst_drawable = dst_drawable,
+        .src_x = req.request.src_x,
+        .src_y = req.request.src_y,
+        .dst_x = req.request.dst_x,
+        .dst_y = req.request.dst_y,
+        .width = req.request.width,
+        .height = req.request.height,
+    });
+}
+
 fn create_gc(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateGC, request_context.allocator);
     defer req.deinit();
@@ -1916,6 +1951,21 @@ pub const Request = struct {
         pad1: x11.Card8,
         length: x11.Card16,
         pixmap: x11.PixmapId,
+    };
+
+    pub const CopyArea = struct {
+        opcode: phx.opcode.Major = .copy_area,
+        pad1: x11.Card8,
+        length: x11.Card16,
+        src_drawable: x11.DrawableId,
+        dst_drawable: x11.DrawableId,
+        gc: x11.GContextId,
+        src_x: i16,
+        src_y: i16,
+        dst_x: i16,
+        dst_y: i16,
+        width: x11.Card16,
+        height: x11.Card16,
     };
 
     pub const CreateGC = struct {

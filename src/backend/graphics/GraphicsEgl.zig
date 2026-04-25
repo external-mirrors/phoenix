@@ -61,6 +61,7 @@ root_window: ?*phx.Graphics.GraphicsWindow,
 present_pixmap_operations: std.ArrayListUnmanaged(phx.Graphics.PresentPixmapOperation) = .empty,
 put_image_operations: std.ArrayListUnmanaged(phx.Graphics.PutImageOperation) = .empty,
 fill_rectangles_operations: std.ArrayListUnmanaged(phx.Graphics.FillRectanglesOperation) = .empty,
+copy_area_operations: std.ArrayListUnmanaged(phx.Graphics.CopyAreaOperation) = .empty,
 
 textures_to_delete: std.ArrayListUnmanaged(u32) = .empty,
 
@@ -236,6 +237,11 @@ pub fn deinit(self: *Self) void {
     }
     self.fill_rectangles_operations.clearRetainingCapacity();
 
+    for (self.copy_area_operations.items) |*copy_area_operation| {
+        copy_area_operation.unref();
+    }
+    self.copy_area_operations.clearRetainingCapacity();
+
     if (self.root_window) |root_window| {
         self.destroy_window_recursive(root_window);
         self.root_window = null;
@@ -249,6 +255,7 @@ pub fn deinit(self: *Self) void {
     self.present_pixmap_operations.deinit(self.allocator);
     self.put_image_operations.deinit(self.allocator);
     self.fill_rectangles_operations.deinit(self.allocator);
+    self.copy_area_operations.deinit(self.allocator);
     self.textures_to_delete.deinit(self.allocator);
 
     if (self.dri_card_fd > 0) {
@@ -266,6 +273,7 @@ fn destroy_window_recursive(self: *Self, graphics_window: *phx.Graphics.Graphics
     self.remove_present_pixmap_operations_for_window(graphics_window);
     self.remove_put_image_operations_for_window(graphics_window);
     self.remove_fill_rectangles_operations_for_window(graphics_window);
+    self.remove_copy_area_operations_for_window(graphics_window);
 
     for (graphics_window.children.items) |child_window| {
         self.destroy_window_recursive(child_window);
@@ -323,6 +331,24 @@ fn remove_fill_rectangles_operations_for_window(self: *Self, graphics_window: *p
         if (std.meta.activeTag(drawable) == .window and drawable.window == graphics_window) {
             self.fill_rectangles_operations.items[i].unref(self.allocator);
             _ = self.fill_rectangles_operations.orderedRemove(i);
+        } else {
+            i += 1;
+        }
+    }
+}
+
+// XXX: Optimize
+fn remove_copy_area_operations_for_window(self: *Self, graphics_window: *phx.Graphics.GraphicsWindow) void {
+    var i: usize = 0;
+    while (i < self.copy_area_operations.items.len) {
+        const op = &self.copy_area_operations.items[i];
+        const src_match = std.meta.activeTag(op.src_drawable) == .window and op.src_drawable.window == graphics_window;
+        const dst_match = std.meta.activeTag(op.dst_drawable) == .window and op.dst_drawable.window == graphics_window;
+        if (src_match or dst_match) {
+            self.server.append_message(&.{ .copy_area_canceled = .{ .operation = op.* } }) catch |err| {
+                std.log.err("GraphicsEgl.remove_copy_area_operations_for_window: failed to append copy_area_canceled operation in server, error: {s}", .{@errorName(err)});
+            };
+            _ = self.copy_area_operations.orderedRemove(i);
         } else {
             i += 1;
         }
@@ -419,6 +445,80 @@ fn perform_put_image_operations(self: *Self) void {
         }
     }
     self.put_image_operations.clearRetainingCapacity();
+}
+
+fn perform_copy_area_operations(self: *Self) void {
+    for (self.copy_area_operations.items) |*op| {
+        defer {
+            self.server.append_message(&.{ .copy_area_finished = .{ .operation = op.* } }) catch |err| {
+                std.log.err("GraphicsEgl.perform_copy_area_operations: failed to append copy_area_finished operation in server, error: {s}", .{@errorName(err)});
+            };
+        }
+
+        const src = get_drawable_target_size(op.src_drawable);
+        const dst = get_drawable_target_size(op.dst_drawable);
+        if (src.texture_id == 0 or dst.texture_id == 0)
+            continue;
+
+        var src_x: i32 = op.src_x;
+        var src_y: i32 = op.src_y;
+        var dst_x: i32 = op.dst_x;
+        var dst_y: i32 = op.dst_y;
+        var width: i32 = op.width;
+        var height: i32 = op.height;
+
+        if (src_x < 0) {
+            dst_x -= src_x;
+            width += src_x;
+            src_x = 0;
+        }
+        if (src_y < 0) {
+            dst_y -= src_y;
+            height += src_y;
+            src_y = 0;
+        }
+        if (dst_x < 0) {
+            src_x -= dst_x;
+            width += dst_x;
+            dst_x = 0;
+        }
+        if (dst_y < 0) {
+            src_y -= dst_y;
+            height += dst_y;
+            dst_y = 0;
+        }
+
+        const src_w_i32: i32 = @intCast(src.width);
+        const src_h_i32: i32 = @intCast(src.height);
+        const dst_w_i32: i32 = @intCast(dst.width);
+        const dst_h_i32: i32 = @intCast(dst.height);
+        width = @min(width, src_w_i32 - src_x);
+        width = @min(width, dst_w_i32 - dst_x);
+        height = @min(height, src_h_i32 - src_y);
+        height = @min(height, dst_h_i32 - dst_y);
+
+        if (width <= 0 or height <= 0)
+            continue;
+
+        self.glCopyImageSubData(
+            src.texture_id,
+            c.GL_TEXTURE_2D,
+            0,
+            src_x,
+            src_y,
+            0,
+            dst.texture_id,
+            c.GL_TEXTURE_2D,
+            0,
+            dst_x,
+            dst_y,
+            0,
+            width,
+            height,
+            1,
+        );
+    }
+    self.copy_area_operations.clearRetainingCapacity();
 }
 
 fn pict_op_blend_factors(op: phx.Render.PictOp) struct { src: c_uint, dst: c_uint } {
@@ -642,6 +742,7 @@ pub fn render(self: *Self) void {
         self.mutex.lock();
         if (self.root_window) |root_window| {
             self.perform_put_image_operations();
+            self.perform_copy_area_operations();
             self.perform_present_pixmap_operations();
             self.perform_fill_rectangles_operations();
             self.render_graphics_windows(root_window, @Vector(2, i32){ 0, 0 }, @Vector(2, i32){ @intCast(self.width), @intCast(self.height) });
@@ -821,6 +922,36 @@ pub fn put_image(self: *Self, op: *const phx.Graphics.PutImageArguments) !void {
 
     op.shm.ref();
     graphics_drawable.ref();
+    self.dirty.store(true, .release);
+}
+
+pub fn copy_area(self: *Self, op: *const phx.Graphics.CopyAreaArguments) !void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    var src_drawable: phx.Graphics.GraphicsDrawable = switch (op.src_drawable.item) {
+        .window => |window| .{ .window = window.graphics_window },
+        .pixmap => |pixmap| .{ .pixmap = pixmap },
+    };
+
+    var dst_drawable: phx.Graphics.GraphicsDrawable = switch (op.dst_drawable.item) {
+        .window => |window| .{ .window = window.graphics_window },
+        .pixmap => |pixmap| .{ .pixmap = pixmap },
+    };
+
+    try self.copy_area_operations.append(self.allocator, .{
+        .src_drawable = src_drawable,
+        .dst_drawable = dst_drawable,
+        .src_x = op.src_x,
+        .src_y = op.src_y,
+        .dst_x = op.dst_x,
+        .dst_y = op.dst_y,
+        .width = op.width,
+        .height = op.height,
+    });
+
+    src_drawable.ref();
+    dst_drawable.ref();
     self.dirty.store(true, .release);
 }
 

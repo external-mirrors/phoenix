@@ -138,6 +138,12 @@ pub fn fill_rectangles(self: *Self, op: *const FillRectanglesArguments) !void {
     };
 }
 
+pub fn copy_area(self: *Self, op: *const CopyAreaArguments) !void {
+    return switch (self.impl) {
+        inline else => |item| item.copy_area(op),
+    };
+}
+
 pub fn set_dirty(self: *Self) void {
     switch (self.impl) {
         inline else => |item| item.set_dirty(),
@@ -225,6 +231,33 @@ pub const FillRectanglesOperation = struct {
     pub fn unref(self: *FillRectanglesOperation, allocator: std.mem.Allocator) void {
         self.drawable.unref();
         allocator.free(self.rects);
+    }
+};
+
+pub const CopyAreaArguments = struct {
+    src_drawable: phx.Drawable,
+    dst_drawable: phx.Drawable,
+    src_x: i16,
+    src_y: i16,
+    dst_x: i16,
+    dst_y: i16,
+    width: x11.Card16,
+    height: x11.Card16,
+};
+
+pub const CopyAreaOperation = struct {
+    src_drawable: GraphicsDrawable,
+    dst_drawable: GraphicsDrawable,
+    src_x: i16,
+    src_y: i16,
+    dst_x: i16,
+    dst_y: i16,
+    width: x11.Card16,
+    height: x11.Card16,
+
+    pub fn unref(self: *CopyAreaOperation) void {
+        self.src_drawable.unref();
+        self.dst_drawable.unref();
     }
 };
 

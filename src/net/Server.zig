@@ -647,6 +647,13 @@ fn handle_messages(self: *Self) void {
                 // TODO: trigger event?
                 put_image_canceled.operation.unref();
             },
+            .copy_area_finished => |*copy_area_finished| {
+                // TODO: trigger GraphicsExposure / NoExposure event
+                copy_area_finished.operation.unref();
+            },
+            .copy_area_canceled => |*copy_area_canceled| {
+                copy_area_canceled.operation.unref();
+            },
         }
     }
 }
@@ -664,6 +671,8 @@ fn cleanup_message_resources(message: *Message) void {
         .put_image_finished => |*put_image_finished| put_image_finished.operation.unref(),
         .present_pixmap_canceled => |*present_pixmap_canceled| present_pixmap_canceled.operation.unref(),
         .put_image_canceled => |*put_image_canceled| put_image_canceled.operation.unref(),
+        .copy_area_finished => |*copy_area_finished| copy_area_finished.operation.unref(),
+        .copy_area_canceled => |*copy_area_canceled| copy_area_canceled.operation.unref(),
     }
 }
 
@@ -886,6 +895,8 @@ pub const Message = union(enum) {
     put_image_finished: PutImageFinishedMessage,
     present_pixmap_canceled: PresentPixmapCanceledMessage,
     put_image_canceled: PutImageCanceledMessage,
+    copy_area_finished: CopyAreaFinishedMessage,
+    copy_area_canceled: CopyAreaCanceledMessage,
 };
 
 pub const VsyncFinishedMessage = struct {
@@ -933,4 +944,12 @@ pub const PresentPixmapCanceledMessage = struct {
 
 pub const PutImageCanceledMessage = struct {
     operation: phx.Graphics.PutImageOperation,
+};
+
+pub const CopyAreaFinishedMessage = struct {
+    operation: phx.Graphics.CopyAreaOperation,
+};
+
+pub const CopyAreaCanceledMessage = struct {
+    operation: phx.Graphics.CopyAreaOperation,
 };

@@ -24,7 +24,8 @@ pub const Resource = union(enum) {
             .fence => |*item| item.deinit(),
             .shm_segment => |*item| item.unref(),
             .picture => |*item| item.deinit(),
-            .event_context, .colormap, .glx_context, .counter, .cursor => {},
+            .cursor => |*item| item.deinit(),
+            .event_context, .colormap, .glx_context, .counter => {},
         }
     }
 };

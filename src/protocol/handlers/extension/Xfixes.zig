@@ -17,6 +17,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .query_version => query_version(request_context),
         .select_selection_input => select_selection_input(request_context),
         .create_region => create_region(request_context),
+        .set_cursor_name => set_cursor_name(request_context),
     };
 }
 
@@ -63,10 +64,23 @@ fn create_region(_: *phx.RequestContext) !void {
     std.log.err("TODO: Implement CreateRegion", .{});
 }
 
+fn set_cursor_name(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.SetCursorName, request_context.allocator);
+    defer req.deinit();
+
+    const cursor = request_context.server.get_cursor(req.request.cursor) orelse {
+        std.log.err("XfixesSetCursorName: invalid cursor {d}", .{@intFromEnum(req.request.cursor)});
+        return request_context.client.write_error(request_context, .cursor, @intFromEnum(req.request.cursor));
+    };
+
+    try cursor.set_name(request_context.client.allocator, req.request.name.items);
+}
+
 const MinorOpcode = enum(x11.Card8) {
     query_version = 0,
     select_selection_input = 2,
     create_region = 5,
+    set_cursor_name = 23,
 };
 
 pub const SelectionEventMask = packed struct(x11.Card32) {
@@ -106,6 +120,17 @@ pub const Request = struct {
         window: x11.WindowId,
         selection: x11.AtomId,
         event_mask: SelectionEventMask,
+    };
+
+    pub const SetCursorName = struct {
+        major_opcode: phx.opcode.Major = .xfixes,
+        minor_opcode: MinorOpcode = .set_cursor_name,
+        length: x11.Card16,
+        cursor: x11.CursorId,
+        nbytes: x11.Card16,
+        pad1: x11.Card16 = 0,
+        name: x11.ListOf(x11.Card8, .{ .length_field = "nbytes" }),
+        pad2: x11.AlignmentPadding = .{},
     };
 };
 

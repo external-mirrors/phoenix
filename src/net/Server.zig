@@ -505,6 +505,7 @@ fn handle_client_request(self: *Self, client: *phx.Client) !bool {
             error.EndOfStream,
             error.RequestBadLength,
             error.RequestDataNotAvailableYet,
+            error.InvalidRequestLength,
             => try request_context.client.write_error(&request_context, .length, 0),
             error.InvalidEnumTag => try request_context.client.write_error(&request_context, .value, 0), // TODO: Return the correct value
             error.ResourceNotOwnedByClient => try request_context.client.write_error(&request_context, .id_choice, client.last_error_value),

@@ -106,14 +106,28 @@ fn read_request_list_of(
             comptime std.debug.assert(std.mem.eql(u8, list_of_options.length_field.?, "length")); // It needs to be the request length field
             const unit_size: u32 = 4;
             const length_field_size = @field(request, list_of_options.length_field.?) * unit_size;
-            if (reader_context.num_bytes_read() > length_field_size)
-                return error.InvalidRequestLength;
-            list_length = length_field_size - reader_context.num_bytes_read();
+            const bytes_remaining = length_field_size - reader_context.num_bytes_read();
+            const element_size = comptime sizeof_wire(element_type);
+            list_length = bytes_remaining / element_size;
         },
     }
 
     list_of.items = try read_request_array(element_type, list_length, reader_context);
     return list_of;
+}
+
+fn sizeof_wire(comptime T: type) usize {
+    return switch (@typeInfo(T)) {
+        .int => |int| @divExact(int.bits, 8),
+        .@"enum" => |e| @divExact(@typeInfo(e.tag_type).int.bits, 8),
+        .bool => 1,
+        .@"struct" => |s| blk: {
+            var total: usize = 0;
+            for (s.fields) |f| total += sizeof_wire(f.type);
+            break :blk total;
+        },
+        else => @compileError("sizeof_wire: unsupported type " ++ @typeName(T)),
+    };
 }
 
 fn read_request_array(comptime ElementType: type, list_length: usize, reader_context: ReaderContext) ![]ElementType {

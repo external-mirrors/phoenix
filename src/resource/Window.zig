@@ -593,6 +593,7 @@ fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, event_code
         },
         .focus_in => return event_mask.focus_change,
         .focus_out => return event_mask.focus_change,
+        .expose => return event_mask.exposure,
         .create_notify => return false, // This only applies to parents
         .map_notify => return event_mask.structure_notify,
         .map_request => return false, // This only applies to the substructure redirect parent (client)
@@ -617,6 +618,7 @@ inline fn core_event_should_propagate_to_parent_substructure_notify(event_code: 
         .motion_notify => false,
         .focus_in => false,
         .focus_out => false,
+        .expose => false, // Only delivered to the exposed window itself
         .create_notify => true,
         .map_notify => true,
         .map_request => false,
@@ -850,6 +852,18 @@ pub fn map(self: *Self) void {
         },
     };
     self.write_core_event_to_event_listeners(&map_notify_event);
+
+    var expose_event = phx.event.Event{
+        .expose = .{
+            .window = self.id,
+            .x = 0,
+            .y = 0,
+            .width = @intCast(self.attributes.geometry.width),
+            .height = @intCast(self.attributes.geometry.height),
+            .count = 0,
+        },
+    };
+    self.write_core_event_to_event_listeners(&expose_event);
 }
 
 /// Returns |root_window| if no window matches

@@ -10,6 +10,7 @@ pub const EventCode = enum(x11.Card8) {
     motion_notify = 6,
     focus_in = 9,
     focus_out = 10,
+    expose = 12,
     create_notify = 16,
     map_notify = 19,
     map_request = 20,
@@ -246,6 +247,25 @@ pub const FocusOutEvent = extern struct {
     }
 };
 
+pub const ExposeEvent = extern struct {
+    code: EventCode = .expose,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+    window: x11.WindowId,
+    x: x11.Card16,
+    y: x11.Card16,
+    width: x11.Card16,
+    height: x11.Card16,
+    /// Number of expose events still to follow for the same logical exposed
+    /// region. Zero on the last (or only) event.
+    count: x11.Card16,
+    pad2: [14]x11.Card8 = @splat(0),
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
+
 pub const CreateNotifyEvent = extern struct {
     code: EventCode = .create_notify,
     pad1: x11.Card8 = 0,
@@ -444,6 +464,7 @@ pub const Event = extern union {
     motion_notify: MotionNotifyEvent,
     focus_in: FocusInEvent,
     focus_out: FocusOutEvent,
+    expose: ExposeEvent,
     create_notify: CreateNotifyEvent,
     map_notify: MapNotifyEvent,
     map_request: MapRequestEvent,

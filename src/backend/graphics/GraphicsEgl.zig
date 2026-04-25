@@ -835,7 +835,10 @@ fn depth_to_texture_format(depth: u8) c_uint {
         16 => c.GL_RG,
         24 => c.GL_RGB,
         32 => c.GL_RGBA,
-        else => unreachable,
+        else => {
+            std.log.err("depth_to_texture_format: unsupported depth: {d}", .{depth});
+            unreachable;
+        },
     };
 }
 
@@ -845,7 +848,10 @@ fn depth_to_internal_format(depth: u8) c_int {
         16 => c.GL_RG8,
         24 => c.GL_RGB8,
         32 => c.GL_RGBA8,
-        else => unreachable,
+        else => {
+            std.log.err("depth_to_internal_format: unsupported depth: {d}", .{depth});
+            unreachable;
+        },
     };
 }
 

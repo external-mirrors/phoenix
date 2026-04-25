@@ -143,34 +143,6 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
         },
     };
 
-    var depth_visuals1 = [_]PictVisual{
-        .{
-            .visual = screen_visual.id,
-            .format = .a1,
-        },
-    };
-
-    var depth_visuals8 = [_]PictVisual{
-        .{
-            .visual = screen_visual.id,
-            .format = .a8,
-        },
-    };
-
-    var depth_visuals15 = [_]PictVisual{
-        .{
-            .visual = screen_visual.id,
-            .format = .rgb15,
-        },
-    };
-
-    var depth_visuals16 = [_]PictVisual{
-        .{
-            .visual = screen_visual.id,
-            .format = .rgb16,
-        },
-    };
-
     var depth_visuals24 = [_]PictVisual{
         .{
             .visual = screen_visual.id,
@@ -188,19 +160,19 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
     var screen_depths = [_]PictDepth{
         .{
             .depth = 1,
-            .visuals = .{ .items = &depth_visuals1 },
+            .visuals = .{ .items = &.{} },
         },
         .{
             .depth = 8,
-            .visuals = .{ .items = &depth_visuals8 },
+            .visuals = .{ .items = &.{} },
         },
         .{
             .depth = 15,
-            .visuals = .{ .items = &depth_visuals15 },
+            .visuals = .{ .items = &.{} },
         },
         .{
             .depth = 16,
-            .visuals = .{ .items = &depth_visuals16 },
+            .visuals = .{ .items = &.{} },
         },
         .{
             .depth = 24,
@@ -229,7 +201,7 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
     var rep = Reply.QueryPictFormats{
         .sequence_number = request_context.sequence_number,
         .num_depths = 6, // Total number of depths in the request (in screen depths)
-        .num_visuals = 6, // Total number of visuals in the request (in screen depths)
+        .num_visuals = 2, // Total number of visuals in the request (in screen depths)
         .formats = .{ .items = &formats },
         .screens = .{ .items = &screens },
         .subpixels = .{ .items = if (supports_subpixels) &subpixels else &.{} },
@@ -580,10 +552,10 @@ pub const PictOp = enum(x11.Card8) {
     pict_op_out = 0x07,
     pict_op_out_reverse = 0x08,
     pict_op_atop = 0x09,
-    pict_op_atop_reverse = 0x10,
-    pict_op_xor = 0x11,
-    pict_op_add = 0x12,
-    pict_op_saturate = 0x13,
+    pict_op_atop_reverse = 0x0a,
+    pict_op_xor = 0x0b,
+    pict_op_add = 0x0c,
+    pict_op_saturate = 0x0d,
 
     // // Operators only available in version 0.2
     // pict_op_disjoint_clear = 0x10,
@@ -630,7 +602,7 @@ pub const PictOp = enum(x11.Card8) {
 };
 
 pub const pict_op_minimum: x11.Card8 = 0x00;
-pub const pict_op_maximum: x11.Card8 = 0x13;
+pub const pict_op_maximum: x11.Card8 = 0x0d;
 
 //pub const pict_op_disjoint_minimum: x11.Card8 = 0x10;
 //pub const pict_op_disjoint_maximum: x11.Card8 = 0x1b;

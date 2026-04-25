@@ -34,6 +34,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .grab_server => grab_server(request_context),
         .ungrab_server => ungrab_server(request_context),
         .query_pointer => query_pointer(request_context),
+        .translate_coordinates => translate_coordinates(request_context),
         .set_input_focus => set_input_focus(request_context),
         .get_input_focus => get_input_focus(request_context),
         .open_font => open_font(request_context),
@@ -1058,6 +1059,54 @@ fn query_pointer(request_context: *phx.RequestContext) !void {
     try request_context.client.write_reply(&rep);
 }
 
+fn translate_coordinates(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.TranslateCoordinates, request_context.allocator);
+    defer req.deinit();
+
+    const src_window = request_context.server.get_window(req.request.src_window) orelse {
+        std.log.err("TranslateCoordinates: invalid src window {d}", .{req.request.src_window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.src_window));
+    };
+
+    const dst_window = request_context.server.get_window(req.request.dst_window) orelse {
+        std.log.err("TranslateCoordinates: invalid dst window {d}", .{req.request.dst_window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.dst_window));
+    };
+
+    const src_abs = src_window.get_absolute_position();
+    const dst_abs = dst_window.get_absolute_position();
+
+    const abs_x: i32 = src_abs[0] + @as(i32, req.request.src_x);
+    const abs_y: i32 = src_abs[1] + @as(i32, req.request.src_y);
+    const dst_x: i32 = abs_x - dst_abs[0];
+    const dst_y: i32 = abs_y - dst_abs[1];
+
+    var child_id: x11.WindowId = .none;
+    var i: isize = @intCast(dst_window.children.items.len);
+    while (i > 0) {
+        i -= 1;
+        const child = dst_window.children.items[@intCast(i)];
+        if (!child.attributes.mapped) continue;
+        const child_x = child.attributes.geometry.x;
+        const child_y = child.attributes.geometry.y;
+        const child_w: i32 = @intCast(child.attributes.geometry.width);
+        const child_h: i32 = @intCast(child.attributes.geometry.height);
+        if (dst_x >= child_x and dst_y >= child_y and dst_x < child_x + child_w and dst_y < child_y + child_h) {
+            child_id = child.id;
+            break;
+        }
+    }
+
+    var rep = Reply.TranslateCoordinates{
+        .same_screen = true,
+        .sequence_number = request_context.sequence_number,
+        .child = child_id,
+        .dst_x = @intCast(dst_x),
+        .dst_y = @intCast(dst_y),
+    };
+    try request_context.client.write_reply(&rep);
+}
+
 fn set_input_focus(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.SetInputFocus, request_context.allocator);
     defer req.deinit();
@@ -1981,6 +2030,16 @@ pub const Request = struct {
         window: x11.WindowId,
     };
 
+    pub const TranslateCoordinates = struct {
+        opcode: phx.opcode.Major = .translate_coordinates,
+        pad1: x11.Card8 = 0,
+        length: x11.Card16,
+        src_window: x11.WindowId,
+        dst_window: x11.WindowId,
+        src_x: i16,
+        src_y: i16,
+    };
+
     pub const SetInputFocus = struct {
         opcode: phx.opcode.Major = .set_input_focus,
         revert_to: RevertTo,
@@ -2247,6 +2306,17 @@ pub const Reply = struct {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         owner: x11.WindowId, // This can be .none
         pad2: [20]x11.Card8 = @splat(0),
+    };
+
+    pub const TranslateCoordinates = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        same_screen: bool,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        child: x11.WindowId, // Can be .none
+        dst_x: i16,
+        dst_y: i16,
+        pad1: [16]x11.Card8 = @splat(0),
     };
 
     pub const QueryPointer = struct {

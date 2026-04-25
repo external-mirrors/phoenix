@@ -17,6 +17,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .query_version => query_version(request_context),
         .query_pict_formats => query_pict_formats(request_context),
         .create_picture => create_picture(request_context),
+        .free_picture => free_picture(request_context),
         .composite => composite(request_context),
         .fill_rectangles => fill_rectangles(request_context),
     };
@@ -301,6 +302,19 @@ fn create_picture(request_context: *phx.RequestContext) !void {
     try request_context.client.add_picture(picture);
 }
 
+fn free_picture(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.FreePicture, request_context.allocator);
+    defer req.deinit();
+
+    const picture = request_context.server.get_picture(req.request.picture) orelse {
+        std.log.err("RenderFreePicture: invalid picture {d}", .{@intFromEnum(req.request.picture)});
+        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.picture));
+    };
+
+    picture.deinit();
+    request_context.server.remove_resource(req.request.picture.to_id());
+}
+
 fn composite(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.Composite, request_context.allocator);
     defer req.deinit();
@@ -434,6 +448,7 @@ const MinorOpcode = enum(x11.Card8) {
     query_version = 0,
     query_pict_formats = 1,
     create_picture = 4,
+    free_picture = 7,
     composite = 8,
     fill_rectangles = 26,
 };
@@ -726,6 +741,13 @@ pub const Request = struct {
         major_opcode: phx.opcode.Major = .render,
         minor_opcode: MinorOpcode = .query_pict_formats,
         length: x11.Card16,
+    };
+
+    pub const FreePicture = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .free_picture,
+        length: x11.Card16,
+        picture: PictureId,
     };
 
     pub const Composite = struct {

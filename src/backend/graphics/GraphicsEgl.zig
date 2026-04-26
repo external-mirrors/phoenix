@@ -679,11 +679,8 @@ fn perform_fill_rectangles(self: *Self, op: *phx.Graphics.FillRectanglesOperatio
     const blend = pict_op_blend_factors(op.op);
     c.glBlendFunc(blend.src, blend.dst);
 
-    const a: f32 = @as(f32, @floatFromInt(op.color.alpha)) / 65535.0;
-    const r: f32 = (@as(f32, @floatFromInt(op.color.red)) / 65535.0) * a;
-    const g: f32 = (@as(f32, @floatFromInt(op.color.green)) / 65535.0) * a;
-    const b: f32 = (@as(f32, @floatFromInt(op.color.blue)) / 65535.0) * a;
-    c.glColor4f(r, g, b, a);
+    const rgba = render_color_to_premultiplied_rgba(op.color);
+    c.glColor4f(rgba[0], rgba[1], rgba[2], rgba[3]);
 
     c.glBegin(c.GL_QUADS);
     for (op.rects) |rect| {
@@ -817,7 +814,7 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
     c.glUniform1i(self.mask_program.loc_src_is_solid, if (src_is_solid) 1 else 0);
     switch (op.src) {
         .solid => |col| {
-            const rgba = render_color_to_rgba(col);
+            const rgba = render_color_to_premultiplied_rgba(col);
             c.glUniform4fv(self.mask_program.loc_src_solid_color, 1, &rgba);
         },
         else => {},
@@ -834,7 +831,7 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
     c.glUniform1i(self.mask_program.loc_mask_is_solid, if (mask_is_solid) 1 else 0);
     if (op.mask) |m| switch (m) {
         .solid => |col| {
-            const rgba = render_color_to_rgba(col);
+            const rgba = render_color_to_premultiplied_rgba(col);
             c.glUniform4fv(self.mask_program.loc_mask_solid_color, 1, &rgba);
         },
         .drawable => {},
@@ -973,7 +970,7 @@ fn apply_src_gradient(self: *Self, gradient: *const phx.Picture.Gradient) void {
     const n = @min(stops_struct.num_stops, phx.Picture.max_gradient_stops);
     for (0..n) |i| {
         stop_values[i] = fixed_to_float(stops_struct.stops[i]);
-        const rgba = render_color_to_rgba(stops_struct.colors[i]);
+        const rgba = render_color_to_premultiplied_rgba(stops_struct.colors[i]);
         color_values[i * 4 + 0] = rgba[0];
         color_values[i * 4 + 1] = rgba[1];
         color_values[i * 4 + 2] = rgba[2];
@@ -1005,13 +1002,14 @@ fn apply_src_gradient(self: *Self, gradient: *const phx.Picture.Gradient) void {
     }
 }
 
-fn render_color_to_rgba(color: phx.Render.Color) [4]f32 {
+fn render_color_to_premultiplied_rgba(color: phx.Render.Color) [4]f32 {
     const max: f32 = 65535.0;
+    const a: f32 = @as(f32, @floatFromInt(color.alpha)) / max;
     return .{
-        @as(f32, @floatFromInt(color.red)) / max,
-        @as(f32, @floatFromInt(color.green)) / max,
-        @as(f32, @floatFromInt(color.blue)) / max,
-        @as(f32, @floatFromInt(color.alpha)) / max,
+        @as(f32, @floatFromInt(color.red)) / max * a,
+        @as(f32, @floatFromInt(color.green)) / max * a,
+        @as(f32, @floatFromInt(color.blue)) / max * a,
+        a,
     };
 }
 
@@ -1567,7 +1565,7 @@ fn perform_trapezoids(self: *Self, op: *phx.Graphics.TrapezoidsOperation) void {
     c.glUniform1i(self.mask_program.loc_src_is_solid, if (src_is_solid) 1 else 0);
     switch (op.src) {
         .solid => |col| {
-            const rgba = render_color_to_rgba(col);
+            const rgba = render_color_to_premultiplied_rgba(col);
             c.glUniform4fv(self.mask_program.loc_src_solid_color, 1, &rgba);
         },
         else => {},
@@ -1800,7 +1798,7 @@ fn perform_composite_glyphs(self: *Self, op: *phx.Graphics.CompositeGlyphsOperat
     c.glUniform1i(self.mask_program.loc_src_is_solid, if (src_is_solid) 1 else 0);
     switch (op.src) {
         .solid => |col| {
-            const rgba = render_color_to_rgba(col);
+            const rgba = render_color_to_premultiplied_rgba(col);
             c.glUniform4fv(self.mask_program.loc_src_solid_color, 1, &rgba);
         },
         else => {},

@@ -1650,7 +1650,7 @@ pub const Request = struct {
         glyphs: x11.ListOf(x11.Card32, .{ .length_field = "length", .length_field_type = .request_remainder }),
     };
 
-    pub fn CompositeGlyphs(comptime minor_opcode: MinorOpcode) type {
+    fn CompositeGlyphs(comptime minor_opcode: MinorOpcode) type {
         return struct {
             major_opcode: phx.opcode.Major = .render,
             minor_opcode: MinorOpcode = minor_opcode,

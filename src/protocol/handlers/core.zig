@@ -2615,7 +2615,7 @@ pub const Reply = struct {
         pad3: x11.AlignmentPadding = .{},
     };
 
-    pub fn GetProperty(comptime DataType: type) type {
+    fn GetProperty(comptime DataType: type) type {
         return struct {
             reply_type: phx.reply.ReplyType = .reply,
             format: x11.Card8 = @sizeOf(DataType),

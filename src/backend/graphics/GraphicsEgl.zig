@@ -622,33 +622,73 @@ fn perform_present_pixmap(self: *Self, op: *phx.Graphics.PresentPixmapOperation)
         return;
 
     // TODO: Use copy coordinates and size from present pixmap request if available, otherwise use 0, 0, window_width, window_height.
-    // TODO: Use framebuffer and regular shader rendering code instead of glCopyImageSubData which is only avaiable since OpenGL 4.3.
     // TODO: Dont do this copy if the pixmap fills the whole window. Instead draw the pixmap as the window.
     // TODO: If there is a fullscreen window (with no transparency) then present the pixmap directly on the screen instead of any copying.
     // TODO: Only clear window background before copying if the pixmap doesn't fill the whole window or has transparency.
     self.clear_graphics_window(op.window);
-    // TODO: The client application draws background with 0, 0, 0, 1; which the driver interprets as fully transparent (it ignores the alpha value).
-    // The reason why the window background gets replaced as well is because glCopyImageSubData doesn't do alpha blending. When this is replaced with shader rendering code
-    // then the window will correctly have the window background instead of it getting replaced.
 
     // TODO: Use phx.Present.PresentPixmap fields, such as x_off
-    self.glCopyImageSubData(
-        op.pixmap.texture_id,
-        c.GL_TEXTURE_2D,
-        0,
-        0,
-        0,
-        0,
-        op.window.texture_id,
-        c.GL_TEXTURE_2D,
-        0,
-        0,
-        0,
-        0,
-        @intCast(op.window.width),
-        @intCast(op.window.height),
-        1,
-    );
+    if (op.window.width == 0 or op.window.height == 0)
+        return;
+
+    const copy_w: u32 = @min(op.window.width, op.pixmap.dmabuf_data.width);
+    const copy_h: u32 = @min(op.window.height, op.pixmap.dmabuf_data.height);
+    if (copy_w == 0 or copy_h == 0)
+        return;
+
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.framebuffer);
+    c.glDisable(c.GL_SCISSOR_TEST);
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glPushMatrix();
+    c.glMatrixMode(c.GL_MODELVIEW);
+    c.glPushMatrix();
+    c.glLoadIdentity();
+
+    c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT0, c.GL_TEXTURE_2D, op.window.texture_id, 0);
+    c.glViewport(0, 0, @intCast(op.window.width), @intCast(op.window.height));
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glLoadIdentity();
+    c.glOrtho(0.0, @floatFromInt(op.window.width), @floatFromInt(op.window.height), 0.0, -1.0, 1.0);
+    c.glMatrixMode(c.GL_MODELVIEW);
+
+    c.glUseProgram(0);
+    c.glBlendFunc(c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
+
+    c.glActiveTexture(c.GL_TEXTURE0);
+    c.glBindTexture(c.GL_TEXTURE_2D, op.pixmap.texture_id);
+    c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, c.GL_NEAREST);
+    c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_NEAREST);
+    c.glEnable(c.GL_TEXTURE_2D);
+
+    const u_max: f32 = @as(f32, @floatFromInt(copy_w)) / @as(f32, @floatFromInt(op.pixmap.dmabuf_data.width));
+    const v_max: f32 = @as(f32, @floatFromInt(copy_h)) / @as(f32, @floatFromInt(op.pixmap.dmabuf_data.height));
+    const x1: f32 = @floatFromInt(copy_w);
+    const y1: f32 = @floatFromInt(copy_h);
+
+    c.glBegin(c.GL_QUADS);
+    c.glTexCoord2f(0.0, v_max);
+    c.glVertex2f(0.0, 0.0);
+    c.glTexCoord2f(u_max, v_max);
+    c.glVertex2f(x1, 0.0);
+    c.glTexCoord2f(u_max, 0.0);
+    c.glVertex2f(x1, y1);
+    c.glTexCoord2f(0.0, 0.0);
+    c.glVertex2f(0.0, y1);
+    c.glEnd();
+
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glPopMatrix();
+    c.glMatrixMode(c.GL_MODELVIEW);
+    c.glPopMatrix();
+
+    c.glBlendFuncSeparate(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA, c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
+    c.glViewport(0, 0, @intCast(self.width), @intCast(self.height));
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+    c.glEnable(c.GL_SCISSOR_TEST);
 }
 
 fn perform_fill_rectangles(self: *Self, op: *phx.Graphics.FillRectanglesOperation) void {

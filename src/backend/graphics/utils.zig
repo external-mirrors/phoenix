@@ -16,12 +16,21 @@ pub const mask_vertex_shader_src: [*c]const u8 =
 
 pub const mask_fragment_shader_src: [*c]const u8 =
     \\#version 120
+    \\#define MAX_GRADIENT_STOPS 16
     \\uniform sampler2D u_src;
     \\uniform sampler2D u_src_alpha_map;
     \\uniform bool u_use_src_alpha_map;
     \\uniform vec4 u_src_alpha_swizzle;
     \\uniform bool u_src_is_solid;
     \\uniform vec4 u_src_solid_color;
+    \\uniform bool u_src_is_radial;
+    \\uniform vec2 u_src_radial_inner_center;
+    \\uniform vec2 u_src_radial_outer_center;
+    \\uniform float u_src_radial_inner_radius;
+    \\uniform float u_src_radial_outer_radius;
+    \\uniform int u_src_radial_num_stops;
+    \\uniform float u_src_radial_stops[MAX_GRADIENT_STOPS];
+    \\uniform vec4 u_src_radial_colors[MAX_GRADIENT_STOPS];
     \\
     \\uniform sampler2D u_mask;
     \\uniform bool u_use_mask;
@@ -36,10 +45,60 @@ pub const mask_fragment_shader_src: [*c]const u8 =
     \\uniform bool u_use_clip_mask;
     \\uniform vec4 u_clip_swizzle;
     \\
+    \\vec4 sample_radial_gradient(vec2 p) {
+    \\    // Two-circle radial gradient: find t such that
+    \\    //   |p - (c0 + t*(c1-c0))|^2 == (r0 + t*(r1-r0))^2
+    \\    // Solve quadratic At^2 + Bt + C = 0 and pick the root with
+    \\    // r0 + t*dr >= 0 (the geometrically meaningful one).
+    \\    vec2 c0 = u_src_radial_inner_center;
+    \\    vec2 c1 = u_src_radial_outer_center;
+    \\    float r0 = u_src_radial_inner_radius;
+    \\    float r1 = u_src_radial_outer_radius;
+    \\    vec2 d = c1 - c0;
+    \\    float dr = r1 - r0;
+    \\    vec2 pd = p - c0;
+    \\    float A = dot(d, d) - dr * dr;
+    \\    float B = -2.0 * (dot(d, pd) + r0 * dr);
+    \\    float C = dot(pd, pd) - r0 * r0;
+    \\    float t;
+    \\    if (abs(A) < 1e-6) {
+    \\        if (abs(B) < 1e-6) return vec4(0.0);
+    \\        t = -C / B;
+    \\    } else {
+    \\        float disc = B * B - 4.0 * A * C;
+    \\        if (disc < 0.0) return vec4(0.0);
+    \\        float sq = sqrt(disc);
+    \\        float t_plus = (-B + sq) / (2.0 * A);
+    \\        float t_minus = (-B - sq) / (2.0 * A);
+    \\        if (r0 + t_plus * dr >= 0.0) {
+    \\            t = t_plus;
+    \\        } else if (r0 + t_minus * dr >= 0.0) {
+    \\            t = t_minus;
+    \\        } else {
+    \\            return vec4(0.0);
+    \\        }
+    \\    }
+    \\    t = clamp(t, 0.0, 1.0);
+    \\    for (int i = 0; i < MAX_GRADIENT_STOPS - 1; i++) {
+    \\        if (i + 1 >= u_src_radial_num_stops) break;
+    \\        if (t <= u_src_radial_stops[i + 1]) {
+    \\            float span = u_src_radial_stops[i + 1] - u_src_radial_stops[i];
+    \\            float seg_t = span > 0.0 ? (t - u_src_radial_stops[i]) / span : 0.0;
+    \\            return mix(u_src_radial_colors[i], u_src_radial_colors[i + 1], seg_t);
+    \\        }
+    \\    }
+    \\    return u_src_radial_colors[u_src_radial_num_stops - 1];
+    \\}
+    \\
     \\void main() {
     \\    vec4 src;
     \\    if (u_src_is_solid) {
     \\        src = u_src_solid_color;
+    \\    } else if (u_src_is_radial) {
+    \\        // For procedural sources gl_TexCoord[0].st carries the
+    \\        // un-normalized source-space pixel position (the texture-size
+    \\        // divisor on that path is 1).
+    \\        src = sample_radial_gradient(gl_TexCoord[0].st);
     \\    } else {
     \\        src = texture2D(u_src, gl_TexCoord[0].st);
     \\        if (u_use_src_alpha_map) {

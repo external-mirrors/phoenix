@@ -24,6 +24,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .create_cursor => create_cursor(request_context),
         .set_picture_filter => set_picture_filter(request_context),
         .create_solid_fill => create_solid_fill(request_context),
+        .create_radial_gradient => create_radial_gradient(request_context),
     };
 }
 
@@ -364,6 +365,7 @@ fn composite(request_context: *phx.RequestContext) !void {
     try request_context.server.display.composite(&.{
         .src_drawable = src.drawable,
         .src_solid_color = src.solid_fill_color,
+        .src_radial_gradient = src.radial_gradient,
         .src_alpha_map_drawable = src_alpha.drawable,
         .src_alpha_x_origin = src_alpha.x_origin,
         .src_alpha_y_origin = src_alpha.y_origin,
@@ -544,6 +546,7 @@ fn trapezoids(request_context: *phx.RequestContext) !void {
     try request_context.server.display.render_trapezoids(&.{
         .src_drawable = src.drawable,
         .src_solid_color = src.solid_fill_color,
+        .src_radial_gradient = src.radial_gradient,
         .src_alpha_map_drawable = src_alpha.drawable,
         .src_alpha_x_origin = src_alpha.x_origin,
         .src_alpha_y_origin = src_alpha.y_origin,
@@ -602,6 +605,50 @@ fn create_cursor(request_context: *phx.RequestContext) !void {
     try request_context.client.add_cursor(cursor);
 }
 
+fn create_radial_gradient(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.CreateRadialGradient, request_context.allocator);
+    defer req.deinit();
+
+    const num_stops = req.request.num_stops;
+    if (num_stops < 2) {
+        std.log.err("RenderCreateRadialGradient: at least 2 stops required, got {d}", .{num_stops});
+        return request_context.client.write_error(request_context, .value, num_stops);
+    }
+    if (num_stops > phx.Picture.max_gradient_stops) {
+        // The protocol allows up to 2^32-1 stops. Phoenix caps at a small
+        // inline limit so the gradient state can live on the Picture without
+        // a separate allocation; bump max_gradient_stops if real clients hit
+        // this.
+        std.log.err("RenderCreateRadialGradient: {d} stops exceeds Phoenix limit of {d}", .{ num_stops, phx.Picture.max_gradient_stops });
+        return request_context.client.write_error(request_context, .value, num_stops);
+    }
+    if (req.request.stops.items.len != num_stops or req.request.colors.items.len != num_stops) {
+        std.log.err("RenderCreateRadialGradient: stops/colors length mismatch (num_stops={d}, stops={d}, colors={d})", .{ num_stops, req.request.stops.items.len, req.request.colors.items.len });
+        return request_context.client.write_error(request_context, .length, 0);
+    }
+
+    var gradient = phx.Picture.RadialGradient{
+        .inner_x = req.request.inner.x,
+        .inner_y = req.request.inner.y,
+        .inner_radius = req.request.inner_radius,
+        .outer_x = req.request.outer.x,
+        .outer_y = req.request.outer.y,
+        .outer_radius = req.request.outer_radius,
+        .num_stops = num_stops,
+    };
+    for (req.request.stops.items, 0..) |stop, i| gradient.stops[i] = stop;
+    for (req.request.colors.items, 0..) |color, i| gradient.colors[i] = color;
+
+    const picture = phx.Picture{
+        .id = req.request.pid,
+        .drawable = null,
+        .radial_gradient = gradient,
+        .format = .argb32,
+    };
+
+    try request_context.client.add_picture(picture);
+}
+
 fn create_solid_fill(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateSolidFill, request_context.allocator);
     defer req.deinit();
@@ -651,6 +698,7 @@ const MinorOpcode = enum(x11.Card8) {
     create_cursor = 27,
     set_picture_filter = 30,
     create_solid_fill = 33,
+    create_radial_gradient = 35,
 };
 
 /// Texture sampling filter selected via Render's SetPictureFilter. Maps the
@@ -1033,6 +1081,20 @@ pub const Request = struct {
         dst: PictureId,
         color: Color,
         rects: x11.ListOf(Rectangle, .{ .length_field = "length", .length_field_type = .request_remainder }),
+    };
+
+    pub const CreateRadialGradient = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .create_radial_gradient,
+        length: x11.Card16,
+        pid: PictureId,
+        inner: PointFixed,
+        outer: PointFixed,
+        inner_radius: i32,
+        outer_radius: i32,
+        num_stops: x11.Card32,
+        stops: x11.ListOf(i32, .{ .length_field = "num_stops" }),
+        colors: x11.ListOf(Color, .{ .length_field = "num_stops" }),
     };
 
     pub const CreateSolidFill = struct {

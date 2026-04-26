@@ -258,12 +258,13 @@ pub const CopyAreaArguments = struct {
 };
 
 pub const CompositeArguments = struct {
-    /// Either `src_drawable` or `src_solid_color` is set (never both, never
-    /// neither). Solid sources come from RenderCreateSolidFill and are sampled
-    /// as a constant color — no texture is bound and `src_filter`/alpha map
-    /// fields are ignored.
+    /// Exactly one of `src_drawable`, `src_solid_color`, or `src_radial_gradient`
+    /// is set: a textured source, a constant color (CreateSolidFill), or a
+    /// procedural radial gradient (CreateRadialGradient). For procedural
+    /// sources `src_filter`/alpha-map fields are ignored.
     src_drawable: ?phx.Drawable,
     src_solid_color: ?phx.Render.Color,
+    src_radial_gradient: ?phx.Picture.RadialGradient,
     src_alpha_map_drawable: ?phx.Drawable,
     src_alpha_x_origin: i16,
     src_alpha_y_origin: i16,
@@ -303,6 +304,7 @@ pub const CompositeArguments = struct {
 pub const CompositeOperation = struct {
     src_drawable: ?GraphicsDrawable,
     src_solid_color: ?phx.Render.Color,
+    src_radial_gradient: ?phx.Picture.RadialGradient,
     src_alpha_map_drawable: ?GraphicsDrawable,
     src_alpha_x_origin: i16,
     src_alpha_y_origin: i16,
@@ -353,9 +355,10 @@ pub const TrapezoidQuad = struct {
 };
 
 pub const TrapezoidsArguments = struct {
-    /// Either `src_drawable` or `src_solid_color` is set, mirroring Composite.
+    /// Mirrors Composite — exactly one of drawable/solid/radial is set.
     src_drawable: ?phx.Drawable,
     src_solid_color: ?phx.Render.Color,
+    src_radial_gradient: ?phx.Picture.RadialGradient,
     src_alpha_map_drawable: ?phx.Drawable,
     src_alpha_x_origin: i16,
     src_alpha_y_origin: i16,
@@ -382,6 +385,7 @@ pub const TrapezoidsArguments = struct {
 pub const TrapezoidsOperation = struct {
     src_drawable: ?GraphicsDrawable,
     src_solid_color: ?phx.Render.Color,
+    src_radial_gradient: ?phx.Picture.RadialGradient,
     src_alpha_map_drawable: ?GraphicsDrawable,
     src_alpha_x_origin: i16,
     src_alpha_y_origin: i16,

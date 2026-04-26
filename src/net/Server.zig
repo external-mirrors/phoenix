@@ -616,6 +616,10 @@ pub fn get_graphics_context(self: *Self, gc_id: x11.GContextId) ?*phx.GraphicsCo
     return self.client_manager.get_resource_of_type(gc_id.to_id(), .graphics_context);
 }
 
+pub fn get_glyph_set(self: *Self, glyph_set_id: phx.Render.GlyphSetId) ?*phx.GlyphSet {
+    return self.client_manager.get_resource_of_type(glyph_set_id.to_id(), .glyph_set);
+}
+
 pub fn xfixes_select_selection_input(
     self: *Self,
     client: *phx.Client,

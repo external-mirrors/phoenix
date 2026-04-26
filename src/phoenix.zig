@@ -52,6 +52,7 @@ pub const GlxDrawable = @import("resource/GlxDrawable.zig");
 pub const ShmSegment = @import("resource/ShmSegment.zig");
 pub const Counter = @import("resource/Counter.zig");
 pub const Picture = @import("resource/Picture.zig");
+pub const GlyphSet = @import("resource/GlyphSet.zig");
 pub const GraphicsContext = @import("resource/GraphicsContext.zig");
 pub const resource = @import("resource/resource.zig");
 pub const Resource = resource.Resource;

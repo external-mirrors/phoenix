@@ -386,6 +386,10 @@ pub fn add_graphics_context(self: *Self, gc: phx.GraphicsContext) !void {
     return self.add_resource(gc.id.to_id(), .{ .graphics_context = gc });
 }
 
+pub fn add_glyph_set(self: *Self, glyph_set: phx.GlyphSet) !void {
+    return self.add_resource(glyph_set.id.to_id(), .{ .glyph_set = glyph_set });
+}
+
 pub fn remove_resource(self: *Self, id: x11.ResourceId) void {
     _ = self.resources.remove(id);
 }

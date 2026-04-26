@@ -21,6 +21,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .free_picture => free_picture(request_context),
         .composite => composite(request_context),
         .trapezoids => trapezoids(request_context),
+        .create_glyph_set => create_glyph_set(request_context),
         .fill_rectangles => fill_rectangles(request_context),
         .create_cursor => create_cursor(request_context),
         .set_picture_filter => set_picture_filter(request_context),
@@ -770,6 +771,24 @@ fn create_conical_gradient(request_context: *phx.RequestContext) !void {
     try request_context.client.add_picture(picture);
 }
 
+fn create_glyph_set(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.CreateGlyphSet, request_context.allocator);
+    defer req.deinit();
+
+    if (get_pict_format_depth(req.request.format) == null) {
+        std.log.err("RenderCreateGlyphSet: invalid pict format {d}", .{@intFromEnum(req.request.format)});
+        return request_context.client.write_error(request_context, .render_pict_format, @intFromEnum(req.request.format));
+    }
+
+    const glyph_set = phx.GlyphSet{
+        .id = req.request.gsid,
+        .format = req.request.format,
+        .allocator = request_context.client.allocator,
+    };
+
+    try request_context.client.add_glyph_set(glyph_set);
+}
+
 fn create_solid_fill(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateSolidFill, request_context.allocator);
     defer req.deinit();
@@ -816,6 +835,7 @@ const MinorOpcode = enum(x11.Card8) {
     free_picture = 7,
     composite = 8,
     trapezoids = 10,
+    create_glyph_set = 17,
     fill_rectangles = 26,
     create_cursor = 27,
     set_picture_filter = 30,
@@ -863,6 +883,15 @@ pub const PictureId = enum(x11.Card32) {
     _,
 
     pub fn to_id(self: PictureId) x11.ResourceId {
+        return @enumFromInt(@intFromEnum(self));
+    }
+};
+
+pub const GlyphSetId = enum(x11.Card32) {
+    none = 0,
+    _,
+
+    pub fn to_id(self: GlyphSetId) x11.ResourceId {
         return @enumFromInt(@intFromEnum(self));
     }
 };
@@ -1243,6 +1272,14 @@ pub const Request = struct {
         num_stops: x11.Card32,
         stops: x11.ListOf(i32, .{ .length_field = "num_stops" }),
         colors: x11.ListOf(Color, .{ .length_field = "num_stops" }),
+    };
+
+    pub const CreateGlyphSet = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .create_glyph_set,
+        length: x11.Card16,
+        gsid: GlyphSetId,
+        format: PictFormatId,
     };
 
     pub const CreateSolidFill = struct {

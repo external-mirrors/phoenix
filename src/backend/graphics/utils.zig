@@ -17,20 +17,28 @@ pub const mask_vertex_shader_src: [*c]const u8 =
 pub const mask_fragment_shader_src: [*c]const u8 =
     \\#version 120
     \\#define MAX_GRADIENT_STOPS 16
+    \\#define GRADIENT_KIND_NONE 0
+    \\#define GRADIENT_KIND_RADIAL 1
+    \\#define GRADIENT_KIND_LINEAR 2
+    \\#define GRADIENT_KIND_CONICAL 3
     \\uniform sampler2D u_src;
     \\uniform sampler2D u_src_alpha_map;
     \\uniform bool u_use_src_alpha_map;
     \\uniform vec4 u_src_alpha_swizzle;
     \\uniform bool u_src_is_solid;
     \\uniform vec4 u_src_solid_color;
-    \\uniform bool u_src_is_radial;
+    \\uniform int u_src_gradient_kind;
+    \\uniform int u_src_gradient_num_stops;
+    \\uniform float u_src_gradient_stops[MAX_GRADIENT_STOPS];
+    \\uniform vec4 u_src_gradient_colors[MAX_GRADIENT_STOPS];
     \\uniform vec2 u_src_radial_inner_center;
     \\uniform vec2 u_src_radial_outer_center;
     \\uniform float u_src_radial_inner_radius;
     \\uniform float u_src_radial_outer_radius;
-    \\uniform int u_src_radial_num_stops;
-    \\uniform float u_src_radial_stops[MAX_GRADIENT_STOPS];
-    \\uniform vec4 u_src_radial_colors[MAX_GRADIENT_STOPS];
+    \\uniform vec2 u_src_linear_p1;
+    \\uniform vec2 u_src_linear_p2;
+    \\uniform vec2 u_src_conical_center;
+    \\uniform float u_src_conical_angle;
     \\
     \\uniform sampler2D u_mask;
     \\uniform bool u_use_mask;
@@ -45,11 +53,26 @@ pub const mask_fragment_shader_src: [*c]const u8 =
     \\uniform bool u_use_clip_mask;
     \\uniform vec4 u_clip_swizzle;
     \\
+    \\// Pick a color for parameter t (in [0, 1]) by linearly interpolating
+    \\// between the surrounding stops. Stops are assumed pre-sorted ascending.
+    \\vec4 sample_gradient_stops(float t) {
+    \\    if (t <= u_src_gradient_stops[0]) return u_src_gradient_colors[0];
+    \\    for (int i = 0; i < MAX_GRADIENT_STOPS - 1; i++) {
+    \\        if (i + 1 >= u_src_gradient_num_stops) break;
+    \\        if (t <= u_src_gradient_stops[i + 1]) {
+    \\            float span = u_src_gradient_stops[i + 1] - u_src_gradient_stops[i];
+    \\            float seg_t = span > 0.0 ? (t - u_src_gradient_stops[i]) / span : 0.0;
+    \\            return mix(u_src_gradient_colors[i], u_src_gradient_colors[i + 1], seg_t);
+    \\        }
+    \\    }
+    \\    return u_src_gradient_colors[u_src_gradient_num_stops - 1];
+    \\}
+    \\
     \\vec4 sample_radial_gradient(vec2 p) {
     \\    // Two-circle radial gradient: find t such that
     \\    //   |p - (c0 + t*(c1-c0))|^2 == (r0 + t*(r1-r0))^2
-    \\    // Solve quadratic At^2 + Bt + C = 0 and pick the root with
-    \\    // r0 + t*dr >= 0 (the geometrically meaningful one).
+    \\    // Solve quadratic At^2 + Bt + C = 0 and pick the root whose circle
+    \\    // has non-negative radius (the geometrically meaningful one).
     \\    vec2 c0 = u_src_radial_inner_center;
     \\    vec2 c1 = u_src_radial_outer_center;
     \\    float r0 = u_src_radial_inner_radius;
@@ -78,27 +101,45 @@ pub const mask_fragment_shader_src: [*c]const u8 =
     \\            return vec4(0.0);
     \\        }
     \\    }
-    \\    t = clamp(t, 0.0, 1.0);
-    \\    for (int i = 0; i < MAX_GRADIENT_STOPS - 1; i++) {
-    \\        if (i + 1 >= u_src_radial_num_stops) break;
-    \\        if (t <= u_src_radial_stops[i + 1]) {
-    \\            float span = u_src_radial_stops[i + 1] - u_src_radial_stops[i];
-    \\            float seg_t = span > 0.0 ? (t - u_src_radial_stops[i]) / span : 0.0;
-    \\            return mix(u_src_radial_colors[i], u_src_radial_colors[i + 1], seg_t);
-    \\        }
-    \\    }
-    \\    return u_src_radial_colors[u_src_radial_num_stops - 1];
+    \\    return sample_gradient_stops(clamp(t, 0.0, 1.0));
+    \\}
+    \\
+    \\vec4 sample_linear_gradient(vec2 p) {
+    \\    // Project p onto the gradient axis (p1, p2). t = 0 at p1, 1 at p2.
+    \\    vec2 d = u_src_linear_p2 - u_src_linear_p1;
+    \\    float denom = dot(d, d);
+    \\    if (denom < 1e-6) return u_src_gradient_colors[0];
+    \\    float t = dot(p - u_src_linear_p1, d) / denom;
+    \\    return sample_gradient_stops(clamp(t, 0.0, 1.0));
+    \\}
+    \\
+    \\vec4 sample_conical_gradient(vec2 p) {
+    \\    // Sweep gradient: t = (atan2(dy, dx) - start_angle) / 2π, wrapped
+    \\    // to [0, 1]. `u_src_conical_angle` is in radians.
+    \\    vec2 rel = p - u_src_conical_center;
+    \\    float a = atan(rel.y, rel.x) - u_src_conical_angle;
+    \\    float t = a / (2.0 * 3.14159265358979);
+    \\    t = fract(t);
+    \\    if (t < 0.0) t += 1.0;
+    \\    return sample_gradient_stops(t);
     \\}
     \\
     \\void main() {
     \\    vec4 src;
     \\    if (u_src_is_solid) {
     \\        src = u_src_solid_color;
-    \\    } else if (u_src_is_radial) {
+    \\    } else if (u_src_gradient_kind != GRADIENT_KIND_NONE) {
     \\        // For procedural sources gl_TexCoord[0].st carries the
     \\        // un-normalized source-space pixel position (the texture-size
     \\        // divisor on that path is 1).
-    \\        src = sample_radial_gradient(gl_TexCoord[0].st);
+    \\        vec2 p = gl_TexCoord[0].st;
+    \\        if (u_src_gradient_kind == GRADIENT_KIND_RADIAL) {
+    \\            src = sample_radial_gradient(p);
+    \\        } else if (u_src_gradient_kind == GRADIENT_KIND_LINEAR) {
+    \\            src = sample_linear_gradient(p);
+    \\        } else {
+    \\            src = sample_conical_gradient(p);
+    \\        }
     \\    } else {
     \\        src = texture2D(u_src, gl_TexCoord[0].st);
     \\        if (u_use_src_alpha_map) {

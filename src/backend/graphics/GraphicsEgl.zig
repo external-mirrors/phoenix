@@ -79,14 +79,20 @@ const MaskProgram = struct {
     loc_src_alpha_swizzle: c.GLint = -1,
     loc_src_is_solid: c.GLint = -1,
     loc_src_solid_color: c.GLint = -1,
-    loc_src_is_radial: c.GLint = -1,
+    /// 0 = no gradient, 1 = radial, 2 = linear, 3 = conical. Matches
+    /// `gradient_kind_*` constants below and the shader's enum.
+    loc_src_gradient_kind: c.GLint = -1,
+    loc_src_gradient_num_stops: c.GLint = -1,
+    loc_src_gradient_stops: c.GLint = -1,
+    loc_src_gradient_colors: c.GLint = -1,
     loc_src_radial_inner_center: c.GLint = -1,
     loc_src_radial_outer_center: c.GLint = -1,
     loc_src_radial_inner_radius: c.GLint = -1,
     loc_src_radial_outer_radius: c.GLint = -1,
-    loc_src_radial_num_stops: c.GLint = -1,
-    loc_src_radial_stops: c.GLint = -1,
-    loc_src_radial_colors: c.GLint = -1,
+    loc_src_linear_p1: c.GLint = -1,
+    loc_src_linear_p2: c.GLint = -1,
+    loc_src_conical_center: c.GLint = -1,
+    loc_src_conical_angle: c.GLint = -1,
     loc_mask: c.GLint = -1,
     loc_use_mask: c.GLint = -1,
     loc_component_alpha: c.GLint = -1,
@@ -109,14 +115,18 @@ const MaskProgram = struct {
             .loc_src_alpha_swizzle = c.glGetUniformLocation(program, "u_src_alpha_swizzle"),
             .loc_src_is_solid = c.glGetUniformLocation(program, "u_src_is_solid"),
             .loc_src_solid_color = c.glGetUniformLocation(program, "u_src_solid_color"),
-            .loc_src_is_radial = c.glGetUniformLocation(program, "u_src_is_radial"),
+            .loc_src_gradient_kind = c.glGetUniformLocation(program, "u_src_gradient_kind"),
+            .loc_src_gradient_num_stops = c.glGetUniformLocation(program, "u_src_gradient_num_stops"),
+            .loc_src_gradient_stops = c.glGetUniformLocation(program, "u_src_gradient_stops"),
+            .loc_src_gradient_colors = c.glGetUniformLocation(program, "u_src_gradient_colors"),
             .loc_src_radial_inner_center = c.glGetUniformLocation(program, "u_src_radial_inner_center"),
             .loc_src_radial_outer_center = c.glGetUniformLocation(program, "u_src_radial_outer_center"),
             .loc_src_radial_inner_radius = c.glGetUniformLocation(program, "u_src_radial_inner_radius"),
             .loc_src_radial_outer_radius = c.glGetUniformLocation(program, "u_src_radial_outer_radius"),
-            .loc_src_radial_num_stops = c.glGetUniformLocation(program, "u_src_radial_num_stops"),
-            .loc_src_radial_stops = c.glGetUniformLocation(program, "u_src_radial_stops"),
-            .loc_src_radial_colors = c.glGetUniformLocation(program, "u_src_radial_colors"),
+            .loc_src_linear_p1 = c.glGetUniformLocation(program, "u_src_linear_p1"),
+            .loc_src_linear_p2 = c.glGetUniformLocation(program, "u_src_linear_p2"),
+            .loc_src_conical_center = c.glGetUniformLocation(program, "u_src_conical_center"),
+            .loc_src_conical_angle = c.glGetUniformLocation(program, "u_src_conical_angle"),
             .loc_mask = c.glGetUniformLocation(program, "u_mask"),
             .loc_use_mask = c.glGetUniformLocation(program, "u_use_mask"),
             .loc_component_alpha = c.glGetUniformLocation(program, "u_component_alpha"),
@@ -677,8 +687,8 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
     defer self.append_message(.{ .composite_finished = .{ .operation = op.* } });
 
     const src_is_solid = op.src_solid_color != null;
-    const src_is_radial = op.src_radial_gradient != null;
-    const src_is_procedural = src_is_solid or src_is_radial;
+    const src_gradient_kind: c.GLint = if (op.src_gradient) |*g| gradient_kind_value(g) else 0;
+    const src_is_procedural = src_is_solid or src_gradient_kind != 0;
     const src = if (op.src_drawable) |d| get_drawable_target_size(d) else null;
     const dst = get_drawable_target_size(op.dst_drawable);
     // Procedural sources don't need a backing texture; size checks below skip src.
@@ -772,8 +782,8 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
         const rgba = render_color_to_rgba(col);
         c.glUniform4fv(self.mask_program.loc_src_solid_color, 1, &rgba);
     }
-    c.glUniform1i(self.mask_program.loc_src_is_radial, if (src_is_radial) 1 else 0);
-    if (op.src_radial_gradient) |*grad| self.apply_src_radial_gradient(grad);
+    c.glUniform1i(self.mask_program.loc_src_gradient_kind, src_gradient_kind);
+    if (op.src_gradient) |*grad| self.apply_src_gradient(grad);
     c.glUniform1i(self.mask_program.loc_use_mask, if (use_mask) 1 else 0);
     c.glUniform1i(self.mask_program.loc_component_alpha, if (op.mask_component_alpha) 1 else 0);
     c.glUniform1i(self.mask_program.loc_use_mask_alpha_map, if (use_mask_amap) 1 else 0);
@@ -885,28 +895,56 @@ fn fixed_to_float(value: i32) f32 {
     return @as(f32, @floatFromInt(value)) / 65536.0;
 }
 
-fn apply_src_radial_gradient(self: *Self, gradient: *const phx.Picture.RadialGradient) void {
-    const inner_center: [2]f32 = .{ fixed_to_float(gradient.inner_x), fixed_to_float(gradient.inner_y) };
-    const outer_center: [2]f32 = .{ fixed_to_float(gradient.outer_x), fixed_to_float(gradient.outer_y) };
-    c.glUniform2fv(self.mask_program.loc_src_radial_inner_center, 1, &inner_center);
-    c.glUniform2fv(self.mask_program.loc_src_radial_outer_center, 1, &outer_center);
-    c.glUniform1f(self.mask_program.loc_src_radial_inner_radius, fixed_to_float(gradient.inner_radius));
-    c.glUniform1f(self.mask_program.loc_src_radial_outer_radius, fixed_to_float(gradient.outer_radius));
-    c.glUniform1i(self.mask_program.loc_src_radial_num_stops, @intCast(gradient.num_stops));
+/// Returns the integer kind value matching the shader's gradient enum.
+/// Mirror of the `u_src_gradient_kind` values defined in the fragment shader.
+fn gradient_kind_value(gradient: *const phx.Picture.Gradient) c.GLint {
+    return switch (gradient.*) {
+        .radial => 1,
+        .linear => 2,
+        .conical => 3,
+    };
+}
 
-    var stops: [phx.Picture.max_gradient_stops]f32 = @splat(0);
-    var colors: [phx.Picture.max_gradient_stops * 4]f32 = @splat(0);
-    const n = @min(gradient.num_stops, phx.Picture.max_gradient_stops);
+fn apply_src_gradient(self: *Self, gradient: *const phx.Picture.Gradient) void {
+    // Shared stops/colors arrays — uploaded for every gradient kind.
+    const stops_struct = gradient.stops();
+    c.glUniform1i(self.mask_program.loc_src_gradient_num_stops, @intCast(stops_struct.num_stops));
+
+    var stop_values: [phx.Picture.max_gradient_stops]f32 = @splat(0);
+    var color_values: [phx.Picture.max_gradient_stops * 4]f32 = @splat(0);
+    const n = @min(stops_struct.num_stops, phx.Picture.max_gradient_stops);
     for (0..n) |i| {
-        stops[i] = fixed_to_float(gradient.stops[i]);
-        const rgba = render_color_to_rgba(gradient.colors[i]);
-        colors[i * 4 + 0] = rgba[0];
-        colors[i * 4 + 1] = rgba[1];
-        colors[i * 4 + 2] = rgba[2];
-        colors[i * 4 + 3] = rgba[3];
+        stop_values[i] = fixed_to_float(stops_struct.stops[i]);
+        const rgba = render_color_to_rgba(stops_struct.colors[i]);
+        color_values[i * 4 + 0] = rgba[0];
+        color_values[i * 4 + 1] = rgba[1];
+        color_values[i * 4 + 2] = rgba[2];
+        color_values[i * 4 + 3] = rgba[3];
     }
-    c.glUniform1fv(self.mask_program.loc_src_radial_stops, phx.Picture.max_gradient_stops, &stops);
-    c.glUniform4fv(self.mask_program.loc_src_radial_colors, phx.Picture.max_gradient_stops, &colors);
+    c.glUniform1fv(self.mask_program.loc_src_gradient_stops, phx.Picture.max_gradient_stops, &stop_values);
+    c.glUniform4fv(self.mask_program.loc_src_gradient_colors, phx.Picture.max_gradient_stops, &color_values);
+
+    switch (gradient.*) {
+        .radial => |*g| {
+            const inner_center: [2]f32 = .{ fixed_to_float(g.inner_x), fixed_to_float(g.inner_y) };
+            const outer_center: [2]f32 = .{ fixed_to_float(g.outer_x), fixed_to_float(g.outer_y) };
+            c.glUniform2fv(self.mask_program.loc_src_radial_inner_center, 1, &inner_center);
+            c.glUniform2fv(self.mask_program.loc_src_radial_outer_center, 1, &outer_center);
+            c.glUniform1f(self.mask_program.loc_src_radial_inner_radius, fixed_to_float(g.inner_radius));
+            c.glUniform1f(self.mask_program.loc_src_radial_outer_radius, fixed_to_float(g.outer_radius));
+        },
+        .linear => |*g| {
+            const p1: [2]f32 = .{ fixed_to_float(g.p1_x), fixed_to_float(g.p1_y) };
+            const p2: [2]f32 = .{ fixed_to_float(g.p2_x), fixed_to_float(g.p2_y) };
+            c.glUniform2fv(self.mask_program.loc_src_linear_p1, 1, &p1);
+            c.glUniform2fv(self.mask_program.loc_src_linear_p2, 1, &p2);
+        },
+        .conical => |*g| {
+            const center: [2]f32 = .{ fixed_to_float(g.center_x), fixed_to_float(g.center_y) };
+            c.glUniform2fv(self.mask_program.loc_src_conical_center, 1, &center);
+            c.glUniform1f(self.mask_program.loc_src_conical_angle, fixed_to_float(g.angle) * std.math.pi / 180.0);
+        },
+    }
 }
 
 fn render_color_to_rgba(color: phx.Render.Color) [4]f32 {
@@ -1268,7 +1306,7 @@ pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void 
     try self.operations.append(self.allocator, .{ .composite = .{
         .src_drawable = src_drawable,
         .src_solid_color = op.src_solid_color,
-        .src_radial_gradient = op.src_radial_gradient,
+        .src_gradient = op.src_gradient,
         .src_alpha_map_drawable = src_alpha_map_drawable,
         .src_alpha_x_origin = op.src_alpha_x_origin,
         .src_alpha_y_origin = op.src_alpha_y_origin,
@@ -1357,7 +1395,7 @@ pub fn render_trapezoids(self: *Self, op: *const phx.Graphics.TrapezoidsArgument
     try self.operations.append(self.allocator, .{ .trapezoids = .{
         .src_drawable = src_drawable,
         .src_solid_color = op.src_solid_color,
-        .src_radial_gradient = op.src_radial_gradient,
+        .src_gradient = op.src_gradient,
         .src_alpha_map_drawable = src_alpha_map_drawable,
         .src_alpha_x_origin = op.src_alpha_x_origin,
         .src_alpha_y_origin = op.src_alpha_y_origin,
@@ -1390,8 +1428,8 @@ fn perform_trapezoids(self: *Self, op: *phx.Graphics.TrapezoidsOperation) void {
     defer self.append_message(.{ .trapezoids_finished = .{ .operation = op.* } });
 
     const src_is_solid = op.src_solid_color != null;
-    const src_is_radial = op.src_radial_gradient != null;
-    const src_is_procedural = src_is_solid or src_is_radial;
+    const src_gradient_kind: c.GLint = if (op.src_gradient) |*g| gradient_kind_value(g) else 0;
+    const src_is_procedural = src_is_solid or src_gradient_kind != 0;
     const src = if (op.src_drawable) |d| get_drawable_target_size(d) else null;
     const dst = get_drawable_target_size(op.dst_drawable);
     if (dst.texture_id == 0 or dst.width == 0 or dst.height == 0) return;
@@ -1469,8 +1507,8 @@ fn perform_trapezoids(self: *Self, op: *phx.Graphics.TrapezoidsOperation) void {
         const rgba = render_color_to_rgba(col);
         c.glUniform4fv(self.mask_program.loc_src_solid_color, 1, &rgba);
     }
-    c.glUniform1i(self.mask_program.loc_src_is_radial, if (src_is_radial) 1 else 0);
-    if (op.src_radial_gradient) |*grad| self.apply_src_radial_gradient(grad);
+    c.glUniform1i(self.mask_program.loc_src_gradient_kind, src_gradient_kind);
+    if (op.src_gradient) |*grad| self.apply_src_gradient(grad);
     c.glUniform1i(self.mask_program.loc_use_mask, 0);
     c.glUniform1i(self.mask_program.loc_component_alpha, 0);
     c.glUniform1i(self.mask_program.loc_use_mask_alpha_map, 0);

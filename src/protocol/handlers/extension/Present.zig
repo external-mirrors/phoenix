@@ -59,7 +59,7 @@ fn present_pixmap(request_context: *phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .pixmap, @intFromEnum(req.request.pixmap));
     };
 
-    try request_context.server.display.present_pixmap(pixmap, window, req.request.target_msc);
+    try request_context.server.display.present_pixmap(pixmap, window, req.request.target_msc, req.request.x_off, req.request.y_off);
 
     if (req.request.idle_fence.to_id().to_int() != 0) {
         // TODO: Should this be an error instead?

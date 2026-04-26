@@ -595,23 +595,71 @@ fn perform_copy_area(self: *Self, op: *phx.Graphics.CopyAreaOperation) void {
     if (width <= 0 or height <= 0)
         return;
 
-    self.glCopyImageSubData(
-        src.texture_id,
-        c.GL_TEXTURE_2D,
-        0,
-        src_x,
-        src_y,
-        0,
-        dst.texture_id,
-        c.GL_TEXTURE_2D,
-        0,
-        dst_x,
-        dst_y,
-        0,
-        width,
-        height,
-        1,
-    );
+    // TODO: src and dst can be the same drawable with overlapping regions; sampling
+    // and rendering to the same texture is undefined. Use an intermediate texture in that case.
+    if (src.texture_id == dst.texture_id)
+        return;
+
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.framebuffer);
+    c.glDisable(c.GL_SCISSOR_TEST);
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glPushMatrix();
+    c.glMatrixMode(c.GL_MODELVIEW);
+    c.glPushMatrix();
+    c.glLoadIdentity();
+
+    c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT0, c.GL_TEXTURE_2D, dst.texture_id, 0);
+    c.glViewport(0, 0, @intCast(dst.width), @intCast(dst.height));
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glLoadIdentity();
+    c.glOrtho(0.0, @floatFromInt(dst.width), @floatFromInt(dst.height), 0.0, -1.0, 1.0);
+    c.glMatrixMode(c.GL_MODELVIEW);
+
+    c.glUseProgram(0);
+    c.glBlendFunc(c.GL_ONE, c.GL_ZERO);
+
+    c.glActiveTexture(c.GL_TEXTURE0);
+    c.glBindTexture(c.GL_TEXTURE_2D, src.texture_id);
+    c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, c.GL_NEAREST);
+    c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_NEAREST);
+    c.glEnable(c.GL_TEXTURE_2D);
+
+    const src_w_f: f32 = @floatFromInt(src.width);
+    const src_h_f: f32 = @floatFromInt(src.height);
+    const tex_u0: f32 = @as(f32, @floatFromInt(src_x)) / src_w_f;
+    const tex_u1: f32 = @as(f32, @floatFromInt(src_x + width)) / src_w_f;
+    const tex_v0: f32 = @as(f32, @floatFromInt(src_y)) / src_h_f;
+    const tex_v1: f32 = @as(f32, @floatFromInt(src_y + height)) / src_h_f;
+
+    const vx0: f32 = @floatFromInt(dst_x);
+    const vy0: f32 = @floatFromInt(dst_y);
+    const vx1: f32 = @floatFromInt(dst_x + width);
+    const vy1: f32 = @floatFromInt(dst_y + height);
+
+    c.glBegin(c.GL_QUADS);
+    c.glTexCoord2f(tex_u0, tex_v0);
+    c.glVertex2f(vx0, vy0);
+    c.glTexCoord2f(tex_u1, tex_v0);
+    c.glVertex2f(vx1, vy0);
+    c.glTexCoord2f(tex_u1, tex_v1);
+    c.glVertex2f(vx1, vy1);
+    c.glTexCoord2f(tex_u0, tex_v1);
+    c.glVertex2f(vx0, vy1);
+    c.glEnd();
+
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glPopMatrix();
+    c.glMatrixMode(c.GL_MODELVIEW);
+    c.glPopMatrix();
+
+    c.glBlendFuncSeparate(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA, c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
+    c.glViewport(0, 0, @intCast(self.width), @intCast(self.height));
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+    c.glEnable(c.GL_SCISSOR_TEST);
 }
 
 fn perform_present_pixmap(self: *Self, op: *phx.Graphics.PresentPixmapOperation) void {
@@ -621,19 +669,43 @@ fn perform_present_pixmap(self: *Self, op: *phx.Graphics.PresentPixmapOperation)
     if (op.pixmap.texture_id == 0)
         return;
 
-    // TODO: Use copy coordinates and size from present pixmap request if available, otherwise use 0, 0, window_width, window_height.
     // TODO: Dont do this copy if the pixmap fills the whole window. Instead draw the pixmap as the window.
     // TODO: If there is a fullscreen window (with no transparency) then present the pixmap directly on the screen instead of any copying.
     // TODO: Only clear window background before copying if the pixmap doesn't fill the whole window or has transparency.
+    // TODO: Honor PresentPixmap valid_area / update_area regions for partial updates.
     self.clear_graphics_window(op.window);
 
-    // TODO: Use phx.Present.PresentPixmap fields, such as x_off
     if (op.window.width == 0 or op.window.height == 0)
         return;
 
-    const copy_w: u32 = @min(op.window.width, op.pixmap.dmabuf_data.width);
-    const copy_h: u32 = @min(op.window.height, op.pixmap.dmabuf_data.height);
-    if (copy_w == 0 or copy_h == 0)
+    const win_w_i32: i32 = @intCast(op.window.width);
+    const win_h_i32: i32 = @intCast(op.window.height);
+    const pix_w_i32: i32 = @intCast(op.pixmap.dmabuf_data.width);
+    const pix_h_i32: i32 = @intCast(op.pixmap.dmabuf_data.height);
+
+    var src_x: i32 = 0;
+    var src_y: i32 = 0;
+    var dst_x: i32 = op.x_off;
+    var dst_y: i32 = op.y_off;
+    var copy_w_i32: i32 = pix_w_i32;
+    var copy_h_i32: i32 = pix_h_i32;
+
+    if (dst_x < 0) {
+        src_x -= dst_x;
+        copy_w_i32 += dst_x;
+        dst_x = 0;
+    }
+    if (dst_y < 0) {
+        src_y -= dst_y;
+        copy_h_i32 += dst_y;
+        dst_y = 0;
+    }
+    copy_w_i32 = @min(copy_w_i32, win_w_i32 - dst_x);
+    copy_h_i32 = @min(copy_h_i32, win_h_i32 - dst_y);
+    copy_w_i32 = @min(copy_w_i32, pix_w_i32 - src_x);
+    copy_h_i32 = @min(copy_h_i32, pix_h_i32 - src_y);
+
+    if (copy_w_i32 <= 0 or copy_h_i32 <= 0)
         return;
 
     c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.framebuffer);
@@ -662,20 +734,27 @@ fn perform_present_pixmap(self: *Self, op: *phx.Graphics.PresentPixmapOperation)
     c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_NEAREST);
     c.glEnable(c.GL_TEXTURE_2D);
 
-    const u_max: f32 = @as(f32, @floatFromInt(copy_w)) / @as(f32, @floatFromInt(op.pixmap.dmabuf_data.width));
-    const v_max: f32 = @as(f32, @floatFromInt(copy_h)) / @as(f32, @floatFromInt(op.pixmap.dmabuf_data.height));
-    const x1: f32 = @floatFromInt(copy_w);
-    const y1: f32 = @floatFromInt(copy_h);
+    const pix_w_f: f32 = @floatFromInt(op.pixmap.dmabuf_data.width);
+    const pix_h_f: f32 = @floatFromInt(op.pixmap.dmabuf_data.height);
+    const tex_u0: f32 = @as(f32, @floatFromInt(src_x)) / pix_w_f;
+    const tex_u1: f32 = @as(f32, @floatFromInt(src_x + copy_w_i32)) / pix_w_f;
+    const tex_v0: f32 = 1.0 - @as(f32, @floatFromInt(src_y)) / pix_h_f;
+    const tex_v1: f32 = 1.0 - @as(f32, @floatFromInt(src_y + copy_h_i32)) / pix_h_f;
+
+    const vx0: f32 = @floatFromInt(dst_x);
+    const vy0: f32 = @floatFromInt(dst_y);
+    const vx1: f32 = @floatFromInt(dst_x + copy_w_i32);
+    const vy1: f32 = @floatFromInt(dst_y + copy_h_i32);
 
     c.glBegin(c.GL_QUADS);
-    c.glTexCoord2f(0.0, v_max);
-    c.glVertex2f(0.0, 0.0);
-    c.glTexCoord2f(u_max, v_max);
-    c.glVertex2f(x1, 0.0);
-    c.glTexCoord2f(u_max, 0.0);
-    c.glVertex2f(x1, y1);
-    c.glTexCoord2f(0.0, 0.0);
-    c.glVertex2f(0.0, y1);
+    c.glTexCoord2f(tex_u0, tex_v0);
+    c.glVertex2f(vx0, vy0);
+    c.glTexCoord2f(tex_u1, tex_v0);
+    c.glVertex2f(vx1, vy0);
+    c.glTexCoord2f(tex_u1, tex_v1);
+    c.glVertex2f(vx1, vy1);
+    c.glTexCoord2f(tex_u0, tex_v1);
+    c.glVertex2f(vx0, vy1);
     c.glEnd();
 
     c.glBindTexture(c.GL_TEXTURE_2D, 0);
@@ -1319,7 +1398,7 @@ pub fn destroy_pixmap(self: *Self, pixmap: *phx.Pixmap) void {
     self.dirty.store(true, .release);
 }
 
-pub fn present_pixmap(self: *Self, pixmap: *phx.Pixmap, window: *const phx.Window, target_msc: u64) !void {
+pub fn present_pixmap(self: *Self, pixmap: *phx.Pixmap, window: *const phx.Window, target_msc: u64, x_off: i16, y_off: i16) !void {
     self.mutex.lock();
     defer self.mutex.unlock();
 
@@ -1327,6 +1406,8 @@ pub fn present_pixmap(self: *Self, pixmap: *phx.Pixmap, window: *const phx.Windo
         .pixmap = pixmap,
         .window = window.graphics_window,
         .target_msc = target_msc,
+        .x_off = x_off,
+        .y_off = y_off,
     } });
     pixmap.ref();
     self.dirty.store(true, .release);

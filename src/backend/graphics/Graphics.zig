@@ -114,9 +114,9 @@ pub fn destroy_pixmap(self: *Self, pixmap: *phx.Pixmap) void {
     };
 }
 
-pub fn present_pixmap(self: *Self, pixmap: *phx.Pixmap, window: *const phx.Window, target_msc: u64) !void {
+pub fn present_pixmap(self: *Self, pixmap: *phx.Pixmap, window: *const phx.Window, target_msc: u64, x_off: i16, y_off: i16) !void {
     return switch (self.impl) {
-        inline else => |item| item.present_pixmap(pixmap, window, target_msc),
+        inline else => |item| item.present_pixmap(pixmap, window, target_msc, x_off, y_off),
     };
 }
 
@@ -211,6 +211,8 @@ pub const PresentPixmapOperation = struct {
     pixmap: *phx.Pixmap,
     window: *GraphicsWindow,
     target_msc: u64,
+    x_off: i16,
+    y_off: i16,
 
     pub fn unref(self: *PresentPixmapOperation) void {
         self.pixmap.unref();

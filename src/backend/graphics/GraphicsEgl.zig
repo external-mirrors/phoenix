@@ -1239,8 +1239,8 @@ fn depth_to_texture_format(depth: u8) c_uint {
         // pixel before upload (see perform_put_image), so the GL upload format is GL_RED.
         1, 8 => c.GL_RED,
         16 => c.GL_RG,
-        24 => c.GL_RGB,
-        32 => c.GL_RGBA,
+        24 => c.GL_BGR,
+        32 => c.GL_BGRA,
         else => {
             std.log.err("depth_to_texture_format: unsupported depth: {d}", .{depth});
             unreachable;

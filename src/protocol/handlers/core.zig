@@ -47,6 +47,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .copy_area => copy_area(request_context),
         .put_image => put_image(request_context),
         .create_colormap => create_colormap(request_context),
+        .create_cursor => create_cursor(request_context),
         .query_extension => query_extension(request_context),
         .get_keyboard_mapping => get_keyboard_mapping(request_context),
         .get_modifier_mapping => get_modifier_mapping(request_context),
@@ -1253,6 +1254,57 @@ fn free_pixmap(request_context: *phx.RequestContext) !void {
     request_context.server.remove_resource(req.request.pixmap.to_id());
 }
 
+fn create_cursor(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.CreateCursor, request_context.allocator);
+    defer req.deinit();
+
+    const source = request_context.server.get_pixmap(req.request.source) orelse {
+        std.log.err("CreateCursor: invalid source pixmap {d}", .{@intFromEnum(req.request.source)});
+        return request_context.client.write_error(request_context, .pixmap, @intFromEnum(req.request.source));
+    };
+
+    if (source.dmabuf_data.depth != 1) {
+        std.log.err("CreateCursor: source pixmap must have depth 1, got {d}", .{source.dmabuf_data.depth});
+        return request_context.client.write_error(request_context, .match, @intFromEnum(req.request.source));
+    }
+
+    if (req.request.mask != .none) {
+        const mask = request_context.server.get_pixmap(req.request.mask) orelse {
+            std.log.err("CreateCursor: invalid mask pixmap {d}", .{@intFromEnum(req.request.mask)});
+            return request_context.client.write_error(request_context, .pixmap, @intFromEnum(req.request.mask));
+        };
+        if (mask.dmabuf_data.depth != 1) {
+            std.log.err("CreateCursor: mask pixmap must have depth 1, got {d}", .{mask.dmabuf_data.depth});
+            return request_context.client.write_error(request_context, .match, @intFromEnum(req.request.mask));
+        }
+        if (mask.dmabuf_data.width != source.dmabuf_data.width or mask.dmabuf_data.height != source.dmabuf_data.height) {
+            std.log.err("CreateCursor: mask {d}x{d} does not match source {d}x{d}", .{ mask.dmabuf_data.width, mask.dmabuf_data.height, source.dmabuf_data.width, source.dmabuf_data.height });
+            return request_context.client.write_error(request_context, .match, @intFromEnum(req.request.mask));
+        }
+    }
+
+    if (req.request.x >= source.dmabuf_data.width or req.request.y >= source.dmabuf_data.height) {
+        std.log.err("CreateCursor: hotspot ({d},{d}) outside source {d}x{d}", .{ req.request.x, req.request.y, source.dmabuf_data.width, source.dmabuf_data.height });
+        return request_context.client.write_error(request_context, .match, 0);
+    }
+
+    const cursor = phx.Cursor{
+        .id = req.request.cid,
+        .source_pixmap = req.request.source,
+        .mask_pixmap = req.request.mask,
+        .fore_red = req.request.fore_red,
+        .fore_green = req.request.fore_green,
+        .fore_blue = req.request.fore_blue,
+        .back_red = req.request.back_red,
+        .back_green = req.request.back_green,
+        .back_blue = req.request.back_blue,
+        .hotspot_x = req.request.x,
+        .hotspot_y = req.request.y,
+    };
+
+    try request_context.client.add_cursor(cursor);
+}
+
 fn copy_area(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CopyArea, request_context.allocator);
     defer req.deinit();
@@ -2316,6 +2368,23 @@ pub const Request = struct {
         pad1: x11.Card8,
         length: x11.Card16,
         gc: x11.GContextId,
+    };
+
+    pub const CreateCursor = struct {
+        opcode: phx.opcode.Major = .create_cursor,
+        pad1: x11.Card8 = 0,
+        length: x11.Card16,
+        cid: x11.CursorId,
+        source: x11.PixmapId,
+        mask: x11.PixmapId,
+        fore_red: x11.Card16,
+        fore_green: x11.Card16,
+        fore_blue: x11.Card16,
+        back_red: x11.Card16,
+        back_green: x11.Card16,
+        back_blue: x11.Card16,
+        x: x11.Card16,
+        y: x11.Card16,
     };
 
     pub const CreateColormap = struct {

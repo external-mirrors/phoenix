@@ -65,11 +65,33 @@ mask_program: MaskProgram = .{},
 
 textures_to_delete: std.ArrayListUnmanaged(u32) = .empty,
 
+/// Cache of GPU-uploaded glyph atlases, keyed by the owning `*GlyphSet`.
+/// Persists across composite calls so the atlas only needs re-uploading
+/// when the glyph set changes (`atlas_version` mismatch). Entries are
+/// removed via `destroy_glyph_set_atlas` on glyph-set teardown.
+glyph_set_atlases: GlyphSetAtlasMap = .empty,
+
 glEGLImageTargetTexture2DOES: PFNGLEGLIMAGETARGETTEXTURE2DOESPROC,
 eglQueryDmaBufModifiersEXT: PFNEGLQUERYDMABUFMODIFIERSEXTPROC,
 glCopyImageSubData: PFNGLCOPYIMAGESUBDATAPROC,
 
 dirty: std.atomic.Value(bool) = .init(true),
+
+const GlyphAtlasGpu = struct {
+    texture_id: c.GLuint,
+    version: u64,
+    width: u32,
+    height: u32,
+};
+
+const GlyphSetAtlasMap = std.HashMapUnmanaged(*phx.GlyphSet, GlyphAtlasGpu, struct {
+    pub fn hash(_: @This(), key: *phx.GlyphSet) u64 {
+        return @intFromPtr(key);
+    }
+    pub fn eql(_: @This(), a: *phx.GlyphSet, b: *phx.GlyphSet) bool {
+        return a == b;
+    }
+}, std.hash_map.default_max_load_percentage);
 
 const MaskProgram = struct {
     program: c.GLuint = 0,
@@ -323,6 +345,10 @@ pub fn deinit(self: *Self) void {
         c.glDeleteTextures(1, &texture_id);
     }
 
+    var atlas_it = self.glyph_set_atlases.valueIterator();
+    while (atlas_it.next()) |entry| c.glDeleteTextures(1, &entry.texture_id);
+    self.glyph_set_atlases.deinit(self.allocator);
+
     self.pixmap_to_import.deinit(self.allocator);
     self.operations.deinit(self.allocator);
     self.textures_to_delete.deinit(self.allocator);
@@ -377,6 +403,7 @@ fn remove_operations_for_window(self: *Self, graphics_window: *phx.Graphics.Grap
             .composite => |po| self.append_message(.{ .composite_canceled = .{ .operation = po } }),
             .fill_rectangles => |po| self.append_message(.{ .fill_rectangles_canceled = .{ .operation = po } }),
             .trapezoids => |po| self.append_message(.{ .trapezoids_canceled = .{ .operation = po } }),
+            .composite_glyphs => |po| self.append_message(.{ .composite_glyphs_canceled = .{ .operation = po } }),
         }
         _ = self.operations.orderedRemove(i);
     }
@@ -456,6 +483,7 @@ fn perform_operations(self: *Self) void {
             .fill_rectangles => |*po| self.perform_fill_rectangles(po),
             .composite => |*po| self.perform_composite(po),
             .trapezoids => |*po| self.perform_trapezoids(po),
+            .composite_glyphs => |*po| self.perform_composite_glyphs(po),
         }
     }
     self.operations.clearRetainingCapacity();
@@ -1585,6 +1613,227 @@ fn perform_trapezoids(self: *Self, op: *phx.Graphics.TrapezoidsOperation) void {
     c.glActiveTexture(c.GL_TEXTURE4);
     c.glBindTexture(c.GL_TEXTURE_2D, 0);
     c.glActiveTexture(c.GL_TEXTURE1);
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    c.glActiveTexture(c.GL_TEXTURE0);
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    c.glUseProgram(0);
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glPopMatrix();
+    c.glMatrixMode(c.GL_MODELVIEW);
+    c.glPopMatrix();
+
+    c.glBlendFuncSeparate(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA, c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
+    c.glViewport(0, 0, @intCast(self.width), @intCast(self.height));
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+    c.glEnable(c.GL_SCISSOR_TEST);
+}
+
+pub fn composite_glyphs(self: *Self, op: *const phx.Graphics.CompositeGlyphsArguments) !void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    var src = phx.Graphics.SrcOp.from_args(op.src, &to_graphics_drawable);
+    var dst_drawable = to_graphics_drawable(op.dst_drawable);
+
+    const atlas_copy = try self.allocator.dupe(u8, op.atlas_data);
+    errdefer self.allocator.free(atlas_copy);
+
+    const glyphs_copy = try self.allocator.dupe(phx.Graphics.GlyphCommand, op.glyphs);
+    errdefer self.allocator.free(glyphs_copy);
+
+    try self.operations.append(self.allocator, .{ .composite_glyphs = .{
+        .src = src,
+        .src_filter = op.src_filter,
+        .dst_drawable = dst_drawable,
+        .op = op.op,
+        .atlas_format_depth = op.atlas_format_depth,
+        .atlas_width = op.atlas_width,
+        .atlas_height = op.atlas_height,
+        .atlas_data = atlas_copy,
+        .glyphs = glyphs_copy,
+        .glyph_set = op.glyph_set,
+        .atlas_version = op.atlas_version,
+    } });
+
+    src.ref();
+    dst_drawable.ref();
+    self.dirty.store(true, .release);
+}
+
+fn ensure_glyph_atlas_texture(self: *Self, op: *const phx.Graphics.CompositeGlyphsOperation) !c.GLuint {
+    const gop = try self.glyph_set_atlases.getOrPut(self.allocator, op.glyph_set);
+    if (gop.found_existing and gop.value_ptr.version == op.atlas_version) {
+        return gop.value_ptr.texture_id;
+    }
+
+    if (!gop.found_existing) {
+        var tex: c.GLuint = 0;
+        c.glGenTextures(1, &tex);
+        gop.value_ptr.* = .{ .texture_id = tex, .version = 0, .width = 0, .height = 0 };
+    }
+
+    c.glBindTexture(c.GL_TEXTURE_2D, gop.value_ptr.texture_id);
+    c.glPixelStorei(c.GL_UNPACK_ALIGNMENT, 1);
+    c.glTexImage2D(c.GL_TEXTURE_2D, 0, c.GL_R8, @intCast(op.atlas_width), @intCast(op.atlas_height), 0, c.GL_RED, c.GL_UNSIGNED_BYTE, op.atlas_data.ptr);
+    c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, c.GL_NEAREST);
+    c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_NEAREST);
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+
+    gop.value_ptr.version = op.atlas_version;
+    gop.value_ptr.width = op.atlas_width;
+    gop.value_ptr.height = op.atlas_height;
+    return gop.value_ptr.texture_id;
+}
+
+pub fn destroy_glyph_set_atlas(self: *Self, glyph_set: *phx.GlyphSet) void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    if (self.glyph_set_atlases.fetchRemove(glyph_set)) |kv| {
+        self.textures_to_delete.append(self.allocator, kv.value.texture_id) catch |err| {
+            std.log.err("destroy_glyph_set_atlas: failed to queue glyph atlas texture {d} for deletion, error: {s}", .{ kv.value.texture_id, @errorName(err) });
+        };
+    }
+}
+
+fn perform_composite_glyphs(self: *Self, op: *phx.Graphics.CompositeGlyphsOperation) void {
+    defer self.append_message(.{ .composite_glyphs_finished = .{ .operation = op.* } });
+
+    if (op.glyphs.len == 0 or op.atlas_width == 0 or op.atlas_height == 0) return;
+    if (op.atlas_format_depth != 8) {
+        std.log.warn("perform_composite_glyphs: unsupported atlas depth {d}", .{op.atlas_format_depth});
+        return;
+    }
+
+    const src_is_solid = op.src == .solid;
+    const src_gradient_kind: c.GLint = switch (op.src) {
+        .gradient => |*g| gradient_kind_value(g),
+        else => 0,
+    };
+    const src_is_procedural = op.src != .drawable;
+    const src = switch (op.src) {
+        .drawable => |d| get_drawable_target_size(d),
+        else => null,
+    };
+    const dst = get_drawable_target_size(op.dst_drawable);
+    if (dst.texture_id == 0 or dst.width == 0 or dst.height == 0) return;
+    if (!src_is_procedural) {
+        if (src == null or src.?.texture_id == 0 or src.?.width == 0 or src.?.height == 0) return;
+    }
+
+    const atlas_tex = self.ensure_glyph_atlas_texture(op) catch |err| {
+        std.log.err("perform_composite_glyphs: failed to upload glyph atlas, error: {s}", .{@errorName(err)});
+        return;
+    };
+
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.framebuffer);
+    c.glDisable(c.GL_SCISSOR_TEST);
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glPushMatrix();
+    c.glMatrixMode(c.GL_MODELVIEW);
+    c.glPushMatrix();
+    c.glLoadIdentity();
+
+    c.glUseProgram(self.mask_program.program);
+    c.glUniform1i(self.mask_program.loc_src, 0);
+    c.glUniform1i(self.mask_program.loc_src_alpha_map, 1);
+    c.glUniform1i(self.mask_program.loc_mask, 2);
+    c.glUniform1i(self.mask_program.loc_mask_alpha_map, 3);
+    c.glUniform1i(self.mask_program.loc_clip_mask, 4);
+
+    c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT0, c.GL_TEXTURE_2D, dst.texture_id, 0);
+    c.glViewport(0, 0, @intCast(dst.width), @intCast(dst.height));
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glLoadIdentity();
+    c.glOrtho(0.0, @floatFromInt(dst.width), @floatFromInt(dst.height), 0.0, -1.0, 1.0);
+    c.glMatrixMode(c.GL_MODELVIEW);
+
+    const blend = pict_op_blend_factors(op.op);
+    c.glBlendFunc(blend.src, blend.dst);
+
+    const src_gl_filter = filter_to_gl(op.src_filter);
+
+    c.glActiveTexture(c.GL_TEXTURE0);
+    c.glBindTexture(c.GL_TEXTURE_2D, if (src) |s| s.texture_id else 0);
+    if (!src_is_procedural) {
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, src_gl_filter);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, src_gl_filter);
+    }
+    c.glActiveTexture(c.GL_TEXTURE1);
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    c.glActiveTexture(c.GL_TEXTURE2);
+    c.glBindTexture(c.GL_TEXTURE_2D, atlas_tex);
+    c.glActiveTexture(c.GL_TEXTURE3);
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    c.glActiveTexture(c.GL_TEXTURE4);
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    c.glActiveTexture(c.GL_TEXTURE0);
+
+    const default_swizzle: [4]f32 = .{ 0, 0, 0, 1 };
+    // GL_R8 atlas — sampled component .r holds the alpha value.
+    const a8_mask_swizzle: [4]f32 = .{ 1, 0, 0, 0 };
+    c.glUniform1i(self.mask_program.loc_use_src_alpha_map, 0);
+    c.glUniform4fv(self.mask_program.loc_src_alpha_swizzle, 1, &default_swizzle);
+    c.glUniform1i(self.mask_program.loc_src_is_solid, if (src_is_solid) 1 else 0);
+    switch (op.src) {
+        .solid => |col| {
+            const rgba = render_color_to_rgba(col);
+            c.glUniform4fv(self.mask_program.loc_src_solid_color, 1, &rgba);
+        },
+        else => {},
+    }
+    c.glUniform1i(self.mask_program.loc_src_gradient_kind, src_gradient_kind);
+    switch (op.src) {
+        .gradient => |*grad| self.apply_src_gradient(grad),
+        else => {},
+    }
+    c.glUniform1i(self.mask_program.loc_use_mask, 1);
+    c.glUniform1i(self.mask_program.loc_component_alpha, 0);
+    c.glUniform1i(self.mask_program.loc_use_mask_alpha_map, 0);
+    c.glUniform4fv(self.mask_program.loc_mask_alpha_swizzle, 1, &a8_mask_swizzle);
+    c.glUniform1i(self.mask_program.loc_mask_is_solid, 0);
+    c.glUniform1i(self.mask_program.loc_use_clip_mask, 0);
+    c.glUniform4fv(self.mask_program.loc_clip_swizzle, 1, &default_swizzle);
+
+    const src_w_f: f32 = if (src) |s| @floatFromInt(s.width) else 1.0;
+    const src_h_f: f32 = if (src) |s| @floatFromInt(s.height) else 1.0;
+    const atlas_w_f: f32 = @floatFromInt(op.atlas_width);
+    const atlas_h_f: f32 = @floatFromInt(op.atlas_height);
+
+    c.glBegin(c.GL_QUADS);
+    for (op.glyphs) |glyph| {
+        const corners = [_]@Vector(2, i32){
+            .{ 0, 0 },
+            .{ @intCast(glyph.width), 0 },
+            .{ @intCast(glyph.width), @intCast(glyph.height) },
+            .{ 0, @intCast(glyph.height) },
+        };
+
+        for (corners) |corner| {
+            const cx = corner[0];
+            const cy = corner[1];
+
+            const sx_pixel: f32 = @floatFromInt(@as(i32, glyph.src_x_pixel) + cx);
+            const sy_pixel: f32 = @floatFromInt(@as(i32, glyph.src_y_pixel) + cy);
+            c.glMultiTexCoord2f(c.GL_TEXTURE0, sx_pixel / src_w_f, sy_pixel / src_h_f);
+            c.glMultiTexCoord2f(c.GL_TEXTURE1, 0, 0);
+
+            const mx: f32 = (@as(f32, @floatFromInt(@as(i32, @intCast(glyph.atlas_x)) + cx))) / atlas_w_f;
+            const my: f32 = (@as(f32, @floatFromInt(@as(i32, @intCast(glyph.atlas_y)) + cy))) / atlas_h_f;
+            c.glMultiTexCoord2f(c.GL_TEXTURE2, mx, my);
+            c.glMultiTexCoord2f(c.GL_TEXTURE3, 0, 0);
+            c.glMultiTexCoord2f(c.GL_TEXTURE4, 0, 0);
+
+            const dx: f32 = @floatFromInt(@as(i32, glyph.dst_x) + cx);
+            const dy: f32 = @floatFromInt(@as(i32, glyph.dst_y) + cy);
+            c.glVertex2f(dx, dy);
+        }
+    }
+    c.glEnd();
+
+    c.glActiveTexture(c.GL_TEXTURE2);
     c.glBindTexture(c.GL_TEXTURE_2D, 0);
     c.glActiveTexture(c.GL_TEXTURE0);
     c.glBindTexture(c.GL_TEXTURE_2D, 0);

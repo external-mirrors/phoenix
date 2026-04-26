@@ -115,6 +115,18 @@ pub fn render_trapezoids(self: *Self, op: *const phx.Graphics.TrapezoidsArgument
     };
 }
 
+pub fn composite_glyphs(self: *Self, op: *const phx.Graphics.CompositeGlyphsArguments) !void {
+    return switch (self.impl) {
+        inline else => |item| item.composite_glyphs(op),
+    };
+}
+
+pub fn destroy_glyph_set_atlas(self: *Self, glyph_set: *phx.GlyphSet) void {
+    return switch (self.impl) {
+        inline else => |item| item.destroy_glyph_set_atlas(glyph_set),
+    };
+}
+
 pub fn get_keyboard_state(self: *Self, params: *const phx.Xkb.Request.GetState, arena: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetState {
     return switch (self.impl) {
         inline else => |item| item.get_keyboard_state(params, arena),

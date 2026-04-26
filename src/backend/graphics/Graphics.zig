@@ -156,6 +156,18 @@ pub fn render_trapezoids(self: *Self, op: *const TrapezoidsArguments) !void {
     };
 }
 
+pub fn composite_glyphs(self: *Self, op: *const CompositeGlyphsArguments) !void {
+    return switch (self.impl) {
+        inline else => |item| item.composite_glyphs(op),
+    };
+}
+
+pub fn destroy_glyph_set_atlas(self: *Self, glyph_set: *phx.GlyphSet) void {
+    return switch (self.impl) {
+        inline else => |item| item.destroy_glyph_set_atlas(glyph_set),
+    };
+}
+
 pub fn set_dirty(self: *Self) void {
     switch (self.impl) {
         inline else => |item| item.set_dirty(),
@@ -477,6 +489,55 @@ pub const TrapezoidsOperation = struct {
     }
 };
 
+pub const GlyphCommand = struct {
+    atlas_x: u32,
+    atlas_y: u32,
+    width: u16,
+    height: u16,
+    dst_x: i16,
+    dst_y: i16,
+    src_x_pixel: i16,
+    src_y_pixel: i16,
+};
+
+pub const CompositeGlyphsArguments = struct {
+    src: Src,
+    src_filter: phx.Render.Filter,
+    dst_drawable: phx.Drawable,
+    op: phx.Render.PictOp,
+    atlas_format_depth: u8,
+    atlas_width: u32,
+    atlas_height: u32,
+    atlas_data: []const u8,
+    glyphs: []const GlyphCommand,
+    /// Cache key + version for the GPU atlas texture. The graphics thread
+    /// keeps a `*GlyphSet -> (texture, version)` map; when the cache version
+    /// matches `atlas_version`, the GPU upload is skipped.
+    glyph_set: *phx.GlyphSet,
+    atlas_version: u64,
+};
+
+pub const CompositeGlyphsOperation = struct {
+    src: SrcOp,
+    src_filter: phx.Render.Filter,
+    dst_drawable: GraphicsDrawable,
+    op: phx.Render.PictOp,
+    atlas_format_depth: u8,
+    atlas_width: u32,
+    atlas_height: u32,
+    atlas_data: []u8,
+    glyphs: []GlyphCommand,
+    glyph_set: *phx.GlyphSet,
+    atlas_version: u64,
+
+    pub fn unref(self: *CompositeGlyphsOperation, allocator: std.mem.Allocator) void {
+        self.src.unref();
+        self.dst_drawable.unref();
+        allocator.free(self.atlas_data);
+        allocator.free(self.glyphs);
+    }
+};
+
 pub const CopyAreaOperation = struct {
     src_drawable: GraphicsDrawable,
     dst_drawable: GraphicsDrawable,
@@ -517,6 +578,7 @@ pub const GraphicsOperation = union(enum) {
     fill_rectangles: FillRectanglesOperation,
     composite: CompositeOperation,
     trapezoids: TrapezoidsOperation,
+    composite_glyphs: CompositeGlyphsOperation,
 
     pub fn unref(self: *GraphicsOperation, allocator: std.mem.Allocator) void {
         switch (self.*) {
@@ -526,6 +588,7 @@ pub const GraphicsOperation = union(enum) {
             .fill_rectangles => |*op| op.unref(allocator),
             .composite => |*op| op.unref(),
             .trapezoids => |*op| op.unref(allocator),
+            .composite_glyphs => |*op| op.unref(allocator),
         }
     }
 
@@ -554,6 +617,11 @@ pub const GraphicsOperation = union(enum) {
                 if (matches(op.dst_drawable, window)) return true;
                 if (op.src_alpha_map_drawable) |d| if (matches(d, window)) return true;
                 if (op.clip_mask_drawable) |d| if (matches(d, window)) return true;
+                return false;
+            },
+            .composite_glyphs => |op| {
+                if (op.src.matches_window(window)) return true;
+                if (matches(op.dst_drawable, window)) return true;
                 return false;
             },
         }

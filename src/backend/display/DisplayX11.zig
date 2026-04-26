@@ -195,6 +195,14 @@ pub fn render_trapezoids(self: *Self, op: *const phx.Graphics.TrapezoidsArgument
     return self.graphics.render_trapezoids(op);
 }
 
+pub fn composite_glyphs(self: *Self, op: *const phx.Graphics.CompositeGlyphsArguments) !void {
+    return self.graphics.composite_glyphs(op);
+}
+
+pub fn destroy_glyph_set_atlas(self: *Self, glyph_set: *phx.GlyphSet) void {
+    self.graphics.destroy_glyph_set_atlas(glyph_set);
+}
+
 pub fn get_keyboard_state(self: *Self, params: *const phx.Xkb.Request.GetState, _: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetState {
     const cookie = c.xcb_xkb_get_state(self.connection, @intFromEnum(params.device_spec));
 

@@ -23,6 +23,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .trapezoids => trapezoids(request_context),
         .create_glyph_set => create_glyph_set(request_context),
         .add_glyphs => add_glyphs(request_context),
+        .composite_glyphs8 => composite_glyphs8(request_context),
         .fill_rectangles => fill_rectangles(request_context),
         .create_cursor => create_cursor(request_context),
         .set_picture_filter => set_picture_filter(request_context),
@@ -772,6 +773,147 @@ fn create_conical_gradient(request_context: *phx.RequestContext) !void {
     try request_context.client.add_picture(picture);
 }
 
+fn composite_glyphs8(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.CompositeGlyphs8, request_context.allocator);
+    defer req.deinit();
+
+    const op_int: x11.Card8 = @intFromEnum(req.request.op);
+    if (op_int < pict_op_minimum or op_int > pict_op_maximum) {
+        std.log.err("RenderCompositeGlyphs8: invalid pict op {d}", .{op_int});
+        return request_context.client.write_error(request_context, .render_pict_op, op_int);
+    }
+
+    const src = request_context.server.get_picture(req.request.src) orelse {
+        std.log.err("RenderCompositeGlyphs8: invalid src picture {d}", .{@intFromEnum(req.request.src)});
+        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.src));
+    };
+
+    const dst = request_context.server.get_picture(req.request.dst) orelse {
+        std.log.err("RenderCompositeGlyphs8: invalid dst picture {d}", .{@intFromEnum(req.request.dst)});
+        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.dst));
+    };
+
+    const dst_drawable = dst.drawable orelse {
+        std.log.err("RenderCompositeGlyphs8: dst picture {d} has no drawable", .{@intFromEnum(req.request.dst)});
+        return request_context.client.write_error(request_context, .match, 0);
+    };
+
+    if (req.request.mask_format != .none and get_pict_format_depth(req.request.mask_format) == null) {
+        std.log.err("RenderCompositeGlyphs8: invalid mask format {d}", .{@intFromEnum(req.request.mask_format)});
+        return request_context.client.write_error(request_context, .render_pict_format, @intFromEnum(req.request.mask_format));
+    }
+
+    var current_glyph_set = request_context.server.get_glyph_set(req.request.glyphset) orelse {
+        std.log.err("RenderCompositeGlyphs8: invalid glyph set {d}", .{@intFromEnum(req.request.glyphset)});
+        return request_context.client.write_error(request_context, .render_glyph_set, @intFromEnum(req.request.glyphset));
+    };
+
+    var commands = std.ArrayListUnmanaged(phx.Graphics.GlyphCommand){};
+    defer commands.deinit(request_context.allocator);
+
+    const cmds = req.request.glyphcmds.items;
+    var pos: usize = 0;
+    var pen_x: i32 = 0;
+    var pen_y: i32 = 0;
+    var first_dst: ?@Vector(2, i32) = null;
+
+    while (pos + 8 <= cmds.len) {
+        const num = cmds[pos];
+
+        if (num == 0xff) {
+            // Flush accumulated commands for the previous glyph set before
+            // switching, since each batch is keyed to one atlas.
+            if (commands.items.len > 0) {
+                try flush_glyph_commands(request_context, src, dst_drawable, req.request.op, current_glyph_set, commands.items);
+                commands.clearRetainingCapacity();
+            }
+            const new_set_int = std.mem.readInt(u32, cmds[pos + 4 ..][0..4], x11.native_endian);
+            const new_set_id: GlyphSetId = @enumFromInt(new_set_int);
+            current_glyph_set = request_context.server.get_glyph_set(new_set_id) orelse {
+                std.log.err("RenderCompositeGlyphs8: invalid glyph set in switch element {d}", .{new_set_int});
+                return request_context.client.write_error(request_context, .render_glyph_set, new_set_int);
+            };
+            pos += 8;
+            continue;
+        }
+
+        const dx = std.mem.readInt(i16, cmds[pos + 4 ..][0..2], x11.native_endian);
+        const dy = std.mem.readInt(i16, cmds[pos + 6 ..][0..2], x11.native_endian);
+        pen_x += dx;
+        pen_y += dy;
+        pos += 8;
+
+        const glyph_data_end = pos + num;
+        if (glyph_data_end > cmds.len) {
+            std.log.err("RenderCompositeGlyphs8: glyph element runs past request (pos={d}, num={d}, total={d})", .{ pos, num, cmds.len });
+            return request_context.client.write_error(request_context, .length, 0);
+        }
+
+        try current_glyph_set.ensure_atlas();
+
+        for (cmds[pos..glyph_data_end]) |id_u8| {
+            const glyph = current_glyph_set.glyphs.get(@intCast(id_u8)) orelse {
+                std.log.err("RenderCompositeGlyphs8: missing glyph id {d} in glyph set {d}", .{ id_u8, @intFromEnum(current_glyph_set.id) });
+                return request_context.client.write_error(request_context, .render_glyph, id_u8);
+            };
+
+            const dst_x: i32 = pen_x - @as(i32, glyph.x_origin);
+            const dst_y: i32 = pen_y - @as(i32, glyph.y_origin);
+
+            if (first_dst == null) first_dst = .{ dst_x, dst_y };
+
+            // Per spec: src_x / src_y align with the first glyph's dst origin.
+            const src_x_pixel: i32 = @as(i32, req.request.src_x) + (dst_x - first_dst.?[0]);
+            const src_y_pixel: i32 = @as(i32, req.request.src_y) + (dst_y - first_dst.?[1]);
+
+            try commands.append(request_context.allocator, .{
+                .atlas_x = glyph.atlas_x,
+                .atlas_y = glyph.atlas_y,
+                .width = glyph.width,
+                .height = glyph.height,
+                .dst_x = @truncate(@as(i32, @intCast(@as(isize, @intCast(dst_x))))),
+                .dst_y = @truncate(@as(i32, @intCast(@as(isize, @intCast(dst_y))))),
+                .src_x_pixel = @truncate(@as(i32, @intCast(@as(isize, @intCast(src_x_pixel))))),
+                .src_y_pixel = @truncate(@as(i32, @intCast(@as(isize, @intCast(src_y_pixel))))),
+            });
+
+            pen_x += @as(i32, glyph.x_advance);
+            pen_y += @as(i32, glyph.y_advance);
+        }
+
+        pos = glyph_data_end;
+        pos = (pos + 3) & ~@as(usize, 3);
+    }
+
+    if (commands.items.len > 0) {
+        try flush_glyph_commands(request_context, src, dst_drawable, req.request.op, current_glyph_set, commands.items);
+    }
+}
+
+fn flush_glyph_commands(
+    request_context: *phx.RequestContext,
+    src: *phx.Picture,
+    dst_drawable: phx.Drawable,
+    op: PictOp,
+    glyph_set: *phx.GlyphSet,
+    commands: []const phx.Graphics.GlyphCommand,
+) !void {
+    const depth = get_pict_format_depth(glyph_set.format) orelse return;
+    try request_context.server.display.composite_glyphs(&.{
+        .src = picture_to_src(src),
+        .src_filter = src.filter,
+        .dst_drawable = dst_drawable,
+        .op = op,
+        .atlas_format_depth = depth,
+        .atlas_width = glyph_set.atlas_width,
+        .atlas_height = glyph_set.atlas_height,
+        .atlas_data = glyph_set.atlas_data,
+        .glyphs = commands,
+        .glyph_set = glyph_set,
+        .atlas_version = glyph_set.atlas_version,
+    });
+}
+
 fn add_glyphs(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.AddGlyphs, request_context.allocator);
     defer req.deinit();
@@ -839,6 +981,7 @@ fn add_glyphs(request_context: *phx.RequestContext) !void {
     }
 
     owned_count = 0;
+    glyph_set.mark_atlas_dirty();
 }
 
 /// PictFormat depth → bits-per-pixel for glyph image data. Mirrors the
@@ -867,6 +1010,7 @@ fn create_glyph_set(request_context: *phx.RequestContext) !void {
         .id = req.request.gsid,
         .format = req.request.format,
         .allocator = request_context.client.allocator,
+        .server = request_context.server,
     };
 
     try request_context.client.add_glyph_set(glyph_set);
@@ -920,6 +1064,7 @@ const MinorOpcode = enum(x11.Card8) {
     trapezoids = 10,
     create_glyph_set = 17,
     add_glyphs = 20,
+    composite_glyphs8 = 23,
     fill_rectangles = 26,
     create_cursor = 27,
     set_picture_filter = 30,
@@ -1384,6 +1529,22 @@ pub const Request = struct {
         glyphids: x11.ListOf(x11.Card32, .{ .length_field = "num_glyphs" }),
         glyphs: x11.ListOf(GlyphInfo, .{ .length_field = "num_glyphs" }),
         data: x11.ListOf(x11.Card8, .{ .length_field = "length", .length_field_type = .request_remainder }),
+    };
+
+    pub const CompositeGlyphs8 = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .composite_glyphs8,
+        length: x11.Card16,
+        op: PictOp,
+        pad1: x11.Card8 = 0,
+        pad2: x11.Card16 = 0,
+        src: PictureId,
+        dst: PictureId,
+        mask_format: PictFormatId,
+        glyphset: GlyphSetId,
+        src_x: i16,
+        src_y: i16,
+        glyphcmds: x11.ListOf(x11.Card8, .{ .length_field = "length", .length_field_type = .request_remainder }),
     };
 
     pub const CreateSolidFill = struct {

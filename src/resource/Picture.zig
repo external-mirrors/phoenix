@@ -19,6 +19,7 @@ poly_edge: phx.Render.PolyEdge = .smooth,
 poly_mode: phx.Render.PolyMode = .precise,
 dither: x11.AtomId = @enumFromInt(0),
 component_alpha: bool = false,
+filter: phx.Render.Filter = .nearest,
 
 pub fn deinit(self: *Self) void {
     switch (self.drawable.item) {

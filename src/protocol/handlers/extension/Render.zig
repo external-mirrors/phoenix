@@ -21,6 +21,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .composite => composite(request_context),
         .fill_rectangles => fill_rectangles(request_context),
         .create_cursor => create_cursor(request_context),
+        .set_picture_filter => set_picture_filter(request_context),
     };
 }
 
@@ -357,13 +358,17 @@ fn composite(request_context: *phx.RequestContext) !void {
         .src_alpha_x_origin = src_alpha.x_origin,
         .src_alpha_y_origin = src_alpha.y_origin,
         .src_alpha_swizzle = src_alpha.swizzle,
+        .src_alpha_filter = src_alpha.filter,
+        .src_filter = src.filter,
 
         .mask_drawable = if (mask) |m| m.drawable else null,
         .mask_alpha_map_drawable = mask_alpha.drawable,
         .mask_alpha_x_origin = mask_alpha.x_origin,
         .mask_alpha_y_origin = mask_alpha.y_origin,
         .mask_alpha_swizzle = mask_alpha.swizzle,
+        .mask_alpha_filter = mask_alpha.filter,
         .mask_component_alpha = if (mask) |m| m.component_alpha else false,
+        .mask_filter = if (mask) |m| m.filter else .nearest,
 
         .dst_drawable = dst.drawable,
         .clip_mask_drawable = clip.drawable,
@@ -388,6 +393,7 @@ const AlphaMapBinding = struct {
     x_origin: i16 = 0,
     y_origin: i16 = 0,
     swizzle: [4]f32 = .{ 0, 0, 0, 1 },
+    filter: Filter = .nearest,
 };
 
 fn resolve_alpha_map(request_context: *phx.RequestContext, picture: *phx.Picture) AlphaMapBinding {
@@ -398,6 +404,7 @@ fn resolve_alpha_map(request_context: *phx.RequestContext, picture: *phx.Picture
         .x_origin = picture.alpha_x_origin,
         .y_origin = picture.alpha_y_origin,
         .swizzle = alpha_swizzle_for_depth(alpha_picture.drawable.get_depth()),
+        .filter = alpha_picture.filter,
     };
 }
 
@@ -464,6 +471,28 @@ fn create_cursor(request_context: *phx.RequestContext) !void {
     try request_context.client.add_cursor(cursor);
 }
 
+fn set_picture_filter(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.SetPictureFilter, request_context.allocator);
+    defer req.deinit();
+
+    const picture = request_context.server.get_picture(req.request.picture) orelse {
+        std.log.err("RenderSetPictureFilter: invalid picture {d}", .{@intFromEnum(req.request.picture)});
+        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.picture));
+    };
+
+    const filter = Filter.from_name(req.request.filter.items) orelse {
+        std.log.err("RenderSetPictureFilter: unsupported filter \"{s}\"", .{req.request.filter.items});
+        return request_context.client.write_error(request_context, .match, 0);
+    };
+
+    // The protocol allows a list of FIXED parameters after the name (used for
+    // convolution kernels and the like). Phoenix's compositor implements the
+    // standard filters as fixed pipelines, so the parameters are accepted
+    // and ignored — Cairo/GTK only sends parameters for `convolution`, which
+    // we treat as `bilinear`.
+    picture.filter = filter;
+}
+
 const MinorOpcode = enum(x11.Card8) {
     query_version = 0,
     query_pict_formats = 1,
@@ -472,6 +501,28 @@ const MinorOpcode = enum(x11.Card8) {
     composite = 8,
     fill_rectangles = 26,
     create_cursor = 27,
+    set_picture_filter = 30,
+};
+
+/// Texture sampling filter selected via Render's SetPictureFilter. Maps the
+/// X11 filter name strings to Phoenix's small set of supported sampling modes.
+pub const Filter = enum {
+    nearest,
+    bilinear,
+
+    pub fn from_name(name: []const u8) ?Filter {
+        // Standard filter names defined by the Render protocol. Aliases like
+        // `fast`/`good`/`best` collapse to the closest concrete mode Phoenix
+        // implements; `convolution`/`gaussian` are accepted but treated as
+        // bilinear since Phoenix doesn't run user-supplied kernels.
+        if (std.mem.eql(u8, name, "nearest") or std.mem.eql(u8, name, "fast")) return .nearest;
+        if (std.mem.eql(u8, name, "bilinear") or
+            std.mem.eql(u8, name, "good") or
+            std.mem.eql(u8, name, "best") or
+            std.mem.eql(u8, name, "convolution") or
+            std.mem.eql(u8, name, "gaussian")) return .bilinear;
+        return null;
+    }
 };
 
 pub const PictFormatId = enum(x11.Card32) {
@@ -801,6 +852,21 @@ pub const Request = struct {
         dst: PictureId,
         color: Color,
         rects: x11.ListOf(Rectangle, .{ .length_field = "length", .length_field_type = .request_remainder }),
+    };
+
+    pub const SetPictureFilter = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .set_picture_filter,
+        length: x11.Card16,
+        picture: PictureId,
+        nbytes: x11.Card16,
+        pad1: x11.Card16 = 0,
+        filter: x11.ListOf(x11.Card8, .{ .length_field = "nbytes" }),
+        pad2: x11.AlignmentPadding = .{},
+        // Optional FIXED values follow (used by `convolution`/`gaussian`); we
+        // accept them as the request remainder and ignore them since Phoenix
+        // collapses those filters to bilinear sampling.
+        values: x11.ListOf(i32, .{ .length_field = "length", .length_field_type = .request_remainder }),
     };
 
     pub const CreateCursor = struct {

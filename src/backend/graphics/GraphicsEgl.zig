@@ -694,14 +694,33 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
     const blend = pict_op_blend_factors(op.op);
     c.glBlendFunc(blend.src, blend.dst);
 
+    const src_gl_filter = filter_to_gl(op.src_filter);
+    const src_alpha_gl_filter = filter_to_gl(op.src_alpha_filter);
+    const mask_gl_filter = filter_to_gl(op.mask_filter);
+    const mask_alpha_gl_filter = filter_to_gl(op.mask_alpha_filter);
+
     c.glActiveTexture(c.GL_TEXTURE0);
     c.glBindTexture(c.GL_TEXTURE_2D, src.texture_id);
+    c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, src_gl_filter);
+    c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, src_gl_filter);
     c.glActiveTexture(c.GL_TEXTURE1);
     c.glBindTexture(c.GL_TEXTURE_2D, if (use_src_amap) src_amap.?.texture_id else 0);
+    if (use_src_amap) {
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, src_alpha_gl_filter);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, src_alpha_gl_filter);
+    }
     c.glActiveTexture(c.GL_TEXTURE2);
     c.glBindTexture(c.GL_TEXTURE_2D, if (use_mask) mask.?.texture_id else 0);
+    if (use_mask) {
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, mask_gl_filter);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, mask_gl_filter);
+    }
     c.glActiveTexture(c.GL_TEXTURE3);
     c.glBindTexture(c.GL_TEXTURE_2D, if (use_mask_amap) mask_amap.?.texture_id else 0);
+    if (use_mask_amap) {
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, mask_alpha_gl_filter);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, mask_alpha_gl_filter);
+    }
     c.glActiveTexture(c.GL_TEXTURE4);
     c.glBindTexture(c.GL_TEXTURE_2D, if (use_clip) clip.?.texture_id else 0);
     c.glActiveTexture(c.GL_TEXTURE0);
@@ -799,6 +818,13 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
     c.glViewport(0, 0, @intCast(self.width), @intCast(self.height));
     c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
     c.glEnable(c.GL_SCISSOR_TEST);
+}
+
+fn filter_to_gl(filter: phx.Render.Filter) c.GLint {
+    return switch (filter) {
+        .nearest => c.GL_NEAREST,
+        .bilinear => c.GL_LINEAR,
+    };
 }
 
 fn pict_op_blend_factors(op: phx.Render.PictOp) struct { src: c_uint, dst: c_uint } {
@@ -1152,13 +1178,17 @@ pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void 
         .src_alpha_x_origin = op.src_alpha_x_origin,
         .src_alpha_y_origin = op.src_alpha_y_origin,
         .src_alpha_swizzle = op.src_alpha_swizzle,
+        .src_alpha_filter = op.src_alpha_filter,
+        .src_filter = op.src_filter,
 
         .mask_drawable = mask_drawable,
         .mask_alpha_map_drawable = mask_alpha_map_drawable,
         .mask_alpha_x_origin = op.mask_alpha_x_origin,
         .mask_alpha_y_origin = op.mask_alpha_y_origin,
         .mask_alpha_swizzle = op.mask_alpha_swizzle,
+        .mask_alpha_filter = op.mask_alpha_filter,
         .mask_component_alpha = op.mask_component_alpha,
+        .mask_filter = op.mask_filter,
 
         .dst_drawable = dst_drawable,
         .clip_mask_drawable = clip_mask_drawable,

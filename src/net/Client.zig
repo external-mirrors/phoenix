@@ -297,6 +297,13 @@ pub fn write_event_extension(self: *Self, ev: anytype) !void {
     self.flush_write_buffer_ignore_error();
 }
 
+pub fn write_raw_event_bytes(self: *Self, bytes: *const [32]u8) !void {
+    var buf = bytes.*;
+    std.mem.writeInt(u16, buf[2..4], self.sequence_number, x11.native_endian);
+    try self.write_buffer.append_slice(self.allocator, &buf);
+    self.flush_write_buffer_ignore_error();
+}
+
 pub fn write_event_static_size(self: *Self, ev: anytype) !void {
     if (@typeInfo(@TypeOf(ev)) != .pointer)
         @compileError("Expected event data to be a pointer");

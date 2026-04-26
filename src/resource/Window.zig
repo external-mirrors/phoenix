@@ -567,7 +567,7 @@ pub fn get_resize_redirect_listener_client(self: *const Self) ?*phx.Client {
     return null;
 }
 
-fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, event_code: phx.event.EventCode, event: *const phx.event.Event) bool {
+pub fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, event_code: phx.event.EventCode, event: *const phx.event.Event) bool {
     switch (event_code) {
         .key_press => return event_mask.key_press,
         .key_release => return event_mask.key_release,

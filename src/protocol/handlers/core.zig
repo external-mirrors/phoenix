@@ -1017,8 +1017,129 @@ fn send_event(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.SendEvent, request_context.allocator);
     defer req.deinit();
 
-    // TODO:
-    std.log.err("TODO: implement SendEvent", .{});
+    const dest_id = req.request.destination;
+    const dest_int = @intFromEnum(dest_id);
+    const focus_was_destination = dest_int == send_event_destination_input_focus;
+    const window = resolve_send_event_destination(request_context.server, dest_id) orelse {
+        std.log.err("SendEvent: invalid destination window {d}", .{dest_int});
+        return request_context.client.write_error(request_context, .window, dest_int);
+    };
+
+    var event_bytes = req.request.event;
+    event_bytes[0] |= 0x80;
+
+    if (req.request.event_mask.is_empty()) {
+        if (request_context.server.client_manager.get_resource_owner(window.id.to_id())) |owner| {
+            owner.write_raw_event_bytes(&event_bytes) catch |err| {
+                std.log.err("SendEvent: failed to write event to owning client {d}, error: {s}", .{ owner.connection.stream.handle, @errorName(err) });
+            };
+        }
+        return;
+    }
+
+    const code: x11.Card8 = event_bytes[0] & 0x7F;
+    const core_event: ?phx.event.Event = blk: {
+        const code_enum = std.meta.intToEnum(phx.event.EventCode, code) catch break :blk null;
+        var ev: phx.event.Event = @bitCast(event_bytes);
+        ev.any.code = code_enum;
+        break :blk ev;
+    };
+
+    var delivered = deliver_send_event_to_window(window, req.request.event_mask, core_event, &event_bytes);
+
+    if (delivered == 0 and req.request.propagate and core_event != null) {
+        var effective_mask = req.request.event_mask;
+        var current = window;
+        const focus_window = if (focus_was_destination) get_input_focus_window(request_context.server) else null;
+        while (current.parent) |parent| {
+            // Per the protocol, do_not_propagate_mask on the *intervening* window
+            // (i.e. the window we just left) blocks those device-event types from
+            // propagating further up the tree.
+            effective_mask = mask_clear_dnp(effective_mask, current.attributes.do_not_propagate_mask);
+            if (@as(u32, @bitCast(effective_mask.sanitize())) == 0) break;
+
+            // Spec: when InputFocus was the original destination and we've reached
+            // an ancestor of the focus window, stop propagating without delivering.
+            if (focus_window != null and is_ancestor(parent, focus_window.?)) break;
+
+            delivered = deliver_send_event_to_window(parent, effective_mask, core_event, &event_bytes);
+            if (delivered > 0) break;
+            current = parent;
+        }
+    }
+}
+
+const send_event_destination_pointer_window: x11.Card32 = 0;
+const send_event_destination_input_focus: x11.Card32 = 1;
+
+fn resolve_send_event_destination(server: *phx.Server, dest: x11.WindowId) ?*phx.Window {
+    return switch (@intFromEnum(dest)) {
+        send_event_destination_pointer_window => get_pointer_window(server),
+        send_event_destination_input_focus => blk: {
+            const focus = get_input_focus_window(server) orelse break :blk get_pointer_window(server);
+            const pointer_window = get_pointer_window(server) orelse break :blk focus;
+            if (is_ancestor_or_self(focus, pointer_window)) break :blk pointer_window;
+            break :blk focus;
+        },
+        else => server.get_window(dest),
+    };
+}
+
+fn get_pointer_window(server: *phx.Server) ?*phx.Window {
+    var rel: @Vector(2, i32) = .{ 0, 0 };
+    return phx.Window.get_window_at_position(server.root_window, .{ server.cursor_x, server.cursor_y }, &rel);
+}
+
+fn get_input_focus_window(server: *phx.Server) ?*phx.Window {
+    return switch (server.input_focus.focus) {
+        .window => |w| w,
+        .pointer_root => server.root_window,
+        .none => null,
+    };
+}
+
+fn is_ancestor_or_self(ancestor: *phx.Window, descendant: *phx.Window) bool {
+    var w: ?*phx.Window = descendant;
+    while (w) |cur| : (w = cur.parent) {
+        if (cur == ancestor) return true;
+    }
+    return false;
+}
+
+fn is_ancestor(ancestor: *phx.Window, descendant: *phx.Window) bool {
+    if (ancestor == descendant) return false;
+    return is_ancestor_or_self(ancestor, descendant);
+}
+
+/// Clear the bits in `event_mask` that correspond to events suppressed by
+/// `dnp` — these are device events (key/button/motion) which share the same
+/// low-bit positions in EventMask and DeviceEventMask.
+fn mask_clear_dnp(event_mask: phx.core.EventMask, dnp: phx.core.DeviceEventMask) phx.core.EventMask {
+    const dnp_u16: u16 = @bitCast(dnp);
+    const filtered = @as(u32, @bitCast(event_mask.sanitize())) & ~@as(u32, dnp_u16);
+    return @bitCast(filtered);
+}
+
+fn deliver_send_event_to_window(
+    window: *phx.Window,
+    event_mask: phx.core.EventMask,
+    core_event: ?phx.event.Event,
+    event_bytes: *const [32]u8,
+) usize {
+    const event = core_event orelse return 0;
+    var delivered: usize = 0;
+    for (window.core_event_listeners.items) |*listener| {
+        const intersect: u32 = @as(u32, @bitCast(listener.event_mask.sanitize())) & @as(u32, @bitCast(event_mask.sanitize()));
+        if (intersect == 0) continue;
+        const intersect_mask: phx.core.EventMask = @bitCast(intersect);
+        if (!phx.Window.core_event_mask_matches_event_code(intersect_mask, event.any.code, &event)) continue;
+        listener.client.write_raw_event_bytes(event_bytes) catch |err| {
+            std.log.err("SendEvent: failed to write event to client {d}, error: {s}", .{ listener.client.connection.stream.handle, @errorName(err) });
+            continue;
+        };
+        delivered += 1;
+    }
+    return delivered;
 }
 
 fn grab_server(request_context: *phx.RequestContext) !void {
@@ -1565,10 +1686,10 @@ fn query_extension(request_context: *phx.RequestContext) !void {
         // } else if (std.mem.eql(u8, req.request.name.items, "XKEYBOARD")) {
         //     rep.present = true;
         //     rep.major_opcode = @intFromEnum(phx.opcode.Major.xkb);
-    //} else if (std.mem.eql(u8, req.request.name.items, "RENDER")) {
-    //    rep.present = true;
-    //    rep.major_opcode = @intFromEnum(phx.opcode.Major.render);
-    //    rep.first_error = phx.err.render_first_error;
+    } else if (std.mem.eql(u8, req.request.name.items, "RENDER")) {
+        rep.present = true;
+        rep.major_opcode = @intFromEnum(phx.opcode.Major.render);
+        rep.first_error = phx.err.render_first_error;
     } else if (std.mem.eql(u8, req.request.name.items, "RANDR")) {
         rep.present = true;
         rep.major_opcode = @intFromEnum(phx.opcode.Major.randr);

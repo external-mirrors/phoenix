@@ -39,7 +39,6 @@ const PFNEGLQUERYDISPLAYATTRIBEXTPROC = *const fn (c.EGLDisplay, c.EGLint, [*c]c
 const PFNEGLQUERYDEVICESTRINGEXTPROC = *const fn (c.EGLDeviceEXT, c.EGLint) callconv(.c) [*c]const u8;
 const PFNGLEGLIMAGETARGETTEXTURE2DOESPROC = *const fn (c.GLenum, c.GLeglImageOES) callconv(.c) void;
 const PFNEGLQUERYDMABUFMODIFIERSEXTPROC = *const fn (c.EGLDisplay, c.EGLint, c.EGLint, [*c]c.EGLuint64KHR, [*c]c.EGLBoolean, [*c]c.EGLint) callconv(.c) c.EGLBoolean;
-const PFNGLCOPYIMAGESUBDATAPROC = *const fn (c.GLuint, c.GLenum, c.GLint, c.GLint, c.GLint, c.GLint, c.GLuint, c.GLenum, c.GLint, c.GLint, c.GLint, c.GLint, c.GLsizei, c.GLsizei, c.GLsizei) callconv(.c) void;
 
 extern "c" fn setenv(__name: [*c]const u8, __value: [*c]const u8, __replace: c_int) c_int;
 extern "c" fn unsetenv(__name: [*c]const u8) c_int;
@@ -73,7 +72,6 @@ glyph_set_atlases: GlyphSetAtlasMap = .empty,
 
 glEGLImageTargetTexture2DOES: PFNGLEGLIMAGETARGETTEXTURE2DOESPROC,
 eglQueryDmaBufModifiersEXT: PFNEGLQUERYDMABUFMODIFIERSEXTPROC,
-glCopyImageSubData: PFNGLCOPYIMAGESUBDATAPROC,
 
 dirty: std.atomic.Value(bool) = .init(true),
 
@@ -198,7 +196,6 @@ pub fn init(
     const eglQueryDeviceStringEXT: PFNEGLQUERYDEVICESTRINGEXTPROC = @ptrCast(c.eglGetProcAddress("eglQueryDeviceStringEXT") orelse return error.FailedToResolveOpenglProc);
     const glEGLImageTargetTexture2DOES: PFNGLEGLIMAGETARGETTEXTURE2DOESPROC = @ptrCast(c.eglGetProcAddress("glEGLImageTargetTexture2DOES") orelse return error.FailedToResolveOpenglProc);
     const eglQueryDmaBufModifiersEXT: PFNEGLQUERYDMABUFMODIFIERSEXTPROC = @ptrCast(c.eglGetProcAddress("eglQueryDmaBufModifiersEXT") orelse return error.FailedToResolveOpenglProc);
-    const glCopyImageSubData: PFNGLCOPYIMAGESUBDATAPROC = @ptrCast(c.eglGetProcAddress("glCopyImageSubData") orelse return error.FailedToResolveOpenglProc);
 
     const egl_display = eglGetPlatformDisplayEXT(platform, connection, &[_]c.EGLint{
         screen_type,
@@ -315,7 +312,6 @@ pub fn init(
 
         .glEGLImageTargetTexture2DOES = glEGLImageTargetTexture2DOES,
         .eglQueryDmaBufModifiersEXT = eglQueryDmaBufModifiersEXT,
-        .glCopyImageSubData = glCopyImageSubData,
 
         .mask_program = mask_program,
     };

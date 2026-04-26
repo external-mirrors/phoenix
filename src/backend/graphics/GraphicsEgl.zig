@@ -686,10 +686,16 @@ fn perform_fill_rectangles(self: *Self, op: *phx.Graphics.FillRectanglesOperatio
 fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
     defer self.append_message(.{ .composite_finished = .{ .operation = op.* } });
 
-    const src_is_solid = op.src_solid_color != null;
-    const src_gradient_kind: c.GLint = if (op.src_gradient) |*g| gradient_kind_value(g) else 0;
-    const src_is_procedural = src_is_solid or src_gradient_kind != 0;
-    const src = if (op.src_drawable) |d| get_drawable_target_size(d) else null;
+    const src_is_solid = op.src == .solid;
+    const src_gradient_kind: c.GLint = switch (op.src) {
+        .gradient => |*g| gradient_kind_value(g),
+        else => 0,
+    };
+    const src_is_procedural = op.src != .drawable;
+    const src = switch (op.src) {
+        .drawable => |d| get_drawable_target_size(d),
+        else => null,
+    };
     const dst = get_drawable_target_size(op.dst_drawable);
     // Procedural sources don't need a backing texture; size checks below skip src.
     if (dst.texture_id == 0 or dst.width == 0 or dst.height == 0)
@@ -705,8 +711,11 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
         null;
     const use_src_amap = if (src_amap) |a| (a.texture_id != 0 and a.width != 0 and a.height != 0) else false;
 
-    const mask_is_solid = op.mask_solid_color != null;
-    const mask = if (op.mask_drawable) |d| get_drawable_target_size(d) else null;
+    const mask_is_solid = if (op.mask) |m| (m == .solid) else false;
+    const mask = if (op.mask) |m| switch (m) {
+        .drawable => |d| get_drawable_target_size(d),
+        .solid => null,
+    } else null;
     const use_mask = mask_is_solid or (if (mask) |m| (m.texture_id != 0 and m.width != 0 and m.height != 0) else false);
 
     const mask_amap = if (op.mask_alpha_map_drawable) |d| get_drawable_target_size(d) else null;
@@ -778,21 +787,30 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
     c.glUniform1i(self.mask_program.loc_use_src_alpha_map, if (use_src_amap) 1 else 0);
     c.glUniform4fv(self.mask_program.loc_src_alpha_swizzle, 1, &op.src_alpha_swizzle);
     c.glUniform1i(self.mask_program.loc_src_is_solid, if (src_is_solid) 1 else 0);
-    if (op.src_solid_color) |col| {
-        const rgba = render_color_to_rgba(col);
-        c.glUniform4fv(self.mask_program.loc_src_solid_color, 1, &rgba);
+    switch (op.src) {
+        .solid => |col| {
+            const rgba = render_color_to_rgba(col);
+            c.glUniform4fv(self.mask_program.loc_src_solid_color, 1, &rgba);
+        },
+        else => {},
     }
     c.glUniform1i(self.mask_program.loc_src_gradient_kind, src_gradient_kind);
-    if (op.src_gradient) |*grad| self.apply_src_gradient(grad);
+    switch (op.src) {
+        .gradient => |*grad| self.apply_src_gradient(grad),
+        else => {},
+    }
     c.glUniform1i(self.mask_program.loc_use_mask, if (use_mask) 1 else 0);
     c.glUniform1i(self.mask_program.loc_component_alpha, if (op.mask_component_alpha) 1 else 0);
     c.glUniform1i(self.mask_program.loc_use_mask_alpha_map, if (use_mask_amap) 1 else 0);
     c.glUniform4fv(self.mask_program.loc_mask_alpha_swizzle, 1, &op.mask_alpha_swizzle);
     c.glUniform1i(self.mask_program.loc_mask_is_solid, if (mask_is_solid) 1 else 0);
-    if (op.mask_solid_color) |col| {
-        const rgba = render_color_to_rgba(col);
-        c.glUniform4fv(self.mask_program.loc_mask_solid_color, 1, &rgba);
-    }
+    if (op.mask) |m| switch (m) {
+        .solid => |col| {
+            const rgba = render_color_to_rgba(col);
+            c.glUniform4fv(self.mask_program.loc_mask_solid_color, 1, &rgba);
+        },
+        .drawable => {},
+    };
     c.glUniform1i(self.mask_program.loc_use_clip_mask, if (use_clip) 1 else 0);
     c.glUniform4fv(self.mask_program.loc_clip_swizzle, 1, &op.clip_swizzle);
 
@@ -1291,22 +1309,18 @@ pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void 
     self.mutex.lock();
     defer self.mutex.unlock();
 
-    var src_drawable: ?phx.Graphics.GraphicsDrawable =
-        if (op.src_drawable) |d| to_graphics_drawable(d) else null;
+    var src = phx.Graphics.SrcOp.from_args(op.src, &to_graphics_drawable);
+    var mask: ?phx.Graphics.MaskOp = if (op.mask) |m| phx.Graphics.MaskOp.from_args(m, &to_graphics_drawable) else null;
     var dst_drawable = to_graphics_drawable(op.dst_drawable);
     var src_alpha_map_drawable: ?phx.Graphics.GraphicsDrawable =
         if (op.src_alpha_map_drawable) |d| to_graphics_drawable(d) else null;
-    var mask_drawable: ?phx.Graphics.GraphicsDrawable =
-        if (op.mask_drawable) |d| to_graphics_drawable(d) else null;
     var mask_alpha_map_drawable: ?phx.Graphics.GraphicsDrawable =
         if (op.mask_alpha_map_drawable) |d| to_graphics_drawable(d) else null;
     var clip_mask_drawable: ?phx.Graphics.GraphicsDrawable =
         if (op.clip_mask_drawable) |d| to_graphics_drawable(d) else null;
 
     try self.operations.append(self.allocator, .{ .composite = .{
-        .src_drawable = src_drawable,
-        .src_solid_color = op.src_solid_color,
-        .src_gradient = op.src_gradient,
+        .src = src,
         .src_alpha_map_drawable = src_alpha_map_drawable,
         .src_alpha_x_origin = op.src_alpha_x_origin,
         .src_alpha_y_origin = op.src_alpha_y_origin,
@@ -1314,8 +1328,7 @@ pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void 
         .src_alpha_filter = op.src_alpha_filter,
         .src_filter = op.src_filter,
 
-        .mask_drawable = mask_drawable,
-        .mask_solid_color = op.mask_solid_color,
+        .mask = mask,
         .mask_alpha_map_drawable = mask_alpha_map_drawable,
         .mask_alpha_x_origin = op.mask_alpha_x_origin,
         .mask_alpha_y_origin = op.mask_alpha_y_origin,
@@ -1341,10 +1354,10 @@ pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void 
         .height = op.height,
     } });
 
-    if (src_drawable) |*d| d.ref();
+    src.ref();
     dst_drawable.ref();
     if (src_alpha_map_drawable) |*d| d.ref();
-    if (mask_drawable) |*d| d.ref();
+    if (mask) |*m| m.ref();
     if (mask_alpha_map_drawable) |*d| d.ref();
     if (clip_mask_drawable) |*d| d.ref();
     self.dirty.store(true, .release);
@@ -1381,8 +1394,7 @@ pub fn render_trapezoids(self: *Self, op: *const phx.Graphics.TrapezoidsArgument
     self.mutex.lock();
     defer self.mutex.unlock();
 
-    var src_drawable: ?phx.Graphics.GraphicsDrawable =
-        if (op.src_drawable) |d| to_graphics_drawable(d) else null;
+    var src = phx.Graphics.SrcOp.from_args(op.src, &to_graphics_drawable);
     var dst_drawable = to_graphics_drawable(op.dst_drawable);
     var src_alpha_map_drawable: ?phx.Graphics.GraphicsDrawable =
         if (op.src_alpha_map_drawable) |d| to_graphics_drawable(d) else null;
@@ -1393,9 +1405,7 @@ pub fn render_trapezoids(self: *Self, op: *const phx.Graphics.TrapezoidsArgument
     errdefer self.allocator.free(quads_copy);
 
     try self.operations.append(self.allocator, .{ .trapezoids = .{
-        .src_drawable = src_drawable,
-        .src_solid_color = op.src_solid_color,
-        .src_gradient = op.src_gradient,
+        .src = src,
         .src_alpha_map_drawable = src_alpha_map_drawable,
         .src_alpha_x_origin = op.src_alpha_x_origin,
         .src_alpha_y_origin = op.src_alpha_y_origin,
@@ -1417,7 +1427,7 @@ pub fn render_trapezoids(self: *Self, op: *const phx.Graphics.TrapezoidsArgument
         .quads = quads_copy,
     } });
 
-    if (src_drawable) |*d| d.ref();
+    src.ref();
     dst_drawable.ref();
     if (src_alpha_map_drawable) |*d| d.ref();
     if (clip_mask_drawable) |*d| d.ref();
@@ -1427,10 +1437,16 @@ pub fn render_trapezoids(self: *Self, op: *const phx.Graphics.TrapezoidsArgument
 fn perform_trapezoids(self: *Self, op: *phx.Graphics.TrapezoidsOperation) void {
     defer self.append_message(.{ .trapezoids_finished = .{ .operation = op.* } });
 
-    const src_is_solid = op.src_solid_color != null;
-    const src_gradient_kind: c.GLint = if (op.src_gradient) |*g| gradient_kind_value(g) else 0;
-    const src_is_procedural = src_is_solid or src_gradient_kind != 0;
-    const src = if (op.src_drawable) |d| get_drawable_target_size(d) else null;
+    const src_is_solid = op.src == .solid;
+    const src_gradient_kind: c.GLint = switch (op.src) {
+        .gradient => |*g| gradient_kind_value(g),
+        else => 0,
+    };
+    const src_is_procedural = op.src != .drawable;
+    const src = switch (op.src) {
+        .drawable => |d| get_drawable_target_size(d),
+        else => null,
+    };
     const dst = get_drawable_target_size(op.dst_drawable);
     if (dst.texture_id == 0 or dst.width == 0 or dst.height == 0) return;
     if (!src_is_procedural) {
@@ -1503,12 +1519,18 @@ fn perform_trapezoids(self: *Self, op: *phx.Graphics.TrapezoidsOperation) void {
     c.glUniform1i(self.mask_program.loc_use_src_alpha_map, if (use_src_amap) 1 else 0);
     c.glUniform4fv(self.mask_program.loc_src_alpha_swizzle, 1, &op.src_alpha_swizzle);
     c.glUniform1i(self.mask_program.loc_src_is_solid, if (src_is_solid) 1 else 0);
-    if (op.src_solid_color) |col| {
-        const rgba = render_color_to_rgba(col);
-        c.glUniform4fv(self.mask_program.loc_src_solid_color, 1, &rgba);
+    switch (op.src) {
+        .solid => |col| {
+            const rgba = render_color_to_rgba(col);
+            c.glUniform4fv(self.mask_program.loc_src_solid_color, 1, &rgba);
+        },
+        else => {},
     }
     c.glUniform1i(self.mask_program.loc_src_gradient_kind, src_gradient_kind);
-    if (op.src_gradient) |*grad| self.apply_src_gradient(grad);
+    switch (op.src) {
+        .gradient => |*grad| self.apply_src_gradient(grad),
+        else => {},
+    }
     c.glUniform1i(self.mask_program.loc_use_mask, 0);
     c.glUniform1i(self.mask_program.loc_component_alpha, 0);
     c.glUniform1i(self.mask_program.loc_use_mask_alpha_map, 0);

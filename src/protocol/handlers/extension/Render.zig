@@ -365,9 +365,7 @@ fn composite(request_context: *phx.RequestContext) !void {
     const clip = resolve_clip_mask(request_context, dst);
 
     try request_context.server.display.composite(&.{
-        .src_drawable = src.drawable,
-        .src_solid_color = src.solid_fill_color,
-        .src_gradient = src.gradient,
+        .src = picture_to_src(src),
         .src_alpha_map_drawable = src_alpha.drawable,
         .src_alpha_x_origin = src_alpha.x_origin,
         .src_alpha_y_origin = src_alpha.y_origin,
@@ -375,8 +373,7 @@ fn composite(request_context: *phx.RequestContext) !void {
         .src_alpha_filter = src_alpha.filter,
         .src_filter = src.filter,
 
-        .mask_drawable = if (mask) |m| m.drawable else null,
-        .mask_solid_color = if (mask) |m| m.solid_fill_color else null,
+        .mask = if (mask) |m| picture_to_mask(m) else null,
         .mask_alpha_map_drawable = mask_alpha.drawable,
         .mask_alpha_x_origin = mask_alpha.x_origin,
         .mask_alpha_y_origin = mask_alpha.y_origin,
@@ -401,6 +398,19 @@ fn composite(request_context: *phx.RequestContext) !void {
         .width = req.request.width,
         .height = req.request.height,
     });
+}
+
+fn picture_to_src(picture: *const phx.Picture) phx.Graphics.Src {
+    if (picture.drawable) |d| return .{ .drawable = d };
+    if (picture.solid_fill_color) |c| return .{ .solid = c };
+    if (picture.gradient) |g| return .{ .gradient = g };
+    unreachable;
+}
+
+fn picture_to_mask(picture: *const phx.Picture) phx.Graphics.Mask {
+    if (picture.drawable) |d| return .{ .drawable = d };
+    if (picture.solid_fill_color) |c| return .{ .solid = c };
+    unreachable;
 }
 
 const AlphaMapBinding = struct {
@@ -546,9 +556,7 @@ fn trapezoids(request_context: *phx.RequestContext) !void {
     const clip = resolve_clip_mask(request_context, dst);
 
     try request_context.server.display.render_trapezoids(&.{
-        .src_drawable = src.drawable,
-        .src_solid_color = src.solid_fill_color,
-        .src_gradient = src.gradient,
+        .src = picture_to_src(src),
         .src_alpha_map_drawable = src_alpha.drawable,
         .src_alpha_x_origin = src_alpha.x_origin,
         .src_alpha_y_origin = src_alpha.y_origin,

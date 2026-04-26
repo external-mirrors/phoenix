@@ -257,14 +257,87 @@ pub const CopyAreaArguments = struct {
     height: x11.Card16,
 };
 
+pub const Src = union(enum) {
+    drawable: phx.Drawable,
+    solid: phx.Render.Color,
+    gradient: phx.Picture.Gradient,
+};
+
+pub const SrcOp = union(enum) {
+    drawable: GraphicsDrawable,
+    solid: phx.Render.Color,
+    gradient: phx.Picture.Gradient,
+
+    pub fn from_args(src: Src, to_drawable: *const fn (phx.Drawable) GraphicsDrawable) SrcOp {
+        return switch (src) {
+            .drawable => |d| .{ .drawable = to_drawable(d) },
+            .solid => |color| .{ .solid = color },
+            .gradient => |g| .{ .gradient = g },
+        };
+    }
+
+    pub fn ref(self: *SrcOp) void {
+        switch (self.*) {
+            .drawable => |*d| d.ref(),
+            .solid, .gradient => {},
+        }
+    }
+
+    pub fn unref(self: *SrcOp) void {
+        switch (self.*) {
+            .drawable => |*d| d.unref(),
+            .solid, .gradient => {},
+        }
+    }
+
+    pub fn matches_window(self: *const SrcOp, w: *const GraphicsWindow) bool {
+        return switch (self.*) {
+            .drawable => |d| std.meta.activeTag(d) == .window and d.window == w,
+            else => false,
+        };
+    }
+};
+
+pub const Mask = union(enum) {
+    drawable: phx.Drawable,
+    solid: phx.Render.Color,
+};
+
+pub const MaskOp = union(enum) {
+    drawable: GraphicsDrawable,
+    solid: phx.Render.Color,
+
+    pub fn from_args(mask: Mask, to_drawable: *const fn (phx.Drawable) GraphicsDrawable) MaskOp {
+        return switch (mask) {
+            .drawable => |d| .{ .drawable = to_drawable(d) },
+            .solid => |color| .{ .solid = color },
+        };
+    }
+
+    pub fn ref(self: *MaskOp) void {
+        switch (self.*) {
+            .drawable => |*d| d.ref(),
+            .solid => {},
+        }
+    }
+
+    pub fn unref(self: *MaskOp) void {
+        switch (self.*) {
+            .drawable => |*d| d.unref(),
+            .solid => {},
+        }
+    }
+
+    pub fn matches_window(self: *const MaskOp, w: *const GraphicsWindow) bool {
+        return switch (self.*) {
+            .drawable => |d| std.meta.activeTag(d) == .window and d.window == w,
+            .solid => false,
+        };
+    }
+};
+
 pub const CompositeArguments = struct {
-    /// Exactly one of `src_drawable`, `src_solid_color`, or `src_gradient`
-    /// is set: a textured source, a constant color (CreateSolidFill), or a
-    /// procedural gradient (CreateLinear/Radial/ConicalGradient). For
-    /// procedural sources `src_filter`/alpha-map fields are ignored.
-    src_drawable: ?phx.Drawable,
-    src_solid_color: ?phx.Render.Color,
-    src_gradient: ?phx.Picture.Gradient,
+    src: Src,
     src_alpha_map_drawable: ?phx.Drawable,
     src_alpha_x_origin: i16,
     src_alpha_y_origin: i16,
@@ -272,10 +345,7 @@ pub const CompositeArguments = struct {
     src_alpha_filter: phx.Render.Filter,
     src_filter: phx.Render.Filter,
 
-    /// `mask_drawable`/`mask_solid_color` mirror the src split. When the mask
-    /// reference is .none, both are null and no masking is applied.
-    mask_drawable: ?phx.Drawable,
-    mask_solid_color: ?phx.Render.Color,
+    mask: ?Mask,
     mask_alpha_map_drawable: ?phx.Drawable,
     mask_alpha_x_origin: i16,
     mask_alpha_y_origin: i16,
@@ -302,9 +372,7 @@ pub const CompositeArguments = struct {
 };
 
 pub const CompositeOperation = struct {
-    src_drawable: ?GraphicsDrawable,
-    src_solid_color: ?phx.Render.Color,
-    src_gradient: ?phx.Picture.Gradient,
+    src: SrcOp,
     src_alpha_map_drawable: ?GraphicsDrawable,
     src_alpha_x_origin: i16,
     src_alpha_y_origin: i16,
@@ -312,8 +380,7 @@ pub const CompositeOperation = struct {
     src_alpha_filter: phx.Render.Filter,
     src_filter: phx.Render.Filter,
 
-    mask_drawable: ?GraphicsDrawable,
-    mask_solid_color: ?phx.Render.Color,
+    mask: ?MaskOp,
     mask_alpha_map_drawable: ?GraphicsDrawable,
     mask_alpha_x_origin: i16,
     mask_alpha_y_origin: i16,
@@ -339,9 +406,9 @@ pub const CompositeOperation = struct {
     height: x11.Card16,
 
     pub fn unref(self: *CompositeOperation) void {
-        if (self.src_drawable) |*d| d.unref();
+        self.src.unref();
         if (self.src_alpha_map_drawable) |*d| d.unref();
-        if (self.mask_drawable) |*d| d.unref();
+        if (self.mask) |*m| m.unref();
         if (self.mask_alpha_map_drawable) |*d| d.unref();
         self.dst_drawable.unref();
         if (self.clip_mask_drawable) |*d| d.unref();
@@ -355,10 +422,7 @@ pub const TrapezoidQuad = struct {
 };
 
 pub const TrapezoidsArguments = struct {
-    /// Mirrors Composite — exactly one of drawable/solid/radial is set.
-    src_drawable: ?phx.Drawable,
-    src_solid_color: ?phx.Render.Color,
-    src_gradient: ?phx.Picture.Gradient,
+    src: Src,
     src_alpha_map_drawable: ?phx.Drawable,
     src_alpha_x_origin: i16,
     src_alpha_y_origin: i16,
@@ -383,9 +447,7 @@ pub const TrapezoidsArguments = struct {
 };
 
 pub const TrapezoidsOperation = struct {
-    src_drawable: ?GraphicsDrawable,
-    src_solid_color: ?phx.Render.Color,
-    src_gradient: ?phx.Picture.Gradient,
+    src: SrcOp,
     src_alpha_map_drawable: ?GraphicsDrawable,
     src_alpha_x_origin: i16,
     src_alpha_y_origin: i16,
@@ -407,7 +469,7 @@ pub const TrapezoidsOperation = struct {
     quads: []TrapezoidQuad,
 
     pub fn unref(self: *TrapezoidsOperation, allocator: std.mem.Allocator) void {
-        if (self.src_drawable) |*d| d.unref();
+        self.src.unref();
         if (self.src_alpha_map_drawable) |*d| d.unref();
         self.dst_drawable.unref();
         if (self.clip_mask_drawable) |*d| d.unref();
@@ -479,16 +541,16 @@ pub const GraphicsOperation = union(enum) {
             .copy_area => |op| return matches(op.src_drawable, window) or matches(op.dst_drawable, window),
             .fill_rectangles => |op| return matches(op.drawable, window),
             .composite => |op| {
-                if (op.src_drawable) |d| if (matches(d, window)) return true;
+                if (op.src.matches_window(window)) return true;
                 if (matches(op.dst_drawable, window)) return true;
                 if (op.src_alpha_map_drawable) |d| if (matches(d, window)) return true;
-                if (op.mask_drawable) |d| if (matches(d, window)) return true;
+                if (op.mask) |m| if (m.matches_window(window)) return true;
                 if (op.mask_alpha_map_drawable) |d| if (matches(d, window)) return true;
                 if (op.clip_mask_drawable) |d| if (matches(d, window)) return true;
                 return false;
             },
             .trapezoids => |op| {
-                if (op.src_drawable) |d| if (matches(d, window)) return true;
+                if (op.src.matches_window(window)) return true;
                 if (matches(op.dst_drawable, window)) return true;
                 if (op.src_alpha_map_drawable) |d| if (matches(d, window)) return true;
                 if (op.clip_mask_drawable) |d| if (matches(d, window)) return true;

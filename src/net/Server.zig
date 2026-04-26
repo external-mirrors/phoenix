@@ -759,10 +759,10 @@ fn handle_messages(self: *Self) void {
                 copy_area_canceled.operation.unref();
             },
             .composite_finished => |*composite_finished| {
-                composite_finished.operation.unref();
+                composite_finished.operation.unref(self.allocator);
             },
             .composite_canceled => |*composite_canceled| {
-                composite_canceled.operation.unref();
+                composite_canceled.operation.unref(self.allocator);
             },
             .fill_rectangles_finished => |*fill_rectangles_finished| {
                 fill_rectangles_finished.operation.unref(self.allocator);
@@ -801,8 +801,8 @@ fn cleanup_message_resources(message: *Message, allocator: std.mem.Allocator) vo
         .put_image_canceled => |*put_image_canceled| put_image_canceled.operation.unref(),
         .copy_area_finished => |*copy_area_finished| copy_area_finished.operation.unref(),
         .copy_area_canceled => |*copy_area_canceled| copy_area_canceled.operation.unref(),
-        .composite_finished => |*composite_finished| composite_finished.operation.unref(),
-        .composite_canceled => |*composite_canceled| composite_canceled.operation.unref(),
+        .composite_finished => |*composite_finished| composite_finished.operation.unref(allocator),
+        .composite_canceled => |*composite_canceled| composite_canceled.operation.unref(allocator),
         .fill_rectangles_finished => |*fill_rectangles_finished| fill_rectangles_finished.operation.unref(allocator),
         .fill_rectangles_canceled => |*fill_rectangles_canceled| fill_rectangles_canceled.operation.unref(allocator),
         .trapezoids_finished => |*trapezoids_finished| trapezoids_finished.operation.unref(allocator),

@@ -53,6 +53,9 @@ allocator: std.mem.Allocator,
 
 pixmap_to_import: std.ArrayListUnmanaged(*phx.Pixmap) = .empty,
 framebuffer: u32,
+stencil_renderbuffer: u32 = 0,
+stencil_renderbuffer_width: u32 = 0,
+stencil_renderbuffer_height: u32 = 0,
 mutex: std.Thread.Mutex,
 width: u32,
 height: u32,
@@ -325,6 +328,11 @@ pub fn deinit(self: *Self) void {
         self.framebuffer = 0;
     }
 
+    if (self.stencil_renderbuffer > 0) {
+        c.glDeleteRenderbuffers(1, &self.stencil_renderbuffer);
+        self.stencil_renderbuffer = 0;
+    }
+
     self.mask_program.deinit();
 
     for (self.operations.items) |*op| {
@@ -468,6 +476,58 @@ fn create_graphics_windows_textures_recursive(self: *Self, graphics_window: *phx
 
 fn rectangle_intersects(pos1: @Vector(2, i32), size1: @Vector(2, i32), pos2: @Vector(2, i32), size2: @Vector(2, i32)) bool {
     return (pos1[0] + size1[0] >= pos2[0] and pos1[0] <= pos2[0] + size2[0]) and (pos1[1] + size1[1] >= pos2[1] and pos1[1] <= pos2[1] + size2[1]);
+}
+
+fn ensure_stencil_renderbuffer(self: *Self, width: u32, height: u32) void {
+    if (self.stencil_renderbuffer == 0)
+        c.glGenRenderbuffers(1, &self.stencil_renderbuffer);
+    if (width > self.stencil_renderbuffer_width or height > self.stencil_renderbuffer_height) {
+        const new_w = @max(width, self.stencil_renderbuffer_width);
+        const new_h = @max(height, self.stencil_renderbuffer_height);
+        c.glBindRenderbuffer(c.GL_RENDERBUFFER, self.stencil_renderbuffer);
+        c.glRenderbufferStorage(c.GL_RENDERBUFFER, c.GL_STENCIL_INDEX8, @intCast(new_w), @intCast(new_h));
+        c.glBindRenderbuffer(c.GL_RENDERBUFFER, 0);
+        self.stencil_renderbuffer_width = new_w;
+        self.stencil_renderbuffer_height = new_h;
+    }
+}
+
+fn begin_stencil_clip(self: *Self, target_width: u32, target_height: u32, clip_rectangles: []const phx.Render.Rectangle, clip_x_origin: i16, clip_y_origin: i16) void {
+    if (clip_rectangles.len == 0) return;
+    self.ensure_stencil_renderbuffer(target_width, target_height);
+    c.glFramebufferRenderbuffer(c.GL_FRAMEBUFFER, c.GL_STENCIL_ATTACHMENT, c.GL_RENDERBUFFER, self.stencil_renderbuffer);
+    c.glStencilMask(0xFF);
+    c.glClear(c.GL_STENCIL_BUFFER_BIT);
+
+    c.glEnable(c.GL_STENCIL_TEST);
+    c.glStencilFunc(c.GL_ALWAYS, 1, 0xFF);
+    c.glStencilOp(c.GL_REPLACE, c.GL_REPLACE, c.GL_REPLACE);
+    c.glColorMask(c.GL_FALSE, c.GL_FALSE, c.GL_FALSE, c.GL_FALSE);
+
+    c.glBegin(c.GL_QUADS);
+    for (clip_rectangles) |rect| {
+        const x0: f32 = @floatFromInt(@as(i32, rect.x) + @as(i32, clip_x_origin));
+        const y0: f32 = @floatFromInt(@as(i32, rect.y) + @as(i32, clip_y_origin));
+        const x1: f32 = x0 + @as(f32, @floatFromInt(rect.width));
+        const y1: f32 = y0 + @as(f32, @floatFromInt(rect.height));
+        c.glVertex2f(x0, y0);
+        c.glVertex2f(x1, y0);
+        c.glVertex2f(x1, y1);
+        c.glVertex2f(x0, y1);
+    }
+    c.glEnd();
+
+    c.glColorMask(c.GL_TRUE, c.GL_TRUE, c.GL_TRUE, c.GL_TRUE);
+    c.glStencilFunc(c.GL_EQUAL, 1, 0xFF);
+    c.glStencilOp(c.GL_KEEP, c.GL_KEEP, c.GL_KEEP);
+    c.glStencilMask(0x00);
+}
+
+fn end_stencil_clip(_: *Self, clip_rectangles: []const phx.Render.Rectangle) void {
+    if (clip_rectangles.len == 0) return;
+    c.glDisable(c.GL_STENCIL_TEST);
+    c.glStencilMask(0xFF);
+    c.glFramebufferRenderbuffer(c.GL_FRAMEBUFFER, c.GL_STENCIL_ATTACHMENT, c.GL_RENDERBUFFER, 0);
 }
 
 fn perform_operations(self: *Self) void {
@@ -796,6 +856,8 @@ fn perform_fill_rectangles(self: *Self, op: *phx.Graphics.FillRectanglesOperatio
     c.glTranslatef(0.0, @floatFromInt(target.height), 0.0);
     c.glScalef(1.0, -1.0, 1.0);
 
+    self.begin_stencil_clip(target.width, target.height, op.clip_rectangles, op.clip_x_origin, op.clip_y_origin);
+
     const blend = pict_op_blend_factors(op.op);
     c.glBlendFunc(blend.src, blend.dst);
 
@@ -814,6 +876,8 @@ fn perform_fill_rectangles(self: *Self, op: *phx.Graphics.FillRectanglesOperatio
         c.glVertex2f(x0, y1);
     }
     c.glEnd();
+
+    self.end_stencil_clip(op.clip_rectangles);
 
     c.glMatrixMode(c.GL_PROJECTION);
     c.glPopMatrix();
@@ -974,6 +1038,8 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
         .{ 0, @intCast(op.height) },
     };
 
+    self.begin_stencil_clip(dst.width, dst.height, op.clip_rectangles, op.clip_x_origin, op.clip_y_origin);
+
     c.glBegin(c.GL_QUADS);
     for (corners) |corner| {
         const cx: i32 = corner[0];
@@ -1028,6 +1094,8 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
         c.glVertex2f(dx, dy);
     }
     c.glEnd();
+
+    self.end_stencil_clip(op.clip_rectangles);
 
     // Unbind extra texture units and restore default unit
     c.glActiveTexture(c.GL_TEXTURE4);
@@ -1494,6 +1562,9 @@ pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void 
     var clip_mask_drawable: ?phx.Graphics.GraphicsDrawable =
         if (op.clip_mask_drawable) |d| to_graphics_drawable(d) else null;
 
+    const clip_rectangles_copy = try self.allocator.dupe(phx.Render.Rectangle, op.clip_rectangles);
+    errdefer self.allocator.free(clip_rectangles_copy);
+
     try self.operations.append(self.allocator, .{ .composite = .{
         .src = src,
         .src_transform = op.src_transform,
@@ -1521,6 +1592,7 @@ pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void 
         .clip_x_origin = op.clip_x_origin,
         .clip_y_origin = op.clip_y_origin,
         .clip_swizzle = op.clip_swizzle,
+        .clip_rectangles = clip_rectangles_copy,
 
         .op = op.op,
         .src_x = op.src_x,
@@ -1558,11 +1630,17 @@ pub fn fill_rectangles(self: *Self, op: *const phx.Graphics.FillRectanglesArgume
     const rects_copy = try self.allocator.dupe(phx.Render.Rectangle, op.rects);
     errdefer self.allocator.free(rects_copy);
 
+    const clip_rectangles_copy = try self.allocator.dupe(phx.Render.Rectangle, op.clip_rectangles);
+    errdefer self.allocator.free(clip_rectangles_copy);
+
     try self.operations.append(self.allocator, .{ .fill_rectangles = .{
         .drawable = graphics_drawable,
         .op = op.op,
         .color = op.color,
         .rects = rects_copy,
+        .clip_rectangles = clip_rectangles_copy,
+        .clip_x_origin = op.clip_x_origin,
+        .clip_y_origin = op.clip_y_origin,
     } });
 
     graphics_drawable.ref();
@@ -1583,6 +1661,9 @@ pub fn render_trapezoids(self: *Self, op: *const phx.Graphics.TrapezoidsArgument
     const quads_copy = try self.allocator.dupe(phx.Graphics.TrapezoidQuad, op.quads);
     errdefer self.allocator.free(quads_copy);
 
+    const clip_rectangles_copy = try self.allocator.dupe(phx.Render.Rectangle, op.clip_rectangles);
+    errdefer self.allocator.free(clip_rectangles_copy);
+
     try self.operations.append(self.allocator, .{ .trapezoids = .{
         .src = src,
         .src_transform = op.src_transform,
@@ -1599,6 +1680,7 @@ pub fn render_trapezoids(self: *Self, op: *const phx.Graphics.TrapezoidsArgument
         .clip_x_origin = op.clip_x_origin,
         .clip_y_origin = op.clip_y_origin,
         .clip_swizzle = op.clip_swizzle,
+        .clip_rectangles = clip_rectangles_copy,
 
         .op = op.op,
         .src_x = op.src_x,
@@ -1728,6 +1810,8 @@ fn perform_trapezoids(self: *Self, op: *phx.Graphics.TrapezoidsOperation) void {
     const src_x_f: f32 = @floatFromInt(op.src_x);
     const src_y_f: f32 = @floatFromInt(op.src_y);
 
+    self.begin_stencil_clip(dst.width, dst.height, op.clip_rectangles, op.clip_x_origin, op.clip_y_origin);
+
     c.glBegin(c.GL_QUADS);
     for (op.quads) |quad| {
         for (quad.corners) |corner| {
@@ -1767,6 +1851,8 @@ fn perform_trapezoids(self: *Self, op: *phx.Graphics.TrapezoidsOperation) void {
     }
     c.glEnd();
 
+    self.end_stencil_clip(op.clip_rectangles);
+
     c.glActiveTexture(c.GL_TEXTURE4);
     c.glBindTexture(c.GL_TEXTURE_2D, 0);
     c.glActiveTexture(c.GL_TEXTURE1);
@@ -1799,6 +1885,9 @@ pub fn composite_glyphs(self: *Self, op: *const phx.Graphics.CompositeGlyphsArgu
     const glyphs_copy = try self.allocator.dupe(phx.Graphics.GlyphCommand, op.glyphs);
     errdefer self.allocator.free(glyphs_copy);
 
+    const clip_rectangles_copy = try self.allocator.dupe(phx.Render.Rectangle, op.clip_rectangles);
+    errdefer self.allocator.free(clip_rectangles_copy);
+
     try self.operations.append(self.allocator, .{ .composite_glyphs = .{
         .src = src,
         .src_transform = op.src_transform,
@@ -1812,6 +1901,9 @@ pub fn composite_glyphs(self: *Self, op: *const phx.Graphics.CompositeGlyphsArgu
         .glyphs = glyphs_copy,
         .glyph_set = op.glyph_set,
         .atlas_version = op.atlas_version,
+        .clip_rectangles = clip_rectangles_copy,
+        .clip_x_origin = op.clip_x_origin,
+        .clip_y_origin = op.clip_y_origin,
     } });
 
     src.ref();
@@ -1964,6 +2056,8 @@ fn perform_composite_glyphs(self: *Self, op: *phx.Graphics.CompositeGlyphsOperat
     const atlas_w_f: f32 = @floatFromInt(op.atlas_width);
     const atlas_h_f: f32 = @floatFromInt(op.atlas_height);
 
+    self.begin_stencil_clip(dst.width, dst.height, op.clip_rectangles, op.clip_x_origin, op.clip_y_origin);
+
     c.glBegin(c.GL_QUADS);
     for (op.glyphs) |glyph| {
         const corners = [_]@Vector(2, i32){
@@ -1995,6 +2089,8 @@ fn perform_composite_glyphs(self: *Self, op: *phx.Graphics.CompositeGlyphsOperat
         }
     }
     c.glEnd();
+
+    self.end_stencil_clip(op.clip_rectangles);
 
     c.glActiveTexture(c.GL_TEXTURE2);
     c.glBindTexture(c.GL_TEXTURE_2D, 0);

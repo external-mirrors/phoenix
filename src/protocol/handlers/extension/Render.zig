@@ -18,6 +18,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .query_pict_formats => query_pict_formats(request_context),
         .create_picture => create_picture(request_context),
         .change_picture => change_picture(request_context),
+        .set_picture_clip_rectangles => set_picture_clip_rectangles(request_context),
         .free_picture => free_picture(request_context),
         .composite => composite(request_context),
         .trapezoids => trapezoids(request_context),
@@ -439,6 +440,7 @@ fn composite(request_context: *phx.RequestContext) !void {
         .clip_x_origin = clip.x_origin,
         .clip_y_origin = clip.y_origin,
         .clip_swizzle = clip.swizzle,
+        .clip_rectangles = dst.clip_rectangles orelse &.{},
 
         .op = req.request.op,
         .src_x = req.request.src_x,
@@ -534,6 +536,9 @@ fn fill_rectangles(request_context: *phx.RequestContext) !void {
         .op = req.request.op,
         .color = req.request.color,
         .rects = req.request.rects.items,
+        .clip_rectangles = picture.clip_rectangles orelse &.{},
+        .clip_x_origin = picture.clip_x_origin,
+        .clip_y_origin = picture.clip_y_origin,
     });
 }
 
@@ -623,6 +628,7 @@ fn trapezoids(request_context: *phx.RequestContext) !void {
         .clip_x_origin = clip.x_origin,
         .clip_y_origin = clip.y_origin,
         .clip_swizzle = clip.swizzle,
+        .clip_rectangles = dst.clip_rectangles orelse &.{},
 
         .op = req.request.op,
         .src_x = req.request.src_x,
@@ -851,7 +857,7 @@ fn composite_glyphs(request_context: *phx.RequestContext, comptime IndexT: type)
 
         if (num == 0xff) {
             if (commands.items.len > 0) {
-                try flush_glyph_commands(request_context, src, dst_drawable, req.request.op, current_glyph_set, commands.items);
+                try flush_glyph_commands(request_context, src, dst, dst_drawable, req.request.op, current_glyph_set, commands.items);
                 commands.clearRetainingCapacity();
             }
             const new_set_int = std.mem.readInt(u32, cmds[pos + 4 ..][0..4], x11.native_endian);
@@ -916,13 +922,14 @@ fn composite_glyphs(request_context: *phx.RequestContext, comptime IndexT: type)
     }
 
     if (commands.items.len > 0) {
-        try flush_glyph_commands(request_context, src, dst_drawable, req.request.op, current_glyph_set, commands.items);
+        try flush_glyph_commands(request_context, src, dst, dst_drawable, req.request.op, current_glyph_set, commands.items);
     }
 }
 
 fn flush_glyph_commands(
     request_context: *phx.RequestContext,
     src: *phx.Picture,
+    dst: *phx.Picture,
     dst_drawable: phx.Drawable,
     op: PictOp,
     glyph_set: *phx.GlyphSet,
@@ -942,6 +949,9 @@ fn flush_glyph_commands(
         .glyphs = commands,
         .glyph_set = glyph_set,
         .atlas_version = glyph_set.atlas_version,
+        .clip_rectangles = dst.clip_rectangles orelse &.{},
+        .clip_x_origin = dst.clip_x_origin,
+        .clip_y_origin = dst.clip_y_origin,
     });
 }
 
@@ -1096,6 +1106,21 @@ fn create_solid_fill(request_context: *phx.RequestContext) !void {
     try request_context.client.add_picture(picture);
 }
 
+fn set_picture_clip_rectangles(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.SetPictureClipRectangles, request_context.allocator);
+    defer req.deinit();
+
+    const picture = request_context.server.get_picture(req.request.picture) orelse {
+        std.log.err("RenderSetPictureClipRectangles: invalid picture {d}", .{@intFromEnum(req.request.picture)});
+        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.picture));
+    };
+
+    picture.clip_x_origin = req.request.clip_x_origin;
+    picture.clip_y_origin = req.request.clip_y_origin;
+    picture.clip_mask = .none;
+    try picture.set_clip_rectangles(request_context.client.allocator, req.request.rectangles.items);
+}
+
 fn set_picture_transform(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.SetPictureTransform, request_context.allocator);
     defer req.deinit();
@@ -1135,6 +1160,7 @@ const MinorOpcode = enum(x11.Card8) {
     query_pict_formats = 1,
     create_picture = 4,
     change_picture = 5,
+    set_picture_clip_rectangles = 6,
     free_picture = 7,
     composite = 8,
     trapezoids = 10,
@@ -1678,6 +1704,16 @@ pub const Request = struct {
         length: x11.Card16,
         pid: PictureId,
         color: Color,
+    };
+
+    pub const SetPictureClipRectangles = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .set_picture_clip_rectangles,
+        length: x11.Card16,
+        picture: PictureId,
+        clip_x_origin: i16,
+        clip_y_origin: i16,
+        rectangles: x11.ListOf(Rectangle, .{ .length_field = "length", .length_field_type = .request_remainder }),
     };
 
     pub const SetPictureTransform = struct {

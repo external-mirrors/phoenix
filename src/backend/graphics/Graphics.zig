@@ -247,6 +247,9 @@ pub const FillRectanglesArguments = struct {
     op: phx.Render.PictOp,
     color: phx.Render.Color,
     rects: []const phx.Render.Rectangle,
+    clip_rectangles: []const phx.Render.Rectangle,
+    clip_x_origin: i16,
+    clip_y_origin: i16,
 };
 
 pub const FillRectanglesOperation = struct {
@@ -254,10 +257,14 @@ pub const FillRectanglesOperation = struct {
     op: phx.Render.PictOp,
     color: phx.Render.Color,
     rects: []phx.Render.Rectangle,
+    clip_rectangles: []phx.Render.Rectangle,
+    clip_x_origin: i16,
+    clip_y_origin: i16,
 
     pub fn unref(self: *FillRectanglesOperation, allocator: std.mem.Allocator) void {
         self.drawable.unref();
         allocator.free(self.rects);
+        allocator.free(self.clip_rectangles);
     }
 };
 
@@ -378,6 +385,7 @@ pub const CompositeArguments = struct {
     clip_x_origin: i16,
     clip_y_origin: i16,
     clip_swizzle: [4]f32,
+    clip_rectangles: []const phx.Render.Rectangle,
 
     op: phx.Render.PictOp,
     src_x: i16,
@@ -417,6 +425,7 @@ pub const CompositeOperation = struct {
     clip_x_origin: i16,
     clip_y_origin: i16,
     clip_swizzle: [4]f32,
+    clip_rectangles: []phx.Render.Rectangle,
 
     op: phx.Render.PictOp,
     src_x: i16,
@@ -428,13 +437,14 @@ pub const CompositeOperation = struct {
     width: x11.Card16,
     height: x11.Card16,
 
-    pub fn unref(self: *CompositeOperation) void {
+    pub fn unref(self: *CompositeOperation, allocator: std.mem.Allocator) void {
         self.src.unref();
         if (self.src_alpha_map_drawable) |*d| d.unref();
         if (self.mask) |*m| m.unref();
         if (self.mask_alpha_map_drawable) |*d| d.unref();
         self.dst_drawable.unref();
         if (self.clip_mask_drawable) |*d| d.unref();
+        allocator.free(self.clip_rectangles);
     }
 };
 
@@ -460,6 +470,7 @@ pub const TrapezoidsArguments = struct {
     clip_x_origin: i16,
     clip_y_origin: i16,
     clip_swizzle: [4]f32,
+    clip_rectangles: []const phx.Render.Rectangle,
 
     op: phx.Render.PictOp,
     /// Render's src_x/src_y, in dst-aligned coordinates: src(src_x, src_y)
@@ -487,6 +498,7 @@ pub const TrapezoidsOperation = struct {
     clip_x_origin: i16,
     clip_y_origin: i16,
     clip_swizzle: [4]f32,
+    clip_rectangles: []phx.Render.Rectangle,
 
     op: phx.Render.PictOp,
     src_x: i16,
@@ -501,6 +513,7 @@ pub const TrapezoidsOperation = struct {
         self.dst_drawable.unref();
         if (self.clip_mask_drawable) |*d| d.unref();
         allocator.free(self.quads);
+        allocator.free(self.clip_rectangles);
     }
 };
 
@@ -531,6 +544,9 @@ pub const CompositeGlyphsArguments = struct {
     /// matches `atlas_version`, the GPU upload is skipped.
     glyph_set: *phx.GlyphSet,
     atlas_version: u64,
+    clip_rectangles: []const phx.Render.Rectangle,
+    clip_x_origin: i16,
+    clip_y_origin: i16,
 };
 
 pub const CompositeGlyphsOperation = struct {
@@ -546,12 +562,16 @@ pub const CompositeGlyphsOperation = struct {
     glyphs: []GlyphCommand,
     glyph_set: *phx.GlyphSet,
     atlas_version: u64,
+    clip_rectangles: []phx.Render.Rectangle,
+    clip_x_origin: i16,
+    clip_y_origin: i16,
 
     pub fn unref(self: *CompositeGlyphsOperation, allocator: std.mem.Allocator) void {
         self.src.unref();
         self.dst_drawable.unref();
         allocator.free(self.atlas_data);
         allocator.free(self.glyphs);
+        allocator.free(self.clip_rectangles);
     }
 };
 
@@ -603,7 +623,7 @@ pub const GraphicsOperation = union(enum) {
             .put_image => |*op| op.unref(),
             .copy_area => |*op| op.unref(),
             .fill_rectangles => |*op| op.unref(allocator),
-            .composite => |*op| op.unref(),
+            .composite => |*op| op.unref(allocator),
             .trapezoids => |*op| op.unref(allocator),
             .composite_glyphs => |*op| op.unref(allocator),
         }

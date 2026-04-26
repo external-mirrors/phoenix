@@ -1,3 +1,4 @@
+const std = @import("std");
 const phx = @import("../phoenix.zig");
 const x11 = phx.x11;
 
@@ -74,6 +75,8 @@ alpha_y_origin: i16 = 0,
 clip_x_origin: i16 = 0,
 clip_y_origin: i16 = 0,
 clip_mask: x11.PixmapId = .none,
+clip_rectangles: ?[]phx.Render.Rectangle = null,
+clip_rectangles_allocator: ?std.mem.Allocator = null,
 graphics_exposure: bool = true,
 subwindow_mode: phx.Render.SubwindowMode = .clip_by_children,
 poly_edge: phx.Render.PolyEdge = .smooth,
@@ -90,4 +93,20 @@ pub fn deinit(self: *Self) void {
             .window => {},
         }
     }
+    self.clear_clip_rectangles();
+}
+
+pub fn clear_clip_rectangles(self: *Self) void {
+    if (self.clip_rectangles) |rects| {
+        if (self.clip_rectangles_allocator) |allocator| allocator.free(rects);
+    }
+    self.clip_rectangles = null;
+    self.clip_rectangles_allocator = null;
+}
+
+pub fn set_clip_rectangles(self: *Self, allocator: std.mem.Allocator, rects: []const phx.Render.Rectangle) !void {
+    const owned = try allocator.dupe(phx.Render.Rectangle, rects);
+    self.clear_clip_rectangles();
+    self.clip_rectangles = owned;
+    self.clip_rectangles_allocator = allocator;
 }

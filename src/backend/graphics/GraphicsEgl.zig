@@ -1814,6 +1814,8 @@ fn ensure_glyph_atlas_texture(self: *Self, op: *const phx.Graphics.CompositeGlyp
     c.glTexImage2D(c.GL_TEXTURE_2D, 0, c.GL_R8, @intCast(op.atlas_width), @intCast(op.atlas_height), 0, c.GL_RED, c.GL_UNSIGNED_BYTE, op.atlas_data.ptr);
     c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, c.GL_NEAREST);
     c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_NEAREST);
+    // Atlas stores coverage in the red channel; swizzle so shader sees it as alpha.
+    c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_SWIZZLE_A, c.GL_RED);
     c.glBindTexture(c.GL_TEXTURE_2D, 0);
 
     gop.value_ptr.version = op.atlas_version;
@@ -1964,7 +1966,7 @@ fn perform_composite_glyphs(self: *Self, op: *phx.Graphics.CompositeGlyphsOperat
             c.glMultiTexCoord2f(c.GL_TEXTURE4, 0, 0);
 
             const dx: f32 = @floatFromInt(@as(i32, glyph.dst_x) + cx);
-            const dy: f32 = @floatFromInt(@as(i32, glyph.dst_y) + cy);
+            const dy: f32 = @as(f32, @floatFromInt(@as(i32, @intCast(dst.height)))) - @as(f32, @floatFromInt(@as(i32, glyph.dst_y) + cy));
             c.glVertex2f(dx, dy);
         }
     }

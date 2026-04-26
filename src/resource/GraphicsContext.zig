@@ -1,7 +1,22 @@
+const std = @import("std");
 const phx = @import("../phoenix.zig");
 const x11 = phx.x11;
 
 const Self = @This();
+
+pub const Rectangle = struct {
+    x: i16,
+    y: i16,
+    width: x11.Card16,
+    height: x11.Card16,
+};
+
+pub const ClipOrdering = enum(x11.Card8) {
+    unsorted = 0,
+    y_sorted = 1,
+    yx_sorted = 2,
+    yx_banded = 3,
+};
 
 id: x11.GContextId,
 /// Drawable the GC was created against. Only used for matching depth/screen
@@ -13,3 +28,10 @@ drawable: x11.DrawableId,
 graphics_exposures: bool = true,
 clip_x_origin: i16 = 0,
 clip_y_origin: i16 = 0,
+clip_ordering: ClipOrdering = .unsorted,
+clip_rectangles: ?[]Rectangle = null,
+allocator: std.mem.Allocator,
+
+pub fn deinit(self: *Self) void {
+    if (self.clip_rectangles) |rects| self.allocator.free(rects);
+}

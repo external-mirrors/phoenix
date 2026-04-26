@@ -44,6 +44,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .create_gc => create_gc(request_context),
         .change_gc => change_gc(request_context),
         .free_gc => free_gc(request_context),
+        .set_clip_rectangles => set_clip_rectangles(request_context),
         .copy_area => copy_area(request_context),
         .put_image => put_image(request_context),
         .create_colormap => create_colormap(request_context),
@@ -1589,6 +1590,7 @@ fn create_gc(request_context: *phx.RequestContext) !void {
     var gc = phx.GraphicsContext{
         .id = req.request.gc,
         .drawable = req.request.drawable,
+        .allocator = request_context.server.allocator,
     };
     apply_gc_value_list_create(&gc, &req.request);
 
@@ -1617,6 +1619,25 @@ fn free_gc(request_context: *phx.RequestContext) !void {
     }
 
     request_context.server.remove_resource(req.request.gc.to_id());
+}
+
+fn set_clip_rectangles(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.SetClipRectangles, request_context.allocator);
+    defer req.deinit();
+
+    const gc = request_context.server.get_graphics_context(req.request.gc) orelse {
+        std.log.err("SetClipRectangles: invalid gc {d}", .{req.request.gc});
+        return request_context.client.write_error(request_context, .g_context, @intFromEnum(req.request.gc));
+    };
+
+    const allocator = request_context.server.allocator;
+    const new_rects = try allocator.dupe(phx.GraphicsContext.Rectangle, req.request.rectangles.items);
+
+    if (gc.clip_rectangles) |old| allocator.free(old);
+    gc.clip_rectangles = new_rects;
+    gc.clip_ordering = req.request.ordering;
+    gc.clip_x_origin = req.request.clip_x_origin;
+    gc.clip_y_origin = req.request.clip_y_origin;
 }
 
 fn apply_gc_value_list_create(gc: *phx.GraphicsContext, req: *const Request.CreateGC) void {
@@ -2482,6 +2503,16 @@ pub const Request = struct {
                 return null;
             }
         }
+    };
+
+    pub const SetClipRectangles = struct {
+        opcode: phx.opcode.Major = .set_clip_rectangles,
+        ordering: phx.GraphicsContext.ClipOrdering,
+        length: x11.Card16,
+        gc: x11.GContextId,
+        clip_x_origin: i16,
+        clip_y_origin: i16,
+        rectangles: x11.ListOf(phx.GraphicsContext.Rectangle, .{ .length_field = "length", .length_field_type = .request_remainder }),
     };
 
     pub const FreeGC = struct {

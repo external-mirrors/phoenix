@@ -28,7 +28,8 @@ pub const Resource = union(enum) {
             .picture => |*item| item.deinit(),
             .cursor => |*item| item.deinit(),
             .glyph_set => |*item| item.deinit(),
-            .event_context, .colormap, .glx_context, .counter, .graphics_context => {},
+            .graphics_context => |*item| item.deinit(),
+            .event_context, .colormap, .glx_context, .counter => {},
         }
     }
 };

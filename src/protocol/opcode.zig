@@ -31,6 +31,7 @@ pub const Major = enum(x11.Card8) {
     free_pixmap = 54,
     create_gc = 55,
     change_gc = 56,
+    set_clip_rectangles = 59,
     free_gc = 60,
     copy_area = 62,
     put_image = 72,

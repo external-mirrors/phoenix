@@ -212,7 +212,7 @@ fn create_pixmap(request_context: *phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .value, req.request.depth);
     }
 
-    const drawable = request_context.server.get_drawable(req.request.drawable) orelse {
+    _ = request_context.server.get_drawable(req.request.drawable) orelse {
         std.log.err("MitShmCreatePixmap: invalid drawable {d}", .{req.request.drawable});
         return request_context.client.write_error(request_context, .drawable, req.request.drawable.to_id().to_int());
     };
@@ -227,15 +227,31 @@ fn create_pixmap(request_context: *phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .value, 0);
     }
 
-    const bpp = drawable.get_bpp();
-    const bytes_per_pixel: u32 = @max(1, @as(u32, bpp) / 8);
-    const stride: u32 = @as(u32, req.request.width) * bytes_per_pixel;
+    const bpp = depth_to_bpp(req.request.depth) orelse {
+        std.log.err("MitShmCreatePixmap: unsupported depth {d}", .{req.request.depth});
+        return request_context.client.write_error(request_context, .value, req.request.depth);
+    };
+    const scanline_pad: u32 = 32;
+    const row_bits = @as(u32, req.request.width) * bpp;
+    const stride: u32 = ((row_bits + scanline_pad - 1) / scanline_pad) * (scanline_pad / 8);
 
-    if (req.request.offset > shm_segment.size)
+    if (req.request.offset > shm_segment.size) {
+        std.log.err("MitShmCreatePixmap: offset is outside shm region. Offset: {d}, shm size: {d}", .{
+            req.request.offset,
+            shm_segment.size,
+        });
         return request_context.client.write_error(request_context, .value, req.request.offset);
+    }
 
-    if (stride > (shm_segment.size - req.request.offset) / req.request.height)
+    if (stride > (shm_segment.size - req.request.offset) / req.request.height) {
+        std.log.err("MitShmCreatePixmap: stride is larger than remaining data size. Stride: {d}, shm size: {d}, offset: {d}, height: {d}", .{
+            stride,
+            shm_segment.size,
+            req.request.offset,
+            req.request.height,
+        });
         return request_context.client.write_error(request_context, .value, req.request.offset);
+    }
 
     const import_dmabuf = phx.Graphics.DmabufImport{
         .fd = undefined,
@@ -260,6 +276,17 @@ fn create_pixmap(request_context: *phx.RequestContext) !void {
     errdefer pixmap.unref();
 
     try request_context.client.add_pixmap(pixmap);
+}
+
+fn depth_to_bpp(depth: u8) ?u8 {
+    return switch (depth) {
+        1 => 1,
+        4 => 4,
+        8 => 8,
+        15, 16 => 16,
+        24, 32 => 32,
+        else => null,
+    };
 }
 
 fn shm_access(request_context: *phx.RequestContext, shm_perm: *const phx.c.ipc_perm, read_only: bool) bool {

@@ -22,7 +22,9 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .composite => composite(request_context),
         .trapezoids => trapezoids(request_context),
         .create_glyph_set => create_glyph_set(request_context),
+        .free_glyph_set => free_glyph_set(request_context),
         .add_glyphs => add_glyphs(request_context),
+        .free_glyphs => free_glyphs(request_context),
         .composite_glyphs8 => composite_glyphs8(request_context),
         .fill_rectangles => fill_rectangles(request_context),
         .create_cursor => create_cursor(request_context),
@@ -997,6 +999,39 @@ fn render_depth_to_bpp(depth: u8) u8 {
     };
 }
 
+fn free_glyph_set(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.FreeGlyphSet, request_context.allocator);
+    defer req.deinit();
+
+    const glyph_set = request_context.server.get_glyph_set(req.request.glyphset) orelse {
+        std.log.err("RenderFreeGlyphSet: invalid glyph set {d}", .{@intFromEnum(req.request.glyphset)});
+        return request_context.client.write_error(request_context, .render_glyph_set, @intFromEnum(req.request.glyphset));
+    };
+
+    glyph_set.deinit();
+    request_context.server.remove_resource(req.request.glyphset.to_id());
+}
+
+fn free_glyphs(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.FreeGlyphs, request_context.allocator);
+    defer req.deinit();
+
+    const glyph_set = request_context.server.get_glyph_set(req.request.glyphset) orelse {
+        std.log.err("RenderFreeGlyphs: invalid glyph set {d}", .{@intFromEnum(req.request.glyphset)});
+        return request_context.client.write_error(request_context, .render_glyph_set, @intFromEnum(req.request.glyphset));
+    };
+
+    var removed_any = false;
+    for (req.request.glyphs.items) |glyph_id| {
+        if (glyph_set.glyphs.fetchRemove(glyph_id)) |old| {
+            glyph_set.allocator.free(old.value.data);
+            removed_any = true;
+        }
+    }
+
+    if (removed_any) glyph_set.mark_atlas_dirty();
+}
+
 fn create_glyph_set(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateGlyphSet, request_context.allocator);
     defer req.deinit();
@@ -1063,7 +1098,9 @@ const MinorOpcode = enum(x11.Card8) {
     composite = 8,
     trapezoids = 10,
     create_glyph_set = 17,
+    free_glyph_set = 19,
     add_glyphs = 20,
+    free_glyphs = 22,
     composite_glyphs8 = 23,
     fill_rectangles = 26,
     create_cursor = 27,
@@ -1520,6 +1557,13 @@ pub const Request = struct {
         format: PictFormatId,
     };
 
+    pub const FreeGlyphSet = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .free_glyph_set,
+        length: x11.Card16,
+        glyphset: GlyphSetId,
+    };
+
     pub const AddGlyphs = struct {
         major_opcode: phx.opcode.Major = .render,
         minor_opcode: MinorOpcode = .add_glyphs,
@@ -1529,6 +1573,14 @@ pub const Request = struct {
         glyphids: x11.ListOf(x11.Card32, .{ .length_field = "num_glyphs" }),
         glyphs: x11.ListOf(GlyphInfo, .{ .length_field = "num_glyphs" }),
         data: x11.ListOf(x11.Card8, .{ .length_field = "length", .length_field_type = .request_remainder }),
+    };
+
+    pub const FreeGlyphs = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .free_glyphs,
+        length: x11.Card16,
+        glyphset: GlyphSetId,
+        glyphs: x11.ListOf(x11.Card32, .{ .length_field = "length", .length_field_type = .request_remainder }),
     };
 
     pub const CompositeGlyphs8 = struct {

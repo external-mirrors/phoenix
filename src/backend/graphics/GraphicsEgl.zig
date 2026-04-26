@@ -458,7 +458,7 @@ fn create_graphics_windows_texture(self: *Self, graphics_window: *phx.Graphics.G
 }
 
 fn create_graphics_windows_textures_recursive(self: *Self, graphics_window: *phx.Graphics.GraphicsWindow) void {
-    if (graphics_window.texture_id == 0 or graphics_window.recreate_texture)
+    if (!graphics_window.input_only and (graphics_window.texture_id == 0 or graphics_window.recreate_texture))
         self.create_graphics_windows_texture(graphics_window);
 
     for (graphics_window.children.items) |child_window| {
@@ -612,6 +612,8 @@ fn perform_copy_area(self: *Self, op: *phx.Graphics.CopyAreaOperation) void {
     c.glLoadIdentity();
     c.glOrtho(0.0, @floatFromInt(dst.width), @floatFromInt(dst.height), 0.0, -1.0, 1.0);
     c.glMatrixMode(c.GL_MODELVIEW);
+    c.glTranslatef(0.0, @floatFromInt(dst.height), 0.0);
+    c.glScalef(1.0, -1.0, 1.0);
 
     c.glUseProgram(0);
     c.glBlendFunc(c.GL_ONE, c.GL_ZERO);
@@ -667,9 +669,8 @@ fn perform_present_pixmap(self: *Self, op: *phx.Graphics.PresentPixmapOperation)
 
     // TODO: Dont do this copy if the pixmap fills the whole window. Instead draw the pixmap as the window.
     // TODO: If there is a fullscreen window (with no transparency) then present the pixmap directly on the screen instead of any copying.
-    // TODO: Only clear window background before copying if the pixmap doesn't fill the whole window or has transparency.
+    // TODO: Clear window background before copying if the pixmap has transparency and doesn't fill the whole window.
     // TODO: Honor PresentPixmap valid_area / update_area regions for partial updates.
-    self.clear_graphics_window(op.window);
 
     if (op.window.width == 0 or op.window.height == 0)
         return;
@@ -720,6 +721,8 @@ fn perform_present_pixmap(self: *Self, op: *phx.Graphics.PresentPixmapOperation)
     c.glLoadIdentity();
     c.glOrtho(0.0, @floatFromInt(op.window.width), @floatFromInt(op.window.height), 0.0, -1.0, 1.0);
     c.glMatrixMode(c.GL_MODELVIEW);
+    c.glTranslatef(0.0, @floatFromInt(op.window.height), 0.0);
+    c.glScalef(1.0, -1.0, 1.0);
 
     c.glUseProgram(0);
     c.glBlendFunc(c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
@@ -744,13 +747,13 @@ fn perform_present_pixmap(self: *Self, op: *phx.Graphics.PresentPixmapOperation)
 
     c.glBegin(c.GL_QUADS);
     c.glTexCoord2f(tex_u0, tex_v0);
-    c.glVertex2f(vx0, vy0);
-    c.glTexCoord2f(tex_u1, tex_v0);
-    c.glVertex2f(vx1, vy0);
-    c.glTexCoord2f(tex_u1, tex_v1);
-    c.glVertex2f(vx1, vy1);
-    c.glTexCoord2f(tex_u0, tex_v1);
     c.glVertex2f(vx0, vy1);
+    c.glTexCoord2f(tex_u1, tex_v0);
+    c.glVertex2f(vx1, vy1);
+    c.glTexCoord2f(tex_u1, tex_v1);
+    c.glVertex2f(vx1, vy0);
+    c.glTexCoord2f(tex_u0, tex_v1);
+    c.glVertex2f(vx0, vy0);
     c.glEnd();
 
     c.glBindTexture(c.GL_TEXTURE_2D, 0);
@@ -790,6 +793,8 @@ fn perform_fill_rectangles(self: *Self, op: *phx.Graphics.FillRectanglesOperatio
     c.glLoadIdentity();
     c.glOrtho(0.0, @floatFromInt(target.width), @floatFromInt(target.height), 0.0, -1.0, 1.0);
     c.glMatrixMode(c.GL_MODELVIEW);
+    c.glTranslatef(0.0, @floatFromInt(target.height), 0.0);
+    c.glScalef(1.0, -1.0, 1.0);
 
     const blend = pict_op_blend_factors(op.op);
     c.glBlendFunc(blend.src, blend.dst);
@@ -887,6 +892,8 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
     c.glLoadIdentity();
     c.glOrtho(0.0, @floatFromInt(dst.width), @floatFromInt(dst.height), 0.0, -1.0, 1.0);
     c.glMatrixMode(c.GL_MODELVIEW);
+    c.glTranslatef(0.0, @floatFromInt(dst.height), 0.0);
+    c.glScalef(1.0, -1.0, 1.0);
 
     const blend = pict_op_blend_factors(op.op);
     c.glBlendFunc(blend.src, blend.dst);
@@ -1186,10 +1193,22 @@ fn render_graphics_windows(self: *Self, graphics_window: *phx.Graphics.GraphicsW
     const pos = @Vector(2, i32){ parent_pos[0] + graphics_window.x, parent_pos[1] + graphics_window.y };
     const size = @Vector(2, i32){ @intCast(graphics_window.width), @intCast(graphics_window.height) };
 
-    if (graphics_window.texture_id == 0 or !graphics_window.mapped)
+    if (!graphics_window.mapped)
         return;
 
     if (!rectangle_intersects(pos, size, parent_pos, parent_size))
+        return;
+
+    if (graphics_window.input_only) {
+        for (graphics_window.children.items) |child_window| {
+            const end_pos = @min(pos + size, parent_pos + parent_size);
+            const scissor_size = end_pos - pos;
+            self.render_graphics_windows(child_window, pos, scissor_size);
+        }
+        return;
+    }
+
+    if (graphics_window.texture_id == 0)
         return;
 
     const x: f32 = @floatFromInt(pos[0]);
@@ -1322,6 +1341,7 @@ pub fn create_window(self: *Self, window: *const phx.Window) !*phx.Graphics.Grap
         .height = window.attributes.geometry.height,
         .background_color = pixel_to_color_vec(window.attributes.background_pixel),
         .mapped = window.attributes.mapped,
+        .input_only = window.attributes.class == .input_only,
     };
 
     if (parent_window) |parent|
@@ -1650,6 +1670,8 @@ fn perform_trapezoids(self: *Self, op: *phx.Graphics.TrapezoidsOperation) void {
     c.glLoadIdentity();
     c.glOrtho(0.0, @floatFromInt(dst.width), @floatFromInt(dst.height), 0.0, -1.0, 1.0);
     c.glMatrixMode(c.GL_MODELVIEW);
+    c.glTranslatef(0.0, @floatFromInt(dst.height), 0.0);
+    c.glScalef(1.0, -1.0, 1.0);
 
     const blend = pict_op_blend_factors(op.op);
     c.glBlendFunc(blend.src, blend.dst);
@@ -1887,6 +1909,8 @@ fn perform_composite_glyphs(self: *Self, op: *phx.Graphics.CompositeGlyphsOperat
     c.glLoadIdentity();
     c.glOrtho(0.0, @floatFromInt(dst.width), @floatFromInt(dst.height), 0.0, -1.0, 1.0);
     c.glMatrixMode(c.GL_MODELVIEW);
+    c.glTranslatef(0.0, @floatFromInt(dst.height), 0.0);
+    c.glScalef(1.0, -1.0, 1.0);
 
     const blend = pict_op_blend_factors(op.op);
     c.glBlendFunc(blend.src, blend.dst);
@@ -1966,7 +1990,7 @@ fn perform_composite_glyphs(self: *Self, op: *phx.Graphics.CompositeGlyphsOperat
             c.glMultiTexCoord2f(c.GL_TEXTURE4, 0, 0);
 
             const dx: f32 = @floatFromInt(@as(i32, glyph.dst_x) + cx);
-            const dy: f32 = @as(f32, @floatFromInt(@as(i32, @intCast(dst.height)))) - @as(f32, @floatFromInt(@as(i32, glyph.dst_y) + cy));
+            const dy: f32 = @floatFromInt(@as(i32, glyph.dst_y) + cy);
             c.glVertex2f(dx, dy);
         }
     }

@@ -201,6 +201,7 @@ pub const GraphicsWindow = struct {
     height: u32,
     background_color: @Vector(4, f32),
     mapped: bool,
+    input_only: bool,
     delete: bool = false,
     recreate_texture: bool = true,
     children: std.ArrayListUnmanaged(*GraphicsWindow) = .empty,

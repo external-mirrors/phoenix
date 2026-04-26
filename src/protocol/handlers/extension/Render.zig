@@ -17,6 +17,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .query_version => query_version(request_context),
         .query_pict_formats => query_pict_formats(request_context),
         .create_picture => create_picture(request_context),
+        .change_picture => change_picture(request_context),
         .free_picture => free_picture(request_context),
         .composite => composite(request_context),
         .trapezoids => trapezoids(request_context),
@@ -242,63 +243,8 @@ fn create_picture(request_context: *phx.RequestContext) !void {
         .format = req.request.format,
     };
 
-    if (req.request.get_value(x11.Card8, "repeat")) |v| {
-        picture.repeat = std.meta.intToEnum(Repeat, v) catch |err| switch (err) {
-            error.InvalidEnumTag => return request_context.client.write_error(request_context, .value, v),
-        };
-    }
-
-    if (req.request.get_value(x11.Card32, "alpha_map")) |v| {
-        const alpha_map_id: PictureId = @enumFromInt(v);
-        if (alpha_map_id != .none and request_context.server.get_picture(alpha_map_id) == null) {
-            std.log.err("RenderCreatePicture: invalid alpha_map picture {d}", .{v});
-            return request_context.client.write_error(request_context, .render_picture, v);
-        }
-        picture.alpha_map = alpha_map_id;
-    }
-
-    if (req.request.get_value(i16, "alpha_x_origin")) |v| picture.alpha_x_origin = v;
-    if (req.request.get_value(i16, "alpha_y_origin")) |v| picture.alpha_y_origin = v;
-    if (req.request.get_value(i16, "clip_x_origin")) |v| picture.clip_x_origin = v;
-    if (req.request.get_value(i16, "clip_y_origin")) |v| picture.clip_y_origin = v;
-
-    if (req.request.get_value(x11.Card32, "clip_mask")) |v| {
-        const clip_mask_id: x11.PixmapId = @enumFromInt(v);
-        if (clip_mask_id != .none) {
-            const clip_pixmap = request_context.server.get_pixmap(clip_mask_id) orelse {
-                std.log.err("RenderCreatePicture: invalid clip_mask pixmap {d}", .{v});
-                return request_context.client.write_error(request_context, .pixmap, v);
-            };
-            if (clip_pixmap.dmabuf_data.depth != 1) {
-                std.log.err("RenderCreatePicture: clip_mask pixmap must have depth 1, got {d}", .{clip_pixmap.dmabuf_data.depth});
-                return request_context.client.write_error(request_context, .match, v);
-            }
-        }
-        picture.clip_mask = clip_mask_id;
-    }
-
-    if (req.request.get_value(bool, "graphics_exposure")) |v| picture.graphics_exposure = v;
-
-    if (req.request.get_value(x11.Card8, "subwindow_mode")) |v| {
-        picture.subwindow_mode = std.meta.intToEnum(SubwindowMode, v) catch |err| switch (err) {
-            error.InvalidEnumTag => return request_context.client.write_error(request_context, .value, v),
-        };
-    }
-
-    if (req.request.get_value(x11.Card8, "poly_edge")) |v| {
-        picture.poly_edge = std.meta.intToEnum(PolyEdge, v) catch |err| switch (err) {
-            error.InvalidEnumTag => return request_context.client.write_error(request_context, .value, v),
-        };
-    }
-
-    if (req.request.get_value(x11.Card8, "poly_mode")) |v| {
-        picture.poly_mode = std.meta.intToEnum(PolyMode, v) catch |err| switch (err) {
-            error.InvalidEnumTag => return request_context.client.write_error(request_context, .value, v),
-        };
-    }
-
-    if (req.request.get_value(x11.Card32, "dither")) |v| picture.dither = @enumFromInt(v);
-    if (req.request.get_value(bool, "component_alpha")) |v| picture.component_alpha = v;
+    if (!try apply_picture_values(request_context, &picture, &req.request, "RenderCreatePicture"))
+        return;
 
     switch (drawable.item) {
         .pixmap => |pixmap| pixmap.ref(),
@@ -307,6 +253,100 @@ fn create_picture(request_context: *phx.RequestContext) !void {
     errdefer picture.deinit();
 
     try request_context.client.add_picture(picture);
+}
+
+fn change_picture(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.ChangePicture, request_context.allocator);
+    defer req.deinit();
+
+    const picture = request_context.server.get_picture(req.request.picture) orelse {
+        std.log.err("RenderChangePicture: invalid picture {d}", .{@intFromEnum(req.request.picture)});
+        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.picture));
+    };
+
+    _ = try apply_picture_values(request_context, picture, &req.request, "RenderChangePicture");
+}
+
+fn apply_picture_values(
+    request_context: *phx.RequestContext,
+    picture: *phx.Picture,
+    request: anytype,
+    comptime op_name: []const u8,
+) !bool {
+    if (request.get_value(x11.Card8, "repeat")) |v| {
+        picture.repeat = std.meta.intToEnum(Repeat, v) catch |err| switch (err) {
+            error.InvalidEnumTag => {
+                try request_context.client.write_error(request_context, .value, v);
+                return false;
+            },
+        };
+    }
+
+    if (request.get_value(x11.Card32, "alpha_map")) |v| {
+        const alpha_map_id: PictureId = @enumFromInt(v);
+        if (alpha_map_id != .none and request_context.server.get_picture(alpha_map_id) == null) {
+            std.log.err("{s}: invalid alpha_map picture {d}", .{ op_name, v });
+            try request_context.client.write_error(request_context, .render_picture, v);
+            return false;
+        }
+        picture.alpha_map = alpha_map_id;
+    }
+
+    if (request.get_value(i16, "alpha_x_origin")) |v| picture.alpha_x_origin = v;
+    if (request.get_value(i16, "alpha_y_origin")) |v| picture.alpha_y_origin = v;
+    if (request.get_value(i16, "clip_x_origin")) |v| picture.clip_x_origin = v;
+    if (request.get_value(i16, "clip_y_origin")) |v| picture.clip_y_origin = v;
+
+    if (request.get_value(x11.Card32, "clip_mask")) |v| {
+        const clip_mask_id: x11.PixmapId = @enumFromInt(v);
+        if (clip_mask_id != .none) {
+            const clip_pixmap = request_context.server.get_pixmap(clip_mask_id) orelse {
+                std.log.err("{s}: invalid clip_mask pixmap {d}", .{ op_name, v });
+                try request_context.client.write_error(request_context, .pixmap, v);
+                return false;
+            };
+            if (clip_pixmap.dmabuf_data.depth != 1) {
+                std.log.err("{s}: clip_mask pixmap must have depth 1, got {d}", .{ op_name, clip_pixmap.dmabuf_data.depth });
+                try request_context.client.write_error(request_context, .match, v);
+                return false;
+            }
+        }
+        picture.clip_mask = clip_mask_id;
+    }
+
+    if (request.get_value(bool, "graphics_exposure")) |v| picture.graphics_exposure = v;
+
+    if (request.get_value(x11.Card8, "subwindow_mode")) |v| {
+        picture.subwindow_mode = std.meta.intToEnum(SubwindowMode, v) catch |err| switch (err) {
+            error.InvalidEnumTag => {
+                try request_context.client.write_error(request_context, .value, v);
+                return false;
+            },
+        };
+    }
+
+    if (request.get_value(x11.Card8, "poly_edge")) |v| {
+        picture.poly_edge = std.meta.intToEnum(PolyEdge, v) catch |err| switch (err) {
+            error.InvalidEnumTag => {
+                try request_context.client.write_error(request_context, .value, v);
+                return false;
+            },
+        };
+    }
+
+    if (request.get_value(x11.Card8, "poly_mode")) |v| {
+        picture.poly_mode = std.meta.intToEnum(PolyMode, v) catch |err| switch (err) {
+            error.InvalidEnumTag => {
+                try request_context.client.write_error(request_context, .value, v);
+                return false;
+            },
+        };
+    }
+
+    if (request.get_value(x11.Card32, "dither")) |v| picture.dither = @enumFromInt(v);
+    if (request.get_value(bool, "component_alpha")) |v| picture.component_alpha = v;
+
+    return true;
 }
 
 fn free_picture(request_context: *phx.RequestContext) !void {
@@ -772,6 +812,7 @@ const MinorOpcode = enum(x11.Card8) {
     query_version = 0,
     query_pict_formats = 1,
     create_picture = 4,
+    change_picture = 5,
     free_picture = 7,
     composite = 8,
     trapezoids = 10,
@@ -1248,6 +1289,23 @@ pub const Request = struct {
         value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
 
         pub fn get_value(self: *const CreatePicture, comptime T: type, comptime value_mask_field: []const u8) ?T {
+            if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
+                return downcast_integer(T, self.value_list.items[index]);
+            } else {
+                return null;
+            }
+        }
+    };
+
+    pub const ChangePicture = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .change_picture,
+        length: x11.Card16,
+        picture: PictureId,
+        value_mask: CreatePictureValueMask,
+        value_list: x11.ListOf(x11.Card32, .{ .length_field = "value_mask", .length_field_type = .bitmask }),
+
+        pub fn get_value(self: *const ChangePicture, comptime T: type, comptime value_mask_field: []const u8) ?T {
             if (self.value_mask.get_value_index_by_field(value_mask_field)) |index| {
                 return downcast_integer(T, self.value_list.items[index]);
             } else {

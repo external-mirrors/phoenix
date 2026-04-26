@@ -4,7 +4,12 @@ const x11 = phx.x11;
 const Self = @This();
 
 id: phx.Render.PictureId,
-drawable: phx.Drawable,
+/// Set for pictures backed by a window or pixmap. Null for procedural sources
+/// like CreateSolidFill, where `solid_fill_color` is set instead.
+drawable: ?phx.Drawable = null,
+/// Set for solid-fill pictures. When non-null, the picture has no drawable
+/// and is sampled as a constant color regardless of coordinate.
+solid_fill_color: ?phx.Render.Color = null,
 format: phx.Render.PictFormatId,
 repeat: phx.Render.Repeat = .none,
 alpha_map: phx.Render.PictureId = .none,
@@ -22,8 +27,10 @@ component_alpha: bool = false,
 filter: phx.Render.Filter = .nearest,
 
 pub fn deinit(self: *Self) void {
-    switch (self.drawable.item) {
-        .pixmap => |pixmap| pixmap.unref(),
-        .window => {},
+    if (self.drawable) |drawable| {
+        switch (drawable.item) {
+            .pixmap => |pixmap| pixmap.unref(),
+            .window => {},
+        }
     }
 }

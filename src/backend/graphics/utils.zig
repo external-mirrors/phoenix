@@ -20,6 +20,8 @@ pub const mask_fragment_shader_src: [*c]const u8 =
     \\uniform sampler2D u_src_alpha_map;
     \\uniform bool u_use_src_alpha_map;
     \\uniform vec4 u_src_alpha_swizzle;
+    \\uniform bool u_src_is_solid;
+    \\uniform vec4 u_src_solid_color;
     \\
     \\uniform sampler2D u_mask;
     \\uniform bool u_use_mask;
@@ -27,22 +29,34 @@ pub const mask_fragment_shader_src: [*c]const u8 =
     \\uniform sampler2D u_mask_alpha_map;
     \\uniform bool u_use_mask_alpha_map;
     \\uniform vec4 u_mask_alpha_swizzle;
+    \\uniform bool u_mask_is_solid;
+    \\uniform vec4 u_mask_solid_color;
     \\
     \\uniform sampler2D u_clip_mask;
     \\uniform bool u_use_clip_mask;
     \\uniform vec4 u_clip_swizzle;
     \\
     \\void main() {
-    \\    vec4 src = texture2D(u_src, gl_TexCoord[0].st);
-    \\    if (u_use_src_alpha_map) {
-    \\        src.a = dot(texture2D(u_src_alpha_map, gl_TexCoord[1].st), u_src_alpha_swizzle);
+    \\    vec4 src;
+    \\    if (u_src_is_solid) {
+    \\        src = u_src_solid_color;
+    \\    } else {
+    \\        src = texture2D(u_src, gl_TexCoord[0].st);
+    \\        if (u_use_src_alpha_map) {
+    \\            src.a = dot(texture2D(u_src_alpha_map, gl_TexCoord[1].st), u_src_alpha_swizzle);
+    \\        }
     \\    }
     \\
     \\    vec4 result = src;
     \\    if (u_use_mask) {
-    \\        vec4 mask = texture2D(u_mask, gl_TexCoord[2].st);
-    \\        if (u_use_mask_alpha_map) {
-    \\            mask.a = dot(texture2D(u_mask_alpha_map, gl_TexCoord[3].st), u_mask_alpha_swizzle);
+    \\        vec4 mask;
+    \\        if (u_mask_is_solid) {
+    \\            mask = u_mask_solid_color;
+    \\        } else {
+    \\            mask = texture2D(u_mask, gl_TexCoord[2].st);
+    \\            if (u_use_mask_alpha_map) {
+    \\                mask.a = dot(texture2D(u_mask_alpha_map, gl_TexCoord[3].st), u_mask_alpha_swizzle);
+    \\            }
     \\        }
     \\        if (u_component_alpha) {
     \\            result = src * mask;

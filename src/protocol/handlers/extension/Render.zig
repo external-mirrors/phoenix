@@ -22,6 +22,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .fill_rectangles => fill_rectangles(request_context),
         .create_cursor => create_cursor(request_context),
         .set_picture_filter => set_picture_filter(request_context),
+        .create_solid_fill => create_solid_fill(request_context),
     };
 }
 
@@ -345,6 +346,13 @@ fn composite(request_context: *phx.RequestContext) !void {
         };
     }
 
+    // Solid-fill pictures cannot be Composite destinations — they have no
+    // backing storage to write into.
+    const dst_drawable = dst.drawable orelse {
+        std.log.err("RenderComposite: dst picture {d} has no drawable (solid fill?)", .{@intFromEnum(req.request.dst)});
+        return request_context.client.write_error(request_context, .match, 0);
+    };
+
     if (req.request.width == 0 or req.request.height == 0)
         return;
 
@@ -354,6 +362,7 @@ fn composite(request_context: *phx.RequestContext) !void {
 
     try request_context.server.display.composite(&.{
         .src_drawable = src.drawable,
+        .src_solid_color = src.solid_fill_color,
         .src_alpha_map_drawable = src_alpha.drawable,
         .src_alpha_x_origin = src_alpha.x_origin,
         .src_alpha_y_origin = src_alpha.y_origin,
@@ -362,6 +371,7 @@ fn composite(request_context: *phx.RequestContext) !void {
         .src_filter = src.filter,
 
         .mask_drawable = if (mask) |m| m.drawable else null,
+        .mask_solid_color = if (mask) |m| m.solid_fill_color else null,
         .mask_alpha_map_drawable = mask_alpha.drawable,
         .mask_alpha_x_origin = mask_alpha.x_origin,
         .mask_alpha_y_origin = mask_alpha.y_origin,
@@ -370,7 +380,7 @@ fn composite(request_context: *phx.RequestContext) !void {
         .mask_component_alpha = if (mask) |m| m.component_alpha else false,
         .mask_filter = if (mask) |m| m.filter else .nearest,
 
-        .dst_drawable = dst.drawable,
+        .dst_drawable = dst_drawable,
         .clip_mask_drawable = clip.drawable,
         .clip_x_origin = clip.x_origin,
         .clip_y_origin = clip.y_origin,
@@ -399,11 +409,14 @@ const AlphaMapBinding = struct {
 fn resolve_alpha_map(request_context: *phx.RequestContext, picture: *phx.Picture) AlphaMapBinding {
     if (picture.alpha_map == .none) return .{};
     const alpha_picture = request_context.server.get_picture(picture.alpha_map) orelse return .{};
+    // Solid-fill pictures have no drawable; they aren't sensible as an alpha
+    // map. Treat as if no alpha map were set.
+    const alpha_drawable = alpha_picture.drawable orelse return .{};
     return .{
-        .drawable = alpha_picture.drawable,
+        .drawable = alpha_drawable,
         .x_origin = picture.alpha_x_origin,
         .y_origin = picture.alpha_y_origin,
-        .swizzle = alpha_swizzle_for_depth(alpha_picture.drawable.get_depth()),
+        .swizzle = alpha_swizzle_for_depth(alpha_drawable.get_depth()),
         .filter = alpha_picture.filter,
     };
 }
@@ -441,11 +454,16 @@ fn fill_rectangles(request_context: *phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.dst));
     };
 
+    const dst_drawable = picture.drawable orelse {
+        std.log.err("RenderFillRectangles: dst picture {d} has no drawable (solid fill?)", .{@intFromEnum(req.request.dst)});
+        return request_context.client.write_error(request_context, .match, 0);
+    };
+
     if (req.request.rects.items.len == 0)
         return;
 
     try request_context.server.display.fill_rectangles(&.{
-        .drawable = picture.drawable,
+        .drawable = dst_drawable,
         .op = req.request.op,
         .color = req.request.color,
         .rects = req.request.rects.items,
@@ -469,6 +487,22 @@ fn create_cursor(request_context: *phx.RequestContext) !void {
     };
 
     try request_context.client.add_cursor(cursor);
+}
+
+fn create_solid_fill(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.CreateSolidFill, request_context.allocator);
+    defer req.deinit();
+
+    // A solid-fill picture has no drawable: it's a procedural source that
+    // returns `color` at every coordinate. The format is implicitly argb32.
+    const picture = phx.Picture{
+        .id = req.request.pid,
+        .drawable = null,
+        .solid_fill_color = req.request.color,
+        .format = .argb32,
+    };
+
+    try request_context.client.add_picture(picture);
 }
 
 fn set_picture_filter(request_context: *phx.RequestContext) !void {
@@ -502,6 +536,7 @@ const MinorOpcode = enum(x11.Card8) {
     fill_rectangles = 26,
     create_cursor = 27,
     set_picture_filter = 30,
+    create_solid_fill = 33,
 };
 
 /// Texture sampling filter selected via Render's SetPictureFilter. Maps the
@@ -852,6 +887,14 @@ pub const Request = struct {
         dst: PictureId,
         color: Color,
         rects: x11.ListOf(Rectangle, .{ .length_field = "length", .length_field_type = .request_remainder }),
+    };
+
+    pub const CreateSolidFill = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .create_solid_fill,
+        length: x11.Card16,
+        pid: PictureId,
+        color: Color,
     };
 
     pub const SetPictureFilter = struct {

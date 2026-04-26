@@ -77,12 +77,16 @@ const MaskProgram = struct {
     loc_src_alpha_map: c.GLint = -1,
     loc_use_src_alpha_map: c.GLint = -1,
     loc_src_alpha_swizzle: c.GLint = -1,
+    loc_src_is_solid: c.GLint = -1,
+    loc_src_solid_color: c.GLint = -1,
     loc_mask: c.GLint = -1,
     loc_use_mask: c.GLint = -1,
     loc_component_alpha: c.GLint = -1,
     loc_mask_alpha_map: c.GLint = -1,
     loc_use_mask_alpha_map: c.GLint = -1,
     loc_mask_alpha_swizzle: c.GLint = -1,
+    loc_mask_is_solid: c.GLint = -1,
+    loc_mask_solid_color: c.GLint = -1,
     loc_clip_mask: c.GLint = -1,
     loc_use_clip_mask: c.GLint = -1,
     loc_clip_swizzle: c.GLint = -1,
@@ -95,12 +99,16 @@ const MaskProgram = struct {
             .loc_src_alpha_map = c.glGetUniformLocation(program, "u_src_alpha_map"),
             .loc_use_src_alpha_map = c.glGetUniformLocation(program, "u_use_src_alpha_map"),
             .loc_src_alpha_swizzle = c.glGetUniformLocation(program, "u_src_alpha_swizzle"),
+            .loc_src_is_solid = c.glGetUniformLocation(program, "u_src_is_solid"),
+            .loc_src_solid_color = c.glGetUniformLocation(program, "u_src_solid_color"),
             .loc_mask = c.glGetUniformLocation(program, "u_mask"),
             .loc_use_mask = c.glGetUniformLocation(program, "u_use_mask"),
             .loc_component_alpha = c.glGetUniformLocation(program, "u_component_alpha"),
             .loc_mask_alpha_map = c.glGetUniformLocation(program, "u_mask_alpha_map"),
             .loc_use_mask_alpha_map = c.glGetUniformLocation(program, "u_use_mask_alpha_map"),
             .loc_mask_alpha_swizzle = c.glGetUniformLocation(program, "u_mask_alpha_swizzle"),
+            .loc_mask_is_solid = c.glGetUniformLocation(program, "u_mask_is_solid"),
+            .loc_mask_solid_color = c.glGetUniformLocation(program, "u_mask_solid_color"),
             .loc_clip_mask = c.glGetUniformLocation(program, "u_clip_mask"),
             .loc_use_clip_mask = c.glGetUniformLocation(program, "u_use_clip_mask"),
             .loc_clip_swizzle = c.glGetUniformLocation(program, "u_clip_swizzle"),
@@ -650,16 +658,26 @@ fn perform_fill_rectangles(self: *Self, op: *phx.Graphics.FillRectanglesOperatio
 fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
     defer self.append_message(.{ .composite_finished = .{ .operation = op.* } });
 
-    const src = get_drawable_target_size(op.src_drawable);
+    const src_is_solid = op.src_solid_color != null;
+    const src = if (op.src_drawable) |d| get_drawable_target_size(d) else null;
     const dst = get_drawable_target_size(op.dst_drawable);
-    if (src.texture_id == 0 or dst.texture_id == 0 or dst.width == 0 or dst.height == 0 or src.width == 0 or src.height == 0)
+    // Solid sources don't need a backing texture; size checks below skip src.
+    if (dst.texture_id == 0 or dst.width == 0 or dst.height == 0)
         return;
+    if (!src_is_solid) {
+        if (src == null or src.?.texture_id == 0 or src.?.width == 0 or src.?.height == 0)
+            return;
+    }
 
-    const src_amap = if (op.src_alpha_map_drawable) |d| get_drawable_target_size(d) else null;
+    const src_amap = if (!src_is_solid and op.src_alpha_map_drawable != null)
+        get_drawable_target_size(op.src_alpha_map_drawable.?)
+    else
+        null;
     const use_src_amap = if (src_amap) |a| (a.texture_id != 0 and a.width != 0 and a.height != 0) else false;
 
+    const mask_is_solid = op.mask_solid_color != null;
     const mask = if (op.mask_drawable) |d| get_drawable_target_size(d) else null;
-    const use_mask = if (mask) |m| (m.texture_id != 0 and m.width != 0 and m.height != 0) else false;
+    const use_mask = mask_is_solid or (if (mask) |m| (m.texture_id != 0 and m.width != 0 and m.height != 0) else false);
 
     const mask_amap = if (op.mask_alpha_map_drawable) |d| get_drawable_target_size(d) else null;
     const use_mask_amap = use_mask and if (mask_amap) |a| (a.texture_id != 0 and a.width != 0 and a.height != 0) else false;
@@ -700,9 +718,11 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
     const mask_alpha_gl_filter = filter_to_gl(op.mask_alpha_filter);
 
     c.glActiveTexture(c.GL_TEXTURE0);
-    c.glBindTexture(c.GL_TEXTURE_2D, src.texture_id);
-    c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, src_gl_filter);
-    c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, src_gl_filter);
+    c.glBindTexture(c.GL_TEXTURE_2D, if (src) |s| s.texture_id else 0);
+    if (!src_is_solid) {
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, src_gl_filter);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, src_gl_filter);
+    }
     c.glActiveTexture(c.GL_TEXTURE1);
     c.glBindTexture(c.GL_TEXTURE_2D, if (use_src_amap) src_amap.?.texture_id else 0);
     if (use_src_amap) {
@@ -710,8 +730,8 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
         c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, src_alpha_gl_filter);
     }
     c.glActiveTexture(c.GL_TEXTURE2);
-    c.glBindTexture(c.GL_TEXTURE_2D, if (use_mask) mask.?.texture_id else 0);
-    if (use_mask) {
+    c.glBindTexture(c.GL_TEXTURE_2D, if (mask_is_solid) 0 else if (mask) |m| m.texture_id else 0);
+    if (use_mask and !mask_is_solid) {
         c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, mask_gl_filter);
         c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, mask_gl_filter);
     }
@@ -727,15 +747,27 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
 
     c.glUniform1i(self.mask_program.loc_use_src_alpha_map, if (use_src_amap) 1 else 0);
     c.glUniform4fv(self.mask_program.loc_src_alpha_swizzle, 1, &op.src_alpha_swizzle);
+    c.glUniform1i(self.mask_program.loc_src_is_solid, if (src_is_solid) 1 else 0);
+    if (op.src_solid_color) |col| {
+        const rgba = render_color_to_rgba(col);
+        c.glUniform4fv(self.mask_program.loc_src_solid_color, 1, &rgba);
+    }
     c.glUniform1i(self.mask_program.loc_use_mask, if (use_mask) 1 else 0);
     c.glUniform1i(self.mask_program.loc_component_alpha, if (op.mask_component_alpha) 1 else 0);
     c.glUniform1i(self.mask_program.loc_use_mask_alpha_map, if (use_mask_amap) 1 else 0);
     c.glUniform4fv(self.mask_program.loc_mask_alpha_swizzle, 1, &op.mask_alpha_swizzle);
+    c.glUniform1i(self.mask_program.loc_mask_is_solid, if (mask_is_solid) 1 else 0);
+    if (op.mask_solid_color) |col| {
+        const rgba = render_color_to_rgba(col);
+        c.glUniform4fv(self.mask_program.loc_mask_solid_color, 1, &rgba);
+    }
     c.glUniform1i(self.mask_program.loc_use_clip_mask, if (use_clip) 1 else 0);
     c.glUniform4fv(self.mask_program.loc_clip_swizzle, 1, &op.clip_swizzle);
 
-    const src_w_f: f32 = @floatFromInt(src.width);
-    const src_h_f: f32 = @floatFromInt(src.height);
+    // For solid sources the texcoords are unused but still emitted to keep
+    // the vertex format consistent. Pick benign zeros via a 1x1 fake size.
+    const src_w_f: f32 = if (src) |s| @floatFromInt(s.width) else 1.0;
+    const src_h_f: f32 = if (src) |s| @floatFromInt(s.height) else 1.0;
 
     // Compute texcoords at each of the 4 corners of the dst rect (1:1 src->dst mapping)
     const corners = [_]@Vector(2, i32){
@@ -824,6 +856,16 @@ fn filter_to_gl(filter: phx.Render.Filter) c.GLint {
     return switch (filter) {
         .nearest => c.GL_NEAREST,
         .bilinear => c.GL_LINEAR,
+    };
+}
+
+fn render_color_to_rgba(color: phx.Render.Color) [4]f32 {
+    const max: f32 = 65535.0;
+    return .{
+        @as(f32, @floatFromInt(color.red)) / max,
+        @as(f32, @floatFromInt(color.green)) / max,
+        @as(f32, @floatFromInt(color.blue)) / max,
+        @as(f32, @floatFromInt(color.alpha)) / max,
     };
 }
 
@@ -1161,7 +1203,8 @@ pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void 
     self.mutex.lock();
     defer self.mutex.unlock();
 
-    var src_drawable = to_graphics_drawable(op.src_drawable);
+    var src_drawable: ?phx.Graphics.GraphicsDrawable =
+        if (op.src_drawable) |d| to_graphics_drawable(d) else null;
     var dst_drawable = to_graphics_drawable(op.dst_drawable);
     var src_alpha_map_drawable: ?phx.Graphics.GraphicsDrawable =
         if (op.src_alpha_map_drawable) |d| to_graphics_drawable(d) else null;
@@ -1174,6 +1217,7 @@ pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void 
 
     try self.operations.append(self.allocator, .{ .composite = .{
         .src_drawable = src_drawable,
+        .src_solid_color = op.src_solid_color,
         .src_alpha_map_drawable = src_alpha_map_drawable,
         .src_alpha_x_origin = op.src_alpha_x_origin,
         .src_alpha_y_origin = op.src_alpha_y_origin,
@@ -1182,6 +1226,7 @@ pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void 
         .src_filter = op.src_filter,
 
         .mask_drawable = mask_drawable,
+        .mask_solid_color = op.mask_solid_color,
         .mask_alpha_map_drawable = mask_alpha_map_drawable,
         .mask_alpha_x_origin = op.mask_alpha_x_origin,
         .mask_alpha_y_origin = op.mask_alpha_y_origin,
@@ -1207,7 +1252,7 @@ pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void 
         .height = op.height,
     } });
 
-    src_drawable.ref();
+    if (src_drawable) |*d| d.ref();
     dst_drawable.ref();
     if (src_alpha_map_drawable) |*d| d.ref();
     if (mask_drawable) |*d| d.ref();

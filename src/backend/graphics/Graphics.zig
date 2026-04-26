@@ -252,7 +252,12 @@ pub const CopyAreaArguments = struct {
 };
 
 pub const CompositeArguments = struct {
-    src_drawable: phx.Drawable,
+    /// Either `src_drawable` or `src_solid_color` is set (never both, never
+    /// neither). Solid sources come from RenderCreateSolidFill and are sampled
+    /// as a constant color — no texture is bound and `src_filter`/alpha map
+    /// fields are ignored.
+    src_drawable: ?phx.Drawable,
+    src_solid_color: ?phx.Render.Color,
     src_alpha_map_drawable: ?phx.Drawable,
     src_alpha_x_origin: i16,
     src_alpha_y_origin: i16,
@@ -260,7 +265,10 @@ pub const CompositeArguments = struct {
     src_alpha_filter: phx.Render.Filter,
     src_filter: phx.Render.Filter,
 
+    /// `mask_drawable`/`mask_solid_color` mirror the src split. When the mask
+    /// reference is .none, both are null and no masking is applied.
     mask_drawable: ?phx.Drawable,
+    mask_solid_color: ?phx.Render.Color,
     mask_alpha_map_drawable: ?phx.Drawable,
     mask_alpha_x_origin: i16,
     mask_alpha_y_origin: i16,
@@ -287,7 +295,8 @@ pub const CompositeArguments = struct {
 };
 
 pub const CompositeOperation = struct {
-    src_drawable: GraphicsDrawable,
+    src_drawable: ?GraphicsDrawable,
+    src_solid_color: ?phx.Render.Color,
     src_alpha_map_drawable: ?GraphicsDrawable,
     src_alpha_x_origin: i16,
     src_alpha_y_origin: i16,
@@ -296,6 +305,7 @@ pub const CompositeOperation = struct {
     src_filter: phx.Render.Filter,
 
     mask_drawable: ?GraphicsDrawable,
+    mask_solid_color: ?phx.Render.Color,
     mask_alpha_map_drawable: ?GraphicsDrawable,
     mask_alpha_x_origin: i16,
     mask_alpha_y_origin: i16,
@@ -321,7 +331,7 @@ pub const CompositeOperation = struct {
     height: x11.Card16,
 
     pub fn unref(self: *CompositeOperation) void {
-        self.src_drawable.unref();
+        if (self.src_drawable) |*d| d.unref();
         if (self.src_alpha_map_drawable) |*d| d.unref();
         if (self.mask_drawable) |*d| d.unref();
         if (self.mask_alpha_map_drawable) |*d| d.unref();
@@ -392,7 +402,7 @@ pub const GraphicsOperation = union(enum) {
             .copy_area => |op| return matches(op.src_drawable, window) or matches(op.dst_drawable, window),
             .fill_rectangles => |op| return matches(op.drawable, window),
             .composite => |op| {
-                if (matches(op.src_drawable, window)) return true;
+                if (op.src_drawable) |d| if (matches(d, window)) return true;
                 if (matches(op.dst_drawable, window)) return true;
                 if (op.src_alpha_map_drawable) |d| if (matches(d, window)) return true;
                 if (op.mask_drawable) |d| if (matches(d, window)) return true;

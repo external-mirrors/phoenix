@@ -350,19 +350,23 @@ pub const MaskOp = union(enum) {
 
 pub const CompositeArguments = struct {
     src: Src,
+    src_transform: [9]f32,
     src_alpha_map_drawable: ?phx.Drawable,
     src_alpha_x_origin: i16,
     src_alpha_y_origin: i16,
     src_alpha_swizzle: [4]f32,
     src_alpha_filter: phx.Render.Filter,
+    src_alpha_transform: [9]f32,
     src_filter: phx.Render.Filter,
 
     mask: ?Mask,
+    mask_transform: [9]f32,
     mask_alpha_map_drawable: ?phx.Drawable,
     mask_alpha_x_origin: i16,
     mask_alpha_y_origin: i16,
     mask_alpha_swizzle: [4]f32,
     mask_alpha_filter: phx.Render.Filter,
+    mask_alpha_transform: [9]f32,
     mask_component_alpha: bool,
     mask_filter: phx.Render.Filter,
 
@@ -385,19 +389,23 @@ pub const CompositeArguments = struct {
 
 pub const CompositeOperation = struct {
     src: SrcOp,
+    src_transform: [9]f32,
     src_alpha_map_drawable: ?GraphicsDrawable,
     src_alpha_x_origin: i16,
     src_alpha_y_origin: i16,
     src_alpha_swizzle: [4]f32,
     src_alpha_filter: phx.Render.Filter,
+    src_alpha_transform: [9]f32,
     src_filter: phx.Render.Filter,
 
     mask: ?MaskOp,
+    mask_transform: [9]f32,
     mask_alpha_map_drawable: ?GraphicsDrawable,
     mask_alpha_x_origin: i16,
     mask_alpha_y_origin: i16,
     mask_alpha_swizzle: [4]f32,
     mask_alpha_filter: phx.Render.Filter,
+    mask_alpha_transform: [9]f32,
     mask_component_alpha: bool,
     mask_filter: phx.Render.Filter,
 
@@ -435,11 +443,13 @@ pub const TrapezoidQuad = struct {
 
 pub const TrapezoidsArguments = struct {
     src: Src,
+    src_transform: [9]f32,
     src_alpha_map_drawable: ?phx.Drawable,
     src_alpha_x_origin: i16,
     src_alpha_y_origin: i16,
     src_alpha_swizzle: [4]f32,
     src_alpha_filter: phx.Render.Filter,
+    src_alpha_transform: [9]f32,
     src_filter: phx.Render.Filter,
 
     dst_drawable: phx.Drawable,
@@ -460,11 +470,13 @@ pub const TrapezoidsArguments = struct {
 
 pub const TrapezoidsOperation = struct {
     src: SrcOp,
+    src_transform: [9]f32,
     src_alpha_map_drawable: ?GraphicsDrawable,
     src_alpha_x_origin: i16,
     src_alpha_y_origin: i16,
     src_alpha_swizzle: [4]f32,
     src_alpha_filter: phx.Render.Filter,
+    src_alpha_transform: [9]f32,
     src_filter: phx.Render.Filter,
 
     dst_drawable: GraphicsDrawable,
@@ -502,6 +514,7 @@ pub const GlyphCommand = struct {
 
 pub const CompositeGlyphsArguments = struct {
     src: Src,
+    src_transform: [9]f32,
     src_filter: phx.Render.Filter,
     dst_drawable: phx.Drawable,
     op: phx.Render.PictOp,
@@ -519,6 +532,7 @@ pub const CompositeGlyphsArguments = struct {
 
 pub const CompositeGlyphsOperation = struct {
     src: SrcOp,
+    src_transform: [9]f32,
     src_filter: phx.Render.Filter,
     dst_drawable: GraphicsDrawable,
     op: phx.Render.PictOp,

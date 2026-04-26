@@ -81,6 +81,7 @@ poly_mode: phx.Render.PolyMode = .precise,
 dither: x11.AtomId = @enumFromInt(0),
 component_alpha: bool = false,
 filter: phx.Render.Filter = .nearest,
+transform: phx.Render.Transform = .identity,
 
 pub fn deinit(self: *Self) void {
     if (self.drawable) |drawable| {

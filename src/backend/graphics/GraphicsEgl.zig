@@ -860,33 +860,37 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
         const cx: i32 = corner[0];
         const cy: i32 = corner[1];
 
-        const sx: f32 = @as(f32, @floatFromInt(@as(i32, op.src_x) + cx)) / src_w_f;
-        const sy: f32 = @as(f32, @floatFromInt(@as(i32, op.src_y) + cy)) / src_h_f;
-        c.glMultiTexCoord2f(c.GL_TEXTURE0, sx, sy);
+        const sx_pix: f32 = @floatFromInt(@as(i32, op.src_x) + cx);
+        const sy_pix: f32 = @floatFromInt(@as(i32, op.src_y) + cy);
+        const sxy = apply_transform(op.src_transform, sx_pix, sy_pix);
+        c.glMultiTexCoord2f(c.GL_TEXTURE0, sxy[0] / src_w_f, sxy[1] / src_h_f);
 
         if (use_src_amap) {
             const a = src_amap.?;
-            const ax: f32 = @as(f32, @floatFromInt(@as(i32, op.src_x) + cx - @as(i32, op.src_alpha_x_origin))) / @as(f32, @floatFromInt(a.width));
-            const ay: f32 = @as(f32, @floatFromInt(@as(i32, op.src_y) + cy - @as(i32, op.src_alpha_y_origin))) / @as(f32, @floatFromInt(a.height));
-            c.glMultiTexCoord2f(c.GL_TEXTURE1, ax, ay);
+            const ax_pix: f32 = @floatFromInt(@as(i32, op.src_x) + cx - @as(i32, op.src_alpha_x_origin));
+            const ay_pix: f32 = @floatFromInt(@as(i32, op.src_y) + cy - @as(i32, op.src_alpha_y_origin));
+            const axy = apply_transform(op.src_alpha_transform, ax_pix, ay_pix);
+            c.glMultiTexCoord2f(c.GL_TEXTURE1, axy[0] / @as(f32, @floatFromInt(a.width)), axy[1] / @as(f32, @floatFromInt(a.height)));
         } else {
             c.glMultiTexCoord2f(c.GL_TEXTURE1, 0, 0);
         }
 
         if (use_mask) {
             const m = mask.?;
-            const mx: f32 = @as(f32, @floatFromInt(@as(i32, op.mask_x) + cx)) / @as(f32, @floatFromInt(m.width));
-            const my: f32 = @as(f32, @floatFromInt(@as(i32, op.mask_y) + cy)) / @as(f32, @floatFromInt(m.height));
-            c.glMultiTexCoord2f(c.GL_TEXTURE2, mx, my);
+            const mx_pix: f32 = @floatFromInt(@as(i32, op.mask_x) + cx);
+            const my_pix: f32 = @floatFromInt(@as(i32, op.mask_y) + cy);
+            const mxy = apply_transform(op.mask_transform, mx_pix, my_pix);
+            c.glMultiTexCoord2f(c.GL_TEXTURE2, mxy[0] / @as(f32, @floatFromInt(m.width)), mxy[1] / @as(f32, @floatFromInt(m.height)));
         } else {
             c.glMultiTexCoord2f(c.GL_TEXTURE2, 0, 0);
         }
 
         if (use_mask_amap) {
             const a = mask_amap.?;
-            const ax: f32 = @as(f32, @floatFromInt(@as(i32, op.mask_x) + cx - @as(i32, op.mask_alpha_x_origin))) / @as(f32, @floatFromInt(a.width));
-            const ay: f32 = @as(f32, @floatFromInt(@as(i32, op.mask_y) + cy - @as(i32, op.mask_alpha_y_origin))) / @as(f32, @floatFromInt(a.height));
-            c.glMultiTexCoord2f(c.GL_TEXTURE3, ax, ay);
+            const ax_pix: f32 = @floatFromInt(@as(i32, op.mask_x) + cx - @as(i32, op.mask_alpha_x_origin));
+            const ay_pix: f32 = @floatFromInt(@as(i32, op.mask_y) + cy - @as(i32, op.mask_alpha_y_origin));
+            const axy = apply_transform(op.mask_alpha_transform, ax_pix, ay_pix);
+            c.glMultiTexCoord2f(c.GL_TEXTURE3, axy[0] / @as(f32, @floatFromInt(a.width)), axy[1] / @as(f32, @floatFromInt(a.height)));
         } else {
             c.glMultiTexCoord2f(c.GL_TEXTURE3, 0, 0);
         }
@@ -935,6 +939,14 @@ fn filter_to_gl(filter: phx.Render.Filter) c.GLint {
         .nearest => c.GL_NEAREST,
         .bilinear => c.GL_LINEAR,
     };
+}
+
+fn apply_transform(m: [9]f32, x: f32, y: f32) @Vector(2, f32) {
+    const ox = m[0] * x + m[1] * y + m[2];
+    const oy = m[3] * x + m[4] * y + m[5];
+    const ow = m[6] * x + m[7] * y + m[8];
+    if (ow == 0.0) return .{ x, y };
+    return .{ ox / ow, oy / ow };
 }
 
 fn fixed_to_float(value: i32) f32 {
@@ -1349,19 +1361,23 @@ pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void 
 
     try self.operations.append(self.allocator, .{ .composite = .{
         .src = src,
+        .src_transform = op.src_transform,
         .src_alpha_map_drawable = src_alpha_map_drawable,
         .src_alpha_x_origin = op.src_alpha_x_origin,
         .src_alpha_y_origin = op.src_alpha_y_origin,
         .src_alpha_swizzle = op.src_alpha_swizzle,
         .src_alpha_filter = op.src_alpha_filter,
+        .src_alpha_transform = op.src_alpha_transform,
         .src_filter = op.src_filter,
 
         .mask = mask,
+        .mask_transform = op.mask_transform,
         .mask_alpha_map_drawable = mask_alpha_map_drawable,
         .mask_alpha_x_origin = op.mask_alpha_x_origin,
         .mask_alpha_y_origin = op.mask_alpha_y_origin,
         .mask_alpha_swizzle = op.mask_alpha_swizzle,
         .mask_alpha_filter = op.mask_alpha_filter,
+        .mask_alpha_transform = op.mask_alpha_transform,
         .mask_component_alpha = op.mask_component_alpha,
         .mask_filter = op.mask_filter,
 
@@ -1434,11 +1450,13 @@ pub fn render_trapezoids(self: *Self, op: *const phx.Graphics.TrapezoidsArgument
 
     try self.operations.append(self.allocator, .{ .trapezoids = .{
         .src = src,
+        .src_transform = op.src_transform,
         .src_alpha_map_drawable = src_alpha_map_drawable,
         .src_alpha_x_origin = op.src_alpha_x_origin,
         .src_alpha_y_origin = op.src_alpha_y_origin,
         .src_alpha_swizzle = op.src_alpha_swizzle,
         .src_alpha_filter = op.src_alpha_filter,
+        .src_alpha_transform = op.src_alpha_transform,
         .src_filter = op.src_filter,
 
         .dst_drawable = dst_drawable,
@@ -1582,13 +1600,15 @@ fn perform_trapezoids(self: *Self, op: *phx.Graphics.TrapezoidsOperation) void {
             // list: src(src_x, src_y) maps to dst(bbox_x, bbox_y).
             const sx_pixel = src_x_f + (dx - op.bbox_x);
             const sy_pixel = src_y_f + (dy - op.bbox_y);
-            c.glMultiTexCoord2f(c.GL_TEXTURE0, sx_pixel / src_w_f, sy_pixel / src_h_f);
+            const sxy = apply_transform(op.src_transform, sx_pixel, sy_pixel);
+            c.glMultiTexCoord2f(c.GL_TEXTURE0, sxy[0] / src_w_f, sxy[1] / src_h_f);
 
             if (use_src_amap) {
                 const a = src_amap.?;
-                const ax: f32 = (sx_pixel - @as(f32, @floatFromInt(op.src_alpha_x_origin))) / @as(f32, @floatFromInt(a.width));
-                const ay: f32 = (sy_pixel - @as(f32, @floatFromInt(op.src_alpha_y_origin))) / @as(f32, @floatFromInt(a.height));
-                c.glMultiTexCoord2f(c.GL_TEXTURE1, ax, ay);
+                const ax_pix: f32 = sx_pixel - @as(f32, @floatFromInt(op.src_alpha_x_origin));
+                const ay_pix: f32 = sy_pixel - @as(f32, @floatFromInt(op.src_alpha_y_origin));
+                const axy = apply_transform(op.src_alpha_transform, ax_pix, ay_pix);
+                c.glMultiTexCoord2f(c.GL_TEXTURE1, axy[0] / @as(f32, @floatFromInt(a.width)), axy[1] / @as(f32, @floatFromInt(a.height)));
             } else {
                 c.glMultiTexCoord2f(c.GL_TEXTURE1, 0, 0);
             }
@@ -1644,6 +1664,7 @@ pub fn composite_glyphs(self: *Self, op: *const phx.Graphics.CompositeGlyphsArgu
 
     try self.operations.append(self.allocator, .{ .composite_glyphs = .{
         .src = src,
+        .src_transform = op.src_transform,
         .src_filter = op.src_filter,
         .dst_drawable = dst_drawable,
         .op = op.op,
@@ -1817,7 +1838,8 @@ fn perform_composite_glyphs(self: *Self, op: *phx.Graphics.CompositeGlyphsOperat
 
             const sx_pixel: f32 = @floatFromInt(@as(i32, glyph.src_x_pixel) + cx);
             const sy_pixel: f32 = @floatFromInt(@as(i32, glyph.src_y_pixel) + cy);
-            c.glMultiTexCoord2f(c.GL_TEXTURE0, sx_pixel / src_w_f, sy_pixel / src_h_f);
+            const sxy = apply_transform(op.src_transform, sx_pixel, sy_pixel);
+            c.glMultiTexCoord2f(c.GL_TEXTURE0, sxy[0] / src_w_f, sxy[1] / src_h_f);
             c.glMultiTexCoord2f(c.GL_TEXTURE1, 0, 0);
 
             const mx: f32 = (@as(f32, @floatFromInt(@as(i32, @intCast(glyph.atlas_x)) + cx))) / atlas_w_f;

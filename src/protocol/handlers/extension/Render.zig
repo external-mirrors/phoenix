@@ -29,6 +29,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .fill_rectangles => fill_rectangles(request_context),
         .create_cursor => create_cursor(request_context),
         .set_picture_filter => set_picture_filter(request_context),
+        .set_picture_transform => set_picture_transform(request_context),
         .create_solid_fill => create_solid_fill(request_context),
         .create_linear_gradient => create_linear_gradient(request_context),
         .create_radial_gradient => create_radial_gradient(request_context),
@@ -411,19 +412,23 @@ fn composite(request_context: *phx.RequestContext) !void {
 
     try request_context.server.display.composite(&.{
         .src = picture_to_src(src),
+        .src_transform = src.transform.to_floats(),
         .src_alpha_map_drawable = src_alpha.drawable,
         .src_alpha_x_origin = src_alpha.x_origin,
         .src_alpha_y_origin = src_alpha.y_origin,
         .src_alpha_swizzle = src_alpha.swizzle,
         .src_alpha_filter = src_alpha.filter,
+        .src_alpha_transform = src_alpha.transform,
         .src_filter = src.filter,
 
         .mask = if (mask) |m| picture_to_mask(m) else null,
+        .mask_transform = if (mask) |m| m.transform.to_floats() else Transform.identity.to_floats(),
         .mask_alpha_map_drawable = mask_alpha.drawable,
         .mask_alpha_x_origin = mask_alpha.x_origin,
         .mask_alpha_y_origin = mask_alpha.y_origin,
         .mask_alpha_swizzle = mask_alpha.swizzle,
         .mask_alpha_filter = mask_alpha.filter,
+        .mask_alpha_transform = mask_alpha.transform,
         .mask_component_alpha = if (mask) |m| m.component_alpha else false,
         .mask_filter = if (mask) |m| m.filter else .nearest,
 
@@ -464,13 +469,12 @@ const AlphaMapBinding = struct {
     y_origin: i16 = 0,
     swizzle: [4]f32 = .{ 0, 0, 0, 1 },
     filter: Filter = .nearest,
+    transform: [9]f32 = Transform.identity.to_floats(),
 };
 
 fn resolve_alpha_map(request_context: *phx.RequestContext, picture: *phx.Picture) AlphaMapBinding {
     if (picture.alpha_map == .none) return .{};
     const alpha_picture = request_context.server.get_picture(picture.alpha_map) orelse return .{};
-    // Solid-fill pictures have no drawable; they aren't sensible as an alpha
-    // map. Treat as if no alpha map were set.
     const alpha_drawable = alpha_picture.drawable orelse return .{};
     return .{
         .drawable = alpha_drawable,
@@ -478,6 +482,7 @@ fn resolve_alpha_map(request_context: *phx.RequestContext, picture: *phx.Picture
         .y_origin = picture.alpha_y_origin,
         .swizzle = alpha_swizzle_for_depth(alpha_drawable.get_depth()),
         .filter = alpha_picture.filter,
+        .transform = alpha_picture.transform.to_floats(),
     };
 }
 
@@ -602,11 +607,13 @@ fn trapezoids(request_context: *phx.RequestContext) !void {
 
     try request_context.server.display.render_trapezoids(&.{
         .src = picture_to_src(src),
+        .src_transform = src.transform.to_floats(),
         .src_alpha_map_drawable = src_alpha.drawable,
         .src_alpha_x_origin = src_alpha.x_origin,
         .src_alpha_y_origin = src_alpha.y_origin,
         .src_alpha_swizzle = src_alpha.swizzle,
         .src_alpha_filter = src_alpha.filter,
+        .src_alpha_transform = src_alpha.transform,
         .src_filter = src.filter,
 
         .dst_drawable = dst_drawable,
@@ -624,8 +631,12 @@ fn trapezoids(request_context: *phx.RequestContext) !void {
     });
 }
 
-fn fixed_to_float(value: i32) f32 {
+pub fn fixed_to_float(value: i32) f32 {
     return @as(f32, @floatFromInt(value)) / 65536.0;
+}
+
+pub fn float_to_fixed(value: f32) i32 {
+    return @intFromFloat(@round(value * 65536.0));
 }
 
 /// Intersect the given line with the horizontal line y = y_target. Vertical
@@ -903,6 +914,7 @@ fn flush_glyph_commands(
     const depth = get_pict_format_depth(glyph_set.format) orelse return;
     try request_context.server.display.composite_glyphs(&.{
         .src = picture_to_src(src),
+        .src_transform = src.transform.to_floats(),
         .src_filter = src.filter,
         .dst_drawable = dst_drawable,
         .op = op,
@@ -1067,6 +1079,18 @@ fn create_solid_fill(request_context: *phx.RequestContext) !void {
     try request_context.client.add_picture(picture);
 }
 
+fn set_picture_transform(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.SetPictureTransform, request_context.allocator);
+    defer req.deinit();
+
+    const picture = request_context.server.get_picture(req.request.picture) orelse {
+        std.log.err("RenderSetPictureTransform: invalid picture {d}", .{@intFromEnum(req.request.picture)});
+        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.picture));
+    };
+
+    picture.transform = req.request.transform;
+}
+
 fn set_picture_filter(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.SetPictureFilter, request_context.allocator);
     defer req.deinit();
@@ -1104,6 +1128,7 @@ const MinorOpcode = enum(x11.Card8) {
     composite_glyphs8 = 23,
     fill_rectangles = 26,
     create_cursor = 27,
+    set_picture_transform = 28,
     set_picture_filter = 30,
     create_solid_fill = 33,
     create_linear_gradient = 34,
@@ -1111,8 +1136,6 @@ const MinorOpcode = enum(x11.Card8) {
     create_conical_gradient = 36,
 };
 
-/// Texture sampling filter selected via Render's SetPictureFilter. Maps the
-/// X11 filter name strings to Phoenix's small set of supported sampling modes.
 pub const Filter = enum {
     nearest,
     bilinear,
@@ -1129,6 +1152,31 @@ pub const Filter = enum {
             std.mem.eql(u8, name, "convolution") or
             std.mem.eql(u8, name, "gaussian")) return .bilinear;
         return null;
+    }
+};
+
+/// Stored row-major as 9 16.16 fixed-point values: `[m00, m01, m02, m10, m11, m12, m20, m21, m22]`
+pub const Transform = extern struct {
+    m: [9]i32,
+
+    pub const identity: Transform = .{ .m = .{
+        float_to_fixed(1), float_to_fixed(0), float_to_fixed(0),
+        float_to_fixed(0), float_to_fixed(1), float_to_fixed(0),
+        float_to_fixed(0), float_to_fixed(0), float_to_fixed(1),
+    } };
+
+    pub fn at(self: Transform, row: usize, col: usize) i32 {
+        return self.m[row * 3 + col];
+    }
+
+    pub fn is_identity(self: Transform) bool {
+        return std.meta.eql(self, identity);
+    }
+
+    pub fn to_floats(self: Transform) [9]f32 {
+        var out: [9]f32 = undefined;
+        inline for (0..9) |i| out[i] = fixed_to_float(self.m[i]);
+        return out;
     }
 };
 
@@ -1605,6 +1653,14 @@ pub const Request = struct {
         length: x11.Card16,
         pid: PictureId,
         color: Color,
+    };
+
+    pub const SetPictureTransform = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .set_picture_transform,
+        length: x11.Card16,
+        picture: PictureId,
+        transform: Transform,
     };
 
     pub const SetPictureFilter = struct {

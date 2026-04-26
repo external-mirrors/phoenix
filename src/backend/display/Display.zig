@@ -109,6 +109,12 @@ pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void 
     };
 }
 
+pub fn render_trapezoids(self: *Self, op: *const phx.Graphics.TrapezoidsArguments) !void {
+    return switch (self.impl) {
+        inline else => |item| item.render_trapezoids(op),
+    };
+}
+
 pub fn get_keyboard_state(self: *Self, params: *const phx.Xkb.Request.GetState, arena: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetState {
     return switch (self.impl) {
         inline else => |item| item.get_keyboard_state(params, arena),

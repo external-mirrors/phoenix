@@ -19,6 +19,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .create_picture => create_picture(request_context),
         .free_picture => free_picture(request_context),
         .composite => composite(request_context),
+        .trapezoids => trapezoids(request_context),
         .fill_rectangles => fill_rectangles(request_context),
         .create_cursor => create_cursor(request_context),
         .set_picture_filter => set_picture_filter(request_context),
@@ -470,6 +471,118 @@ fn fill_rectangles(request_context: *phx.RequestContext) !void {
     });
 }
 
+fn trapezoids(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.Trapezoids, request_context.allocator);
+    defer req.deinit();
+
+    const op_int: x11.Card8 = @intFromEnum(req.request.op);
+    if (op_int < pict_op_minimum or op_int > pict_op_maximum) {
+        std.log.err("RenderTrapezoids: invalid pict op {d}", .{op_int});
+        return request_context.client.write_error(request_context, .render_pict_op, op_int);
+    }
+
+    const src = request_context.server.get_picture(req.request.src) orelse {
+        std.log.err("RenderTrapezoids: invalid src picture {d}", .{@intFromEnum(req.request.src)});
+        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.src));
+    };
+
+    const dst = request_context.server.get_picture(req.request.dst) orelse {
+        std.log.err("RenderTrapezoids: invalid dst picture {d}", .{@intFromEnum(req.request.dst)});
+        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.dst));
+    };
+
+    if (req.request.mask_format != .none and get_pict_format_depth(req.request.mask_format) == null) {
+        std.log.err("RenderTrapezoids: invalid mask format {d}", .{@intFromEnum(req.request.mask_format)});
+        return request_context.client.write_error(request_context, .render_pict_format, @intFromEnum(req.request.mask_format));
+    }
+
+    const dst_drawable = dst.drawable orelse {
+        std.log.err("RenderTrapezoids: dst picture {d} has no drawable (solid fill?)", .{@intFromEnum(req.request.dst)});
+        return request_context.client.write_error(request_context, .match, 0);
+    };
+
+    const traps = req.request.traps.items;
+    if (traps.len == 0) return;
+
+    // Convert each trapezoid into a 4-vertex quad in dst coordinates by
+    // intersecting the left/right edge lines with the y=top and y=bottom
+    // scanlines. Trap.top/bottom and the line endpoint coords are 16.16 fixed
+    // point on the wire, normalized to floating-point pixel positions here.
+    //
+    // Phoenix doesn't run a coverage rasterizer, so the `mask_format` path
+    // (where the protocol asks us to first rasterize an antialiased mask of
+    // that format and then composite src through it) collapses to a plain
+    // src→dst composite over the trapezoid's geometry. AA quality is whatever
+    // GL gives us at the polygon edges.
+    const quads = try request_context.allocator.alloc(phx.Graphics.TrapezoidQuad, traps.len);
+    defer request_context.allocator.free(quads);
+
+    var bbox_min_x: f32 = std.math.floatMax(f32);
+    var bbox_min_y: f32 = std.math.floatMax(f32);
+    for (traps, 0..) |trap, i| {
+        const top = fixed_to_float(trap.top);
+        const bottom = fixed_to_float(trap.bottom);
+        const left_top_x = line_x_at_y(trap.left, top);
+        const left_bot_x = line_x_at_y(trap.left, bottom);
+        const right_top_x = line_x_at_y(trap.right, top);
+        const right_bot_x = line_x_at_y(trap.right, bottom);
+        quads[i] = .{
+            .corners = .{
+                .{ left_top_x, top },
+                .{ right_top_x, top },
+                .{ right_bot_x, bottom },
+                .{ left_bot_x, bottom },
+            },
+        };
+        bbox_min_x = @min(bbox_min_x, @min(left_top_x, left_bot_x));
+        bbox_min_y = @min(bbox_min_y, top);
+    }
+
+    const src_alpha = resolve_alpha_map(request_context, src);
+    const clip = resolve_clip_mask(request_context, dst);
+
+    try request_context.server.display.render_trapezoids(&.{
+        .src_drawable = src.drawable,
+        .src_solid_color = src.solid_fill_color,
+        .src_alpha_map_drawable = src_alpha.drawable,
+        .src_alpha_x_origin = src_alpha.x_origin,
+        .src_alpha_y_origin = src_alpha.y_origin,
+        .src_alpha_swizzle = src_alpha.swizzle,
+        .src_alpha_filter = src_alpha.filter,
+        .src_filter = src.filter,
+
+        .dst_drawable = dst_drawable,
+        .clip_mask_drawable = clip.drawable,
+        .clip_x_origin = clip.x_origin,
+        .clip_y_origin = clip.y_origin,
+        .clip_swizzle = clip.swizzle,
+
+        .op = req.request.op,
+        .src_x = req.request.src_x,
+        .src_y = req.request.src_y,
+        .bbox_x = bbox_min_x,
+        .bbox_y = bbox_min_y,
+        .quads = quads,
+    });
+}
+
+fn fixed_to_float(value: i32) f32 {
+    return @as(f32, @floatFromInt(value)) / 65536.0;
+}
+
+/// Intersect the given line with the horizontal line y = y_target. Vertical
+/// (zero dy) lines collapse to p1.x — matches the Render protocol's behavior
+/// of treating such lines as a constant x edge.
+fn line_x_at_y(line: LineFixed, y_target: f32) f32 {
+    const x1 = fixed_to_float(line.p1.x);
+    const y1 = fixed_to_float(line.p1.y);
+    const x2 = fixed_to_float(line.p2.x);
+    const y2 = fixed_to_float(line.p2.y);
+    const dy = y2 - y1;
+    if (dy == 0.0) return x1;
+    return x1 + (y_target - y1) * (x2 - x1) / dy;
+}
+
 fn create_cursor(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateCursor, request_context.allocator);
     defer req.deinit();
@@ -533,6 +646,7 @@ const MinorOpcode = enum(x11.Card8) {
     create_picture = 4,
     free_picture = 7,
     composite = 8,
+    trapezoids = 10,
     fill_rectangles = 26,
     create_cursor = 27,
     set_picture_filter = 30,
@@ -615,6 +729,23 @@ pub const Color = struct {
     green: x11.Card16,
     blue: x11.Card16,
     alpha: x11.Card16,
+};
+
+pub const PointFixed = struct {
+    x: i32,
+    y: i32,
+};
+
+pub const LineFixed = struct {
+    p1: PointFixed,
+    p2: PointFixed,
+};
+
+pub const Trap = struct {
+    top: i32,
+    bottom: i32,
+    left: LineFixed,
+    right: LineFixed,
 };
 
 pub const pict_format_id_first: x11.Card32 = 35;
@@ -875,6 +1006,21 @@ pub const Request = struct {
         dst_y: i16,
         width: x11.Card16,
         height: x11.Card16,
+    };
+
+    pub const Trapezoids = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .trapezoids,
+        length: x11.Card16,
+        op: PictOp,
+        pad1: x11.Card8 = 0,
+        pad2: x11.Card16 = 0,
+        src: PictureId,
+        dst: PictureId,
+        mask_format: PictFormatId,
+        src_x: i16,
+        src_y: i16,
+        traps: x11.ListOf(Trap, .{ .length_field = "length", .length_field_type = .request_remainder }),
     };
 
     pub const FillRectangles = struct {

@@ -766,6 +766,12 @@ fn handle_messages(self: *Self) void {
             .fill_rectangles_canceled => |*fill_rectangles_canceled| {
                 fill_rectangles_canceled.operation.unref(self.allocator);
             },
+            .trapezoids_finished => |*trapezoids_finished| {
+                trapezoids_finished.operation.unref(self.allocator);
+            },
+            .trapezoids_canceled => |*trapezoids_canceled| {
+                trapezoids_canceled.operation.unref(self.allocator);
+            },
         }
     }
 }
@@ -789,6 +795,8 @@ fn cleanup_message_resources(message: *Message, allocator: std.mem.Allocator) vo
         .composite_canceled => |*composite_canceled| composite_canceled.operation.unref(),
         .fill_rectangles_finished => |*fill_rectangles_finished| fill_rectangles_finished.operation.unref(allocator),
         .fill_rectangles_canceled => |*fill_rectangles_canceled| fill_rectangles_canceled.operation.unref(allocator),
+        .trapezoids_finished => |*trapezoids_finished| trapezoids_finished.operation.unref(allocator),
+        .trapezoids_canceled => |*trapezoids_canceled| trapezoids_canceled.operation.unref(allocator),
     }
 }
 
@@ -1017,6 +1025,8 @@ pub const Message = union(enum) {
     composite_canceled: CompositeCanceledMessage,
     fill_rectangles_finished: FillRectanglesFinishedMessage,
     fill_rectangles_canceled: FillRectanglesCanceledMessage,
+    trapezoids_finished: TrapezoidsFinishedMessage,
+    trapezoids_canceled: TrapezoidsCanceledMessage,
 };
 
 pub const VsyncFinishedMessage = struct {
@@ -1088,4 +1098,12 @@ pub const FillRectanglesFinishedMessage = struct {
 
 pub const FillRectanglesCanceledMessage = struct {
     operation: phx.Graphics.FillRectanglesOperation,
+};
+
+pub const TrapezoidsFinishedMessage = struct {
+    operation: phx.Graphics.TrapezoidsOperation,
+};
+
+pub const TrapezoidsCanceledMessage = struct {
+    operation: phx.Graphics.TrapezoidsOperation,
 };

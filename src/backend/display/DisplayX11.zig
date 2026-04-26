@@ -191,6 +191,10 @@ pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void 
     return self.graphics.composite(op);
 }
 
+pub fn render_trapezoids(self: *Self, op: *const phx.Graphics.TrapezoidsArguments) !void {
+    return self.graphics.render_trapezoids(op);
+}
+
 pub fn get_keyboard_state(self: *Self, params: *const phx.Xkb.Request.GetState, _: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetState {
     const cookie = c.xcb_xkb_get_state(self.connection, @intFromEnum(params.device_spec));
 

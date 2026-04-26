@@ -350,6 +350,7 @@ fn remove_operations_for_window(self: *Self, graphics_window: *phx.Graphics.Grap
             .copy_area => |po| self.append_message(.{ .copy_area_canceled = .{ .operation = po } }),
             .composite => |po| self.append_message(.{ .composite_canceled = .{ .operation = po } }),
             .fill_rectangles => |po| self.append_message(.{ .fill_rectangles_canceled = .{ .operation = po } }),
+            .trapezoids => |po| self.append_message(.{ .trapezoids_canceled = .{ .operation = po } }),
         }
         _ = self.operations.orderedRemove(i);
     }
@@ -428,6 +429,7 @@ fn perform_operations(self: *Self) void {
             .present_pixmap => |*po| self.perform_present_pixmap(po),
             .fill_rectangles => |*po| self.perform_fill_rectangles(po),
             .composite => |*po| self.perform_composite(po),
+            .trapezoids => |*po| self.perform_trapezoids(po),
         }
     }
     self.operations.clearRetainingCapacity();
@@ -1286,6 +1288,203 @@ pub fn fill_rectangles(self: *Self, op: *const phx.Graphics.FillRectanglesArgume
 
     graphics_drawable.ref();
     self.dirty.store(true, .release);
+}
+
+pub fn render_trapezoids(self: *Self, op: *const phx.Graphics.TrapezoidsArguments) !void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    var src_drawable: ?phx.Graphics.GraphicsDrawable =
+        if (op.src_drawable) |d| to_graphics_drawable(d) else null;
+    var dst_drawable = to_graphics_drawable(op.dst_drawable);
+    var src_alpha_map_drawable: ?phx.Graphics.GraphicsDrawable =
+        if (op.src_alpha_map_drawable) |d| to_graphics_drawable(d) else null;
+    var clip_mask_drawable: ?phx.Graphics.GraphicsDrawable =
+        if (op.clip_mask_drawable) |d| to_graphics_drawable(d) else null;
+
+    const quads_copy = try self.allocator.dupe(phx.Graphics.TrapezoidQuad, op.quads);
+    errdefer self.allocator.free(quads_copy);
+
+    try self.operations.append(self.allocator, .{ .trapezoids = .{
+        .src_drawable = src_drawable,
+        .src_solid_color = op.src_solid_color,
+        .src_alpha_map_drawable = src_alpha_map_drawable,
+        .src_alpha_x_origin = op.src_alpha_x_origin,
+        .src_alpha_y_origin = op.src_alpha_y_origin,
+        .src_alpha_swizzle = op.src_alpha_swizzle,
+        .src_alpha_filter = op.src_alpha_filter,
+        .src_filter = op.src_filter,
+
+        .dst_drawable = dst_drawable,
+        .clip_mask_drawable = clip_mask_drawable,
+        .clip_x_origin = op.clip_x_origin,
+        .clip_y_origin = op.clip_y_origin,
+        .clip_swizzle = op.clip_swizzle,
+
+        .op = op.op,
+        .src_x = op.src_x,
+        .src_y = op.src_y,
+        .bbox_x = op.bbox_x,
+        .bbox_y = op.bbox_y,
+        .quads = quads_copy,
+    } });
+
+    if (src_drawable) |*d| d.ref();
+    dst_drawable.ref();
+    if (src_alpha_map_drawable) |*d| d.ref();
+    if (clip_mask_drawable) |*d| d.ref();
+    self.dirty.store(true, .release);
+}
+
+fn perform_trapezoids(self: *Self, op: *phx.Graphics.TrapezoidsOperation) void {
+    defer self.append_message(.{ .trapezoids_finished = .{ .operation = op.* } });
+
+    const src_is_solid = op.src_solid_color != null;
+    const src = if (op.src_drawable) |d| get_drawable_target_size(d) else null;
+    const dst = get_drawable_target_size(op.dst_drawable);
+    if (dst.texture_id == 0 or dst.width == 0 or dst.height == 0) return;
+    if (!src_is_solid) {
+        if (src == null or src.?.texture_id == 0 or src.?.width == 0 or src.?.height == 0) return;
+    }
+
+    const src_amap = if (!src_is_solid and op.src_alpha_map_drawable != null)
+        get_drawable_target_size(op.src_alpha_map_drawable.?)
+    else
+        null;
+    const use_src_amap = if (src_amap) |a| (a.texture_id != 0 and a.width != 0 and a.height != 0) else false;
+
+    const clip = if (op.clip_mask_drawable) |d| get_drawable_target_size(d) else null;
+    const use_clip = if (clip) |cl| (cl.texture_id != 0 and cl.width != 0 and cl.height != 0) else false;
+
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.framebuffer);
+    c.glDisable(c.GL_SCISSOR_TEST);
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glPushMatrix();
+    c.glMatrixMode(c.GL_MODELVIEW);
+    c.glPushMatrix();
+    c.glLoadIdentity();
+
+    // Reuse the composite shader. Trapezoids has no `mask` picture in the
+    // protocol — the only mask-shaped thing is the `mask_format` antialiased
+    // coverage mask, which would require a CPU rasterizer and is not yet
+    // wired up. Picture-level alpha map and clip mask are honored.
+    c.glUseProgram(self.mask_program.program);
+    c.glUniform1i(self.mask_program.loc_src, 0);
+    c.glUniform1i(self.mask_program.loc_src_alpha_map, 1);
+    c.glUniform1i(self.mask_program.loc_mask, 2);
+    c.glUniform1i(self.mask_program.loc_mask_alpha_map, 3);
+    c.glUniform1i(self.mask_program.loc_clip_mask, 4);
+
+    c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT0, c.GL_TEXTURE_2D, dst.texture_id, 0);
+    c.glViewport(0, 0, @intCast(dst.width), @intCast(dst.height));
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glLoadIdentity();
+    c.glOrtho(0.0, @floatFromInt(dst.width), @floatFromInt(dst.height), 0.0, -1.0, 1.0);
+    c.glMatrixMode(c.GL_MODELVIEW);
+
+    const blend = pict_op_blend_factors(op.op);
+    c.glBlendFunc(blend.src, blend.dst);
+
+    const src_gl_filter = filter_to_gl(op.src_filter);
+    const src_alpha_gl_filter = filter_to_gl(op.src_alpha_filter);
+
+    c.glActiveTexture(c.GL_TEXTURE0);
+    c.glBindTexture(c.GL_TEXTURE_2D, if (src) |s| s.texture_id else 0);
+    if (!src_is_solid) {
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, src_gl_filter);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, src_gl_filter);
+    }
+    c.glActiveTexture(c.GL_TEXTURE1);
+    c.glBindTexture(c.GL_TEXTURE_2D, if (use_src_amap) src_amap.?.texture_id else 0);
+    if (use_src_amap) {
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, src_alpha_gl_filter);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, src_alpha_gl_filter);
+    }
+    c.glActiveTexture(c.GL_TEXTURE2);
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    c.glActiveTexture(c.GL_TEXTURE3);
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    c.glActiveTexture(c.GL_TEXTURE4);
+    c.glBindTexture(c.GL_TEXTURE_2D, if (use_clip) clip.?.texture_id else 0);
+    c.glActiveTexture(c.GL_TEXTURE0);
+
+    c.glUniform1i(self.mask_program.loc_use_src_alpha_map, if (use_src_amap) 1 else 0);
+    c.glUniform4fv(self.mask_program.loc_src_alpha_swizzle, 1, &op.src_alpha_swizzle);
+    c.glUniform1i(self.mask_program.loc_src_is_solid, if (src_is_solid) 1 else 0);
+    if (op.src_solid_color) |col| {
+        const rgba = render_color_to_rgba(col);
+        c.glUniform4fv(self.mask_program.loc_src_solid_color, 1, &rgba);
+    }
+    c.glUniform1i(self.mask_program.loc_use_mask, 0);
+    c.glUniform1i(self.mask_program.loc_component_alpha, 0);
+    c.glUniform1i(self.mask_program.loc_use_mask_alpha_map, 0);
+    const default_swizzle: [4]f32 = .{ 0, 0, 0, 1 };
+    c.glUniform4fv(self.mask_program.loc_mask_alpha_swizzle, 1, &default_swizzle);
+    c.glUniform1i(self.mask_program.loc_mask_is_solid, 0);
+    c.glUniform1i(self.mask_program.loc_use_clip_mask, if (use_clip) 1 else 0);
+    c.glUniform4fv(self.mask_program.loc_clip_swizzle, 1, &op.clip_swizzle);
+
+    const src_w_f: f32 = if (src) |s| @floatFromInt(s.width) else 1.0;
+    const src_h_f: f32 = if (src) |s| @floatFromInt(s.height) else 1.0;
+    const src_x_f: f32 = @floatFromInt(op.src_x);
+    const src_y_f: f32 = @floatFromInt(op.src_y);
+
+    c.glBegin(c.GL_QUADS);
+    for (op.quads) |quad| {
+        for (quad.corners) |corner| {
+            const dx = corner[0];
+            const dy = corner[1];
+            // Render's src_x/src_y align with the bbox top-left of the trap
+            // list: src(src_x, src_y) maps to dst(bbox_x, bbox_y).
+            const sx_pixel = src_x_f + (dx - op.bbox_x);
+            const sy_pixel = src_y_f + (dy - op.bbox_y);
+            c.glMultiTexCoord2f(c.GL_TEXTURE0, sx_pixel / src_w_f, sy_pixel / src_h_f);
+
+            if (use_src_amap) {
+                const a = src_amap.?;
+                const ax: f32 = (sx_pixel - @as(f32, @floatFromInt(op.src_alpha_x_origin))) / @as(f32, @floatFromInt(a.width));
+                const ay: f32 = (sy_pixel - @as(f32, @floatFromInt(op.src_alpha_y_origin))) / @as(f32, @floatFromInt(a.height));
+                c.glMultiTexCoord2f(c.GL_TEXTURE1, ax, ay);
+            } else {
+                c.glMultiTexCoord2f(c.GL_TEXTURE1, 0, 0);
+            }
+
+            c.glMultiTexCoord2f(c.GL_TEXTURE2, 0, 0);
+            c.glMultiTexCoord2f(c.GL_TEXTURE3, 0, 0);
+
+            if (use_clip) {
+                const cl = clip.?;
+                const px: f32 = (dx - @as(f32, @floatFromInt(op.clip_x_origin))) / @as(f32, @floatFromInt(cl.width));
+                const py: f32 = (dy - @as(f32, @floatFromInt(op.clip_y_origin))) / @as(f32, @floatFromInt(cl.height));
+                c.glMultiTexCoord2f(c.GL_TEXTURE4, px, py);
+            } else {
+                c.glMultiTexCoord2f(c.GL_TEXTURE4, 0, 0);
+            }
+
+            c.glVertex2f(dx, dy);
+        }
+    }
+    c.glEnd();
+
+    c.glActiveTexture(c.GL_TEXTURE4);
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    c.glActiveTexture(c.GL_TEXTURE1);
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    c.glActiveTexture(c.GL_TEXTURE0);
+    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    c.glUseProgram(0);
+
+    c.glMatrixMode(c.GL_PROJECTION);
+    c.glPopMatrix();
+    c.glMatrixMode(c.GL_MODELVIEW);
+    c.glPopMatrix();
+
+    c.glBlendFuncSeparate(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA, c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
+    c.glViewport(0, 0, @intCast(self.width), @intCast(self.height));
+    c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+    c.glEnable(c.GL_SCISSOR_TEST);
 }
 
 pub fn set_dirty(self: *Self) void {

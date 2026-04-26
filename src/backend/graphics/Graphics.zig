@@ -150,6 +150,12 @@ pub fn composite(self: *Self, op: *const CompositeArguments) !void {
     };
 }
 
+pub fn render_trapezoids(self: *Self, op: *const TrapezoidsArguments) !void {
+    return switch (self.impl) {
+        inline else => |item| item.render_trapezoids(op),
+    };
+}
+
 pub fn set_dirty(self: *Self) void {
     switch (self.impl) {
         inline else => |item| item.set_dirty(),
@@ -340,6 +346,71 @@ pub const CompositeOperation = struct {
     }
 };
 
+pub const TrapezoidQuad = struct {
+    /// Four corner positions in dst pixel coordinates: top-left, top-right,
+    /// bottom-right, bottom-left.
+    corners: [4]@Vector(2, f32),
+};
+
+pub const TrapezoidsArguments = struct {
+    /// Either `src_drawable` or `src_solid_color` is set, mirroring Composite.
+    src_drawable: ?phx.Drawable,
+    src_solid_color: ?phx.Render.Color,
+    src_alpha_map_drawable: ?phx.Drawable,
+    src_alpha_x_origin: i16,
+    src_alpha_y_origin: i16,
+    src_alpha_swizzle: [4]f32,
+    src_alpha_filter: phx.Render.Filter,
+    src_filter: phx.Render.Filter,
+
+    dst_drawable: phx.Drawable,
+    clip_mask_drawable: ?phx.Drawable,
+    clip_x_origin: i16,
+    clip_y_origin: i16,
+    clip_swizzle: [4]f32,
+
+    op: phx.Render.PictOp,
+    /// Render's src_x/src_y, in dst-aligned coordinates: src(src_x, src_y)
+    /// maps to dst(bbox_x, bbox_y).
+    src_x: i16,
+    src_y: i16,
+    bbox_x: f32,
+    bbox_y: f32,
+    quads: []const TrapezoidQuad,
+};
+
+pub const TrapezoidsOperation = struct {
+    src_drawable: ?GraphicsDrawable,
+    src_solid_color: ?phx.Render.Color,
+    src_alpha_map_drawable: ?GraphicsDrawable,
+    src_alpha_x_origin: i16,
+    src_alpha_y_origin: i16,
+    src_alpha_swizzle: [4]f32,
+    src_alpha_filter: phx.Render.Filter,
+    src_filter: phx.Render.Filter,
+
+    dst_drawable: GraphicsDrawable,
+    clip_mask_drawable: ?GraphicsDrawable,
+    clip_x_origin: i16,
+    clip_y_origin: i16,
+    clip_swizzle: [4]f32,
+
+    op: phx.Render.PictOp,
+    src_x: i16,
+    src_y: i16,
+    bbox_x: f32,
+    bbox_y: f32,
+    quads: []TrapezoidQuad,
+
+    pub fn unref(self: *TrapezoidsOperation, allocator: std.mem.Allocator) void {
+        if (self.src_drawable) |*d| d.unref();
+        if (self.src_alpha_map_drawable) |*d| d.unref();
+        self.dst_drawable.unref();
+        if (self.clip_mask_drawable) |*d| d.unref();
+        allocator.free(self.quads);
+    }
+};
+
 pub const CopyAreaOperation = struct {
     src_drawable: GraphicsDrawable,
     dst_drawable: GraphicsDrawable,
@@ -379,6 +450,7 @@ pub const GraphicsOperation = union(enum) {
     copy_area: CopyAreaOperation,
     fill_rectangles: FillRectanglesOperation,
     composite: CompositeOperation,
+    trapezoids: TrapezoidsOperation,
 
     pub fn unref(self: *GraphicsOperation, allocator: std.mem.Allocator) void {
         switch (self.*) {
@@ -387,6 +459,7 @@ pub const GraphicsOperation = union(enum) {
             .copy_area => |*op| op.unref(),
             .fill_rectangles => |*op| op.unref(allocator),
             .composite => |*op| op.unref(),
+            .trapezoids => |*op| op.unref(allocator),
         }
     }
 
@@ -407,6 +480,13 @@ pub const GraphicsOperation = union(enum) {
                 if (op.src_alpha_map_drawable) |d| if (matches(d, window)) return true;
                 if (op.mask_drawable) |d| if (matches(d, window)) return true;
                 if (op.mask_alpha_map_drawable) |d| if (matches(d, window)) return true;
+                if (op.clip_mask_drawable) |d| if (matches(d, window)) return true;
+                return false;
+            },
+            .trapezoids => |op| {
+                if (op.src_drawable) |d| if (matches(d, window)) return true;
+                if (matches(op.dst_drawable, window)) return true;
+                if (op.src_alpha_map_drawable) |d| if (matches(d, window)) return true;
                 if (op.clip_mask_drawable) |d| if (matches(d, window)) return true;
                 return false;
             },

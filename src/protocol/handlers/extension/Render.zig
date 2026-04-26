@@ -22,6 +22,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .composite => composite(request_context),
         .trapezoids => trapezoids(request_context),
         .create_glyph_set => create_glyph_set(request_context),
+        .add_glyphs => add_glyphs(request_context),
         .fill_rectangles => fill_rectangles(request_context),
         .create_cursor => create_cursor(request_context),
         .set_picture_filter => set_picture_filter(request_context),
@@ -771,6 +772,88 @@ fn create_conical_gradient(request_context: *phx.RequestContext) !void {
     try request_context.client.add_picture(picture);
 }
 
+fn add_glyphs(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.AddGlyphs, request_context.allocator);
+    defer req.deinit();
+
+    const glyph_set = request_context.server.get_glyph_set(req.request.glyphset) orelse {
+        std.log.err("RenderAddGlyphs: invalid glyph set {d}", .{@intFromEnum(req.request.glyphset)});
+        return request_context.client.write_error(request_context, .render_glyph_set, @intFromEnum(req.request.glyphset));
+    };
+
+    if (req.request.glyphids.items.len != req.request.num_glyphs or req.request.glyphs.items.len != req.request.num_glyphs) {
+        std.log.err("RenderAddGlyphs: glyphids/glyphs length mismatch (num_glyphs={d}, glyphids={d}, glyphs={d})", .{
+            req.request.num_glyphs,
+            req.request.glyphids.items.len,
+            req.request.glyphs.items.len,
+        });
+        return request_context.client.write_error(request_context, .length, 0);
+    }
+
+    const depth = get_pict_format_depth(glyph_set.format) orelse {
+        std.log.err("RenderAddGlyphs: glyph set has unknown format {d}", .{@intFromEnum(glyph_set.format)});
+        return request_context.client.write_error(request_context, .render_glyph_set, @intFromEnum(req.request.glyphset));
+    };
+    const bpp = render_depth_to_bpp(depth);
+
+    const data = req.request.data.items;
+    const num_glyphs = req.request.glyphs.items.len;
+
+    const owned_buffers = try request_context.allocator.alloc([]u8, num_glyphs);
+    defer request_context.allocator.free(owned_buffers);
+
+    var owned_count: usize = 0;
+    errdefer for (owned_buffers[0..owned_count]) |b| glyph_set.allocator.free(b);
+
+    var offset: usize = 0;
+    for (req.request.glyphs.items, 0..) |info, i| {
+        const row_bits = @as(usize, info.width) * @as(usize, bpp);
+        const stride = ((row_bits + 31) / 32) * 4;
+        const size = stride * @as(usize, info.height);
+
+        if (offset + size > data.len) {
+            std.log.err("RenderAddGlyphs: glyph data overruns request (offset={d}, glyph_size={d}, total={d})", .{ offset, size, data.len });
+            return request_context.client.write_error(request_context, .length, 0);
+        }
+
+        owned_buffers[i] = try glyph_set.allocator.dupe(u8, data[offset..][0..size]);
+        owned_count = i + 1;
+        offset += size;
+    }
+
+    try glyph_set.glyphs.ensureUnusedCapacity(glyph_set.allocator, @intCast(num_glyphs));
+
+    for (req.request.glyphids.items, req.request.glyphs.items, owned_buffers) |id, info, buffer| {
+        if (glyph_set.glyphs.fetchRemove(id)) |old|
+            glyph_set.allocator.free(old.value.data);
+
+        glyph_set.glyphs.putAssumeCapacity(id, .{
+            .width = info.width,
+            .height = info.height,
+            .x_origin = info.x,
+            .y_origin = info.y,
+            .x_advance = info.off_x,
+            .y_advance = info.off_y,
+            .data = buffer,
+        });
+    }
+
+    owned_count = 0;
+}
+
+/// PictFormat depth → bits-per-pixel for glyph image data. Mirrors the
+/// scanline layout assumed by AddGlyphs.
+fn render_depth_to_bpp(depth: u8) u8 {
+    return switch (depth) {
+        1 => 1,
+        4 => 4,
+        8 => 8,
+        15, 16 => 16,
+        24, 32 => 32,
+        else => 32,
+    };
+}
+
 fn create_glyph_set(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CreateGlyphSet, request_context.allocator);
     defer req.deinit();
@@ -836,6 +919,7 @@ const MinorOpcode = enum(x11.Card8) {
     composite = 8,
     trapezoids = 10,
     create_glyph_set = 17,
+    add_glyphs = 20,
     fill_rectangles = 26,
     create_cursor = 27,
     set_picture_filter = 30,
@@ -894,6 +978,15 @@ pub const GlyphSetId = enum(x11.Card32) {
     pub fn to_id(self: GlyphSetId) x11.ResourceId {
         return @enumFromInt(@intFromEnum(self));
     }
+};
+
+pub const GlyphInfo = struct {
+    width: x11.Card16,
+    height: x11.Card16,
+    x: i16,
+    y: i16,
+    off_x: i16,
+    off_y: i16,
 };
 
 pub const Repeat = enum(x11.Card8) {
@@ -1280,6 +1373,17 @@ pub const Request = struct {
         length: x11.Card16,
         gsid: GlyphSetId,
         format: PictFormatId,
+    };
+
+    pub const AddGlyphs = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .add_glyphs,
+        length: x11.Card16,
+        glyphset: GlyphSetId,
+        num_glyphs: x11.Card32,
+        glyphids: x11.ListOf(x11.Card32, .{ .length_field = "num_glyphs" }),
+        glyphs: x11.ListOf(GlyphInfo, .{ .length_field = "num_glyphs" }),
+        data: x11.ListOf(x11.Card8, .{ .length_field = "length", .length_field_type = .request_remainder }),
     };
 
     pub const CreateSolidFill = struct {

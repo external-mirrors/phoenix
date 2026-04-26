@@ -753,10 +753,10 @@ fn handle_messages(self: *Self) void {
             },
             .copy_area_finished => |*copy_area_finished| {
                 // TODO: trigger GraphicsExposure / NoExposure event
-                copy_area_finished.operation.unref();
+                copy_area_finished.operation.unref(self.allocator);
             },
             .copy_area_canceled => |*copy_area_canceled| {
-                copy_area_canceled.operation.unref();
+                copy_area_canceled.operation.unref(self.allocator);
             },
             .composite_finished => |*composite_finished| {
                 composite_finished.operation.unref(self.allocator);
@@ -799,8 +799,8 @@ fn cleanup_message_resources(message: *Message, allocator: std.mem.Allocator) vo
         .put_image_finished => |*put_image_finished| put_image_finished.operation.unref(),
         .present_pixmap_canceled => |*present_pixmap_canceled| present_pixmap_canceled.operation.unref(),
         .put_image_canceled => |*put_image_canceled| put_image_canceled.operation.unref(),
-        .copy_area_finished => |*copy_area_finished| copy_area_finished.operation.unref(),
-        .copy_area_canceled => |*copy_area_canceled| copy_area_canceled.operation.unref(),
+        .copy_area_finished => |*copy_area_finished| copy_area_finished.operation.unref(allocator),
+        .copy_area_canceled => |*copy_area_canceled| copy_area_canceled.operation.unref(allocator),
         .composite_finished => |*composite_finished| composite_finished.operation.unref(allocator),
         .composite_canceled => |*composite_canceled| composite_canceled.operation.unref(allocator),
         .fill_rectangles_finished => |*fill_rectangles_finished| fill_rectangles_finished.operation.unref(allocator),

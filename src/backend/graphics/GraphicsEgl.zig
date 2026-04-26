@@ -696,6 +696,8 @@ fn perform_copy_area(self: *Self, op: *phx.Graphics.CopyAreaOperation) void {
     const vx1: f32 = @floatFromInt(dst_x + width);
     const vy1: f32 = @floatFromInt(dst_y + height);
 
+    self.begin_stencil_clip(dst.width, dst.height, op.clip_rectangles, op.clip_x_origin, op.clip_y_origin);
+
     c.glBegin(c.GL_QUADS);
     c.glTexCoord2f(tex_u0, tex_v0);
     c.glVertex2f(vx0, vy0);
@@ -706,6 +708,8 @@ fn perform_copy_area(self: *Self, op: *phx.Graphics.CopyAreaOperation) void {
     c.glTexCoord2f(tex_u0, tex_v1);
     c.glVertex2f(vx0, vy1);
     c.glEnd();
+
+    self.end_stencil_clip(op.clip_rectangles);
 
     c.glBindTexture(c.GL_TEXTURE_2D, 0);
 
@@ -1287,6 +1291,7 @@ fn render_graphics_windows(self: *Self, graphics_window: *phx.Graphics.GraphicsW
     const framebuffer_height: i32 = @intCast(self.height);
     c.glScissor(parent_pos[0], framebuffer_height - parent_pos[1] - parent_size[1], parent_size[0], parent_size[1]);
 
+    c.glBlendFunc(c.GL_ONE, c.GL_ONE_MINUS_SRC_ALPHA);
     c.glBindTexture(c.GL_TEXTURE_2D, graphics_window.texture_id);
     //std.log.info("texture: {d}", .{texture});
 
@@ -1532,6 +1537,9 @@ pub fn copy_area(self: *Self, op: *const phx.Graphics.CopyAreaArguments) !void {
     var src_drawable = to_graphics_drawable(op.src_drawable);
     var dst_drawable = to_graphics_drawable(op.dst_drawable);
 
+    const clip_rectangles_copy = try self.allocator.dupe(phx.Render.Rectangle, op.clip_rectangles);
+    errdefer self.allocator.free(clip_rectangles_copy);
+
     try self.operations.append(self.allocator, .{ .copy_area = .{
         .src_drawable = src_drawable,
         .dst_drawable = dst_drawable,
@@ -1541,6 +1549,9 @@ pub fn copy_area(self: *Self, op: *const phx.Graphics.CopyAreaArguments) !void {
         .dst_y = op.dst_y,
         .width = op.width,
         .height = op.height,
+        .clip_rectangles = clip_rectangles_copy,
+        .clip_x_origin = op.clip_x_origin,
+        .clip_y_origin = op.clip_y_origin,
     } });
 
     src_drawable.ref();

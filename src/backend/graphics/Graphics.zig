@@ -277,6 +277,9 @@ pub const CopyAreaArguments = struct {
     dst_y: i16,
     width: x11.Card16,
     height: x11.Card16,
+    clip_rectangles: []const phx.Render.Rectangle,
+    clip_x_origin: i16,
+    clip_y_origin: i16,
 };
 
 pub const Src = union(enum) {
@@ -584,10 +587,14 @@ pub const CopyAreaOperation = struct {
     dst_y: i16,
     width: x11.Card16,
     height: x11.Card16,
+    clip_rectangles: []phx.Render.Rectangle,
+    clip_x_origin: i16,
+    clip_y_origin: i16,
 
-    pub fn unref(self: *CopyAreaOperation) void {
+    pub fn unref(self: *CopyAreaOperation, allocator: std.mem.Allocator) void {
         self.src_drawable.unref();
         self.dst_drawable.unref();
+        allocator.free(self.clip_rectangles);
     }
 };
 
@@ -621,7 +628,7 @@ pub const GraphicsOperation = union(enum) {
         switch (self.*) {
             .present_pixmap => |*op| op.unref(),
             .put_image => |*op| op.unref(),
-            .copy_area => |*op| op.unref(),
+            .copy_area => |*op| op.unref(allocator),
             .fill_rectangles => |*op| op.unref(allocator),
             .composite => |*op| op.unref(allocator),
             .trapezoids => |*op| op.unref(allocator),

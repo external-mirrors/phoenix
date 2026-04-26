@@ -1452,6 +1452,12 @@ fn copy_area(request_context: *phx.RequestContext) !void {
     }
 
     if (req.request.width != 0 and req.request.height != 0) {
+        const gc_rects = gc.clip_rectangles orelse &.{};
+        const clip_rects = try request_context.allocator.alloc(phx.Render.Rectangle, gc_rects.len);
+        defer request_context.allocator.free(clip_rects);
+        for (gc_rects, 0..) |gr, i| {
+            clip_rects[i] = .{ .x = gr.x, .y = gr.y, .width = gr.width, .height = gr.height };
+        }
         try request_context.server.display.copy_area(&.{
             .src_drawable = src_drawable,
             .dst_drawable = dst_drawable,
@@ -1461,6 +1467,9 @@ fn copy_area(request_context: *phx.RequestContext) !void {
             .dst_y = req.request.dst_y,
             .width = req.request.width,
             .height = req.request.height,
+            .clip_rectangles = clip_rects,
+            .clip_x_origin = gc.clip_x_origin,
+            .clip_y_origin = gc.clip_y_origin,
         });
     }
 

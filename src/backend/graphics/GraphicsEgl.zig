@@ -873,7 +873,7 @@ fn perform_fill_rectangles(self: *Self, op: *phx.Graphics.FillRectanglesOperatio
     const blend = pict_op_blend_factors(op.op);
     c.glBlendFunc(blend.src, blend.dst);
 
-    const rgba = render_color_to_premultiplied_rgba(op.color);
+    const rgba = x11_color_to_gl_color(op.color);
     c.glColor4f(rgba[0], rgba[1], rgba[2], rgba[3]);
 
     c.glBegin(c.GL_QUADS);
@@ -1012,7 +1012,7 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
     c.glUniform1i(self.mask_program.loc_src_is_solid, if (src_is_solid) 1 else 0);
     switch (op.src) {
         .solid => |col| {
-            const rgba = render_color_to_premultiplied_rgba(col);
+            const rgba = x11_color_to_gl_color(col);
             c.glUniform4fv(self.mask_program.loc_src_solid_color, 1, &rgba);
         },
         else => {},
@@ -1031,7 +1031,7 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
     c.glUniform1i(self.mask_program.loc_mask_is_solid, if (mask_is_solid) 1 else 0);
     if (op.mask) |m| switch (m) {
         .solid => |col| {
-            const rgba = render_color_to_premultiplied_rgba(col);
+            const rgba = x11_color_to_gl_color(col);
             c.glUniform4fv(self.mask_program.loc_mask_solid_color, 1, &rgba);
         },
         .drawable => {},
@@ -1175,7 +1175,7 @@ fn apply_src_gradient(self: *Self, gradient: *const phx.Picture.Gradient) void {
     const n = @min(stops_struct.num_stops, phx.Picture.max_gradient_stops);
     for (0..n) |i| {
         stop_values[i] = fixed_to_float(stops_struct.stops[i]);
-        const rgba = render_color_to_premultiplied_rgba(stops_struct.colors[i]);
+        const rgba = x11_color_to_gl_color(stops_struct.colors[i]);
         color_values[i * 4 + 0] = rgba[0];
         color_values[i * 4 + 1] = rgba[1];
         color_values[i * 4 + 2] = rgba[2];
@@ -1207,7 +1207,7 @@ fn apply_src_gradient(self: *Self, gradient: *const phx.Picture.Gradient) void {
     }
 }
 
-fn render_color_to_premultiplied_rgba(color: phx.Render.Color) [4]f32 {
+fn x11_color_to_gl_color(color: phx.Render.Color) [4]f32 {
     // Cairo (and thus GTK) sends RenderColor values already premultiplied, even
     // though the X RENDER protocol nominally describes them as straight. Most X
     // servers have aligned with the cairo convention, so we do the same.
@@ -1825,7 +1825,7 @@ fn perform_trapezoids(self: *Self, op: *phx.Graphics.TrapezoidsOperation) void {
     c.glUniform1i(self.mask_program.loc_src_is_solid, if (src_is_solid) 1 else 0);
     switch (op.src) {
         .solid => |col| {
-            const rgba = render_color_to_premultiplied_rgba(col);
+            const rgba = x11_color_to_gl_color(col);
             c.glUniform4fv(self.mask_program.loc_src_solid_color, 1, &rgba);
         },
         else => {},
@@ -2074,7 +2074,7 @@ fn perform_composite_glyphs(self: *Self, op: *phx.Graphics.CompositeGlyphsOperat
     c.glUniform1i(self.mask_program.loc_src_is_solid, if (src_is_solid) 1 else 0);
     switch (op.src) {
         .solid => |col| {
-            const rgba = render_color_to_premultiplied_rgba(col);
+            const rgba = x11_color_to_gl_color(col);
             c.glUniform4fv(self.mask_program.loc_src_solid_color, 1, &rgba);
         },
         else => {},

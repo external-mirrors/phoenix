@@ -66,6 +66,7 @@ operations: std.ArrayListUnmanaged(phx.Graphics.GraphicsOperation) = .empty,
 mask_program: MaskProgram = .{},
 
 textures_to_delete: std.ArrayListUnmanaged(u32) = .empty,
+shm_pixmaps: std.ArrayListUnmanaged(*phx.Pixmap) = .empty,
 
 /// Cache of GPU-uploaded glyph atlases, keyed by the owning `*GlyphSet`.
 /// Persists across composite calls so the atlas only needs re-uploading
@@ -119,6 +120,7 @@ const MaskProgram = struct {
     loc_mask: c.GLint = -1,
     loc_use_mask: c.GLint = -1,
     loc_component_alpha: c.GLint = -1,
+    loc_mask_swizzle: c.GLint = -1,
     loc_mask_alpha_map: c.GLint = -1,
     loc_use_mask_alpha_map: c.GLint = -1,
     loc_mask_alpha_swizzle: c.GLint = -1,
@@ -126,6 +128,7 @@ const MaskProgram = struct {
     loc_mask_solid_color: c.GLint = -1,
     loc_clip_mask: c.GLint = -1,
     loc_use_clip_mask: c.GLint = -1,
+    loc_dst_is_alpha_only: c.GLint = -1,
     loc_clip_swizzle: c.GLint = -1,
 
     fn build() !MaskProgram {
@@ -153,6 +156,7 @@ const MaskProgram = struct {
             .loc_mask = c.glGetUniformLocation(program, "u_mask"),
             .loc_use_mask = c.glGetUniformLocation(program, "u_use_mask"),
             .loc_component_alpha = c.glGetUniformLocation(program, "u_component_alpha"),
+            .loc_mask_swizzle = c.glGetUniformLocation(program, "u_mask_swizzle"),
             .loc_mask_alpha_map = c.glGetUniformLocation(program, "u_mask_alpha_map"),
             .loc_use_mask_alpha_map = c.glGetUniformLocation(program, "u_use_mask_alpha_map"),
             .loc_mask_alpha_swizzle = c.glGetUniformLocation(program, "u_mask_alpha_swizzle"),
@@ -161,6 +165,7 @@ const MaskProgram = struct {
             .loc_clip_mask = c.glGetUniformLocation(program, "u_clip_mask"),
             .loc_use_clip_mask = c.glGetUniformLocation(program, "u_use_clip_mask"),
             .loc_clip_swizzle = c.glGetUniformLocation(program, "u_clip_swizzle"),
+            .loc_dst_is_alpha_only = c.glGetUniformLocation(program, "u_dst_is_alpha_only"),
         };
     }
 
@@ -356,6 +361,8 @@ pub fn deinit(self: *Self) void {
     self.pixmap_to_import.deinit(self.allocator);
     self.operations.deinit(self.allocator);
     self.textures_to_delete.deinit(self.allocator);
+    for (self.shm_pixmaps.items) |pixmap| pixmap.unref();
+    self.shm_pixmaps.deinit(self.allocator);
 
     if (self.dri_card_fd > 0) {
         std.posix.close(self.dri_card_fd);
@@ -573,7 +580,7 @@ fn perform_put_image(self: *Self, op: *phx.Graphics.PutImageOperation) void {
         };
         defer self.allocator.free(expanded);
 
-        const base = @as([*]const u8, @ptrCast(op.shm_segment.addr));
+        const base = @as([*]const u8, @ptrCast(op.shm_segment.addr)) + op.offset;
         for (0..op.src_height) |row| {
             const src_y = @as(usize, op.src_y) + row;
             const row_base = src_y * src_row_stride;
@@ -590,12 +597,13 @@ fn perform_put_image(self: *Self, op: *phx.Graphics.PutImageOperation) void {
         return;
     }
 
+    const data_ptr = @as([*]const u8, @ptrCast(op.shm_segment.addr)) + op.offset;
     if (op.src_x == 0 and op.src_y == 0 and op.src_width == op.total_width and op.src_height == op.total_height) {
-        c.glTexSubImage2D(c.GL_TEXTURE_2D, 0, op.dst_x, op.dst_y, op.total_width, op.total_height, texture_format, c.GL_UNSIGNED_BYTE, op.shm_segment.addr);
+        c.glTexSubImage2D(c.GL_TEXTURE_2D, 0, op.dst_x, op.dst_y, op.total_width, op.total_height, texture_format, c.GL_UNSIGNED_BYTE, data_ptr);
     } else {
         const depth_bytes_per_pixel: usize = @max(1, op.depth / 8);
         for (0..op.src_height) |i| {
-            var addr_num = @intFromPtr(op.shm_segment.addr);
+            var addr_num = @intFromPtr(data_ptr);
             addr_num += @as(usize, op.src_x) * depth_bytes_per_pixel;
             addr_num += (@as(usize, op.src_y) + i) * (depth_bytes_per_pixel * op.total_width);
             c.glTexSubImage2D(c.GL_TEXTURE_2D, 0, op.dst_x, op.dst_y + @as(i32, @intCast(i)), op.src_width, op.src_height, texture_format, c.GL_UNSIGNED_BYTE, @ptrFromInt(addr_num));
@@ -1016,6 +1024,8 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
     }
     c.glUniform1i(self.mask_program.loc_use_mask, if (use_mask) 1 else 0);
     c.glUniform1i(self.mask_program.loc_component_alpha, if (op.mask_component_alpha) 1 else 0);
+    const mask_swizzle = if (mask) |m| alpha_swizzle_for_depth(m.depth) else [4]f32{ 0, 0, 0, 1 };
+    c.glUniform4fv(self.mask_program.loc_mask_swizzle, 1, &mask_swizzle);
     c.glUniform1i(self.mask_program.loc_use_mask_alpha_map, if (use_mask_amap) 1 else 0);
     c.glUniform4fv(self.mask_program.loc_mask_alpha_swizzle, 1, &op.mask_alpha_swizzle);
     c.glUniform1i(self.mask_program.loc_mask_is_solid, if (mask_is_solid) 1 else 0);
@@ -1028,6 +1038,7 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
     };
     c.glUniform1i(self.mask_program.loc_use_clip_mask, if (use_clip) 1 else 0);
     c.glUniform4fv(self.mask_program.loc_clip_swizzle, 1, &op.clip_swizzle);
+    c.glUniform1i(self.mask_program.loc_dst_is_alpha_only, if (dst.depth == 1 or dst.depth == 8) 1 else 0);
 
     // For solid sources the texcoords are unused but still emitted to keep
     // the vertex format consistent. Pick benign zeros via a 1x1 fake size.
@@ -1226,10 +1237,17 @@ fn pict_op_blend_factors(op: phx.Render.PictOp) struct { src: c_uint, dst: c_uin
     };
 }
 
-fn get_drawable_target_size(drawable: phx.Graphics.GraphicsDrawable) struct { texture_id: u32, width: u32, height: u32 } {
+fn get_drawable_target_size(drawable: phx.Graphics.GraphicsDrawable) struct { texture_id: u32, width: u32, height: u32, depth: u8 } {
     return switch (drawable) {
-        .window => |window| .{ .texture_id = window.texture_id, .width = window.width, .height = window.height },
-        .pixmap => |pixmap| .{ .texture_id = pixmap.texture_id, .width = pixmap.dmabuf_data.width, .height = pixmap.dmabuf_data.height },
+        .window => |window| .{ .texture_id = window.texture_id, .width = window.width, .height = window.height, .depth = 32 },
+        .pixmap => |pixmap| .{ .texture_id = pixmap.texture_id, .width = pixmap.dmabuf_data.width, .height = pixmap.dmabuf_data.height, .depth = pixmap.dmabuf_data.depth },
+    };
+}
+
+fn alpha_swizzle_for_depth(depth: u8) [4]f32 {
+    return switch (depth) {
+        1, 8 => .{ 1, 0, 0, 0 },
+        else => .{ 0, 0, 0, 1 },
     };
 }
 
@@ -1473,6 +1491,14 @@ pub fn destroy_pixmap(self: *Self, pixmap: *phx.Pixmap) void {
     for (self.pixmap_to_import.items, 0..) |pixmap_to_import, i| {
         if (pixmap_to_import == pixmap) {
             _ = self.pixmap_to_import.orderedRemove(i);
+            break;
+        }
+    }
+
+    for (self.shm_pixmaps.items, 0..) |shm_pixmap, i| {
+        if (shm_pixmap == pixmap) {
+            _ = self.shm_pixmaps.swapRemove(i);
+            pixmap.unref();
             break;
         }
     }
@@ -1811,10 +1837,12 @@ fn perform_trapezoids(self: *Self, op: *phx.Graphics.TrapezoidsOperation) void {
     c.glUniform1i(self.mask_program.loc_component_alpha, 0);
     c.glUniform1i(self.mask_program.loc_use_mask_alpha_map, 0);
     const default_swizzle: [4]f32 = .{ 0, 0, 0, 1 };
+    c.glUniform4fv(self.mask_program.loc_mask_swizzle, 1, &default_swizzle);
     c.glUniform4fv(self.mask_program.loc_mask_alpha_swizzle, 1, &default_swizzle);
     c.glUniform1i(self.mask_program.loc_mask_is_solid, 0);
     c.glUniform1i(self.mask_program.loc_use_clip_mask, if (use_clip) 1 else 0);
     c.glUniform4fv(self.mask_program.loc_clip_swizzle, 1, &op.clip_swizzle);
+    c.glUniform1i(self.mask_program.loc_dst_is_alpha_only, if (dst.depth == 1 or dst.depth == 8) 1 else 0);
 
     const src_w_f: f32 = if (src) |s| @floatFromInt(s.width) else 1.0;
     const src_h_f: f32 = if (src) |s| @floatFromInt(s.height) else 1.0;
@@ -2056,11 +2084,13 @@ fn perform_composite_glyphs(self: *Self, op: *phx.Graphics.CompositeGlyphsOperat
     }
     c.glUniform1i(self.mask_program.loc_use_mask, 1);
     c.glUniform1i(self.mask_program.loc_component_alpha, 0);
+    c.glUniform4fv(self.mask_program.loc_mask_swizzle, 1, &a8_mask_swizzle);
     c.glUniform1i(self.mask_program.loc_use_mask_alpha_map, 0);
     c.glUniform4fv(self.mask_program.loc_mask_alpha_swizzle, 1, &a8_mask_swizzle);
     c.glUniform1i(self.mask_program.loc_mask_is_solid, 0);
     c.glUniform1i(self.mask_program.loc_use_clip_mask, 0);
     c.glUniform4fv(self.mask_program.loc_clip_swizzle, 1, &default_swizzle);
+    c.glUniform1i(self.mask_program.loc_dst_is_alpha_only, if (dst.depth == 1 or dst.depth == 8) 1 else 0);
 
     const src_w_f: f32 = if (src) |s| @floatFromInt(s.width) else 1.0;
     const src_h_f: f32 = if (src) |s| @floatFromInt(s.height) else 1.0;
@@ -2235,7 +2265,6 @@ fn create_textures_from_dmabufs(self: *Self) void {
 }
 
 fn create_plain_pixmap_texture(self: *Self, pixmap: *phx.Pixmap) !void {
-    _ = self;
     const depth = pixmap.dmabuf_data.depth;
     const width = pixmap.dmabuf_data.width;
     const height = pixmap.dmabuf_data.height;
@@ -2252,18 +2281,45 @@ fn create_plain_pixmap_texture(self: *Self, pixmap: *phx.Pixmap) !void {
     c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_LINEAR);
     c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_WRAP_S, c.GL_CLAMP_TO_EDGE);
     c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_WRAP_T, c.GL_CLAMP_TO_EDGE);
-    c.glTexImage2D(
-        c.GL_TEXTURE_2D,
-        0,
-        depth_to_internal_format(depth),
-        @intCast(width),
-        @intCast(height),
-        0,
-        depth_to_texture_format(depth),
-        c.GL_UNSIGNED_BYTE,
-        null,
-    );
-    c.glBindTexture(c.GL_TEXTURE_2D, 0);
+    if (pixmap.shm_segment) |shm_segment| {
+        const data_ptr = @as([*]const u8, @ptrCast(shm_segment.addr)) + pixmap.shm_offset;
+        c.glTexImage2D(
+            c.GL_TEXTURE_2D,
+            0,
+            depth_to_internal_format(depth),
+            @intCast(width),
+            @intCast(height),
+            0,
+            depth_to_texture_format(depth),
+            c.GL_UNSIGNED_BYTE,
+            data_ptr,
+        );
+        c.glBindTexture(c.GL_TEXTURE_2D, 0);
+
+        try self.shm_pixmaps.append(self.allocator, pixmap);
+        pixmap.ref();
+    } else {
+        c.glTexImage2D(
+            c.GL_TEXTURE_2D,
+            0,
+            depth_to_internal_format(depth),
+            @intCast(width),
+            @intCast(height),
+            0,
+            depth_to_texture_format(depth),
+            c.GL_UNSIGNED_BYTE,
+            null,
+        );
+        c.glBindTexture(c.GL_TEXTURE_2D, 0);
+
+        var prev_fb: c.GLint = 0;
+        c.glGetIntegerv(c.GL_DRAW_FRAMEBUFFER_BINDING, &prev_fb);
+        c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.framebuffer);
+        c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT0, c.GL_TEXTURE_2D, texture, 0);
+        c.glClearColor(0.0, 0.0, 0.0, 0.0);
+        c.glClear(c.GL_COLOR_BUFFER_BIT);
+        c.glBindFramebuffer(c.GL_FRAMEBUFFER, @intCast(prev_fb));
+    }
 
     pixmap.texture_id = texture;
 }
@@ -2282,10 +2338,25 @@ fn run_graphics_updates(self: *Self) void {
 
     self.create_textures_from_dmabufs();
     self.process_pending_textures_to_delete();
+    self.refresh_shm_pixmap_textures();
 
     if (self.root_window) |root_window| {
         self.destroy_pending_windows_recursive(root_window);
         self.create_graphics_windows_textures_recursive(root_window);
+    }
+}
+
+fn refresh_shm_pixmap_textures(self: *Self) void {
+    for (self.shm_pixmaps.items) |pixmap| {
+        const shm_segment = pixmap.shm_segment orelse continue;
+        if (pixmap.texture_id == 0) continue;
+        const depth = pixmap.dmabuf_data.depth;
+        const width = pixmap.dmabuf_data.width;
+        const height = pixmap.dmabuf_data.height;
+        const data_ptr = @as([*]const u8, @ptrCast(shm_segment.addr)) + pixmap.shm_offset;
+        c.glBindTexture(c.GL_TEXTURE_2D, pixmap.texture_id);
+        c.glTexSubImage2D(c.GL_TEXTURE_2D, 0, 0, 0, @intCast(width), @intCast(height), depth_to_texture_format(depth), c.GL_UNSIGNED_BYTE, data_ptr);
+        c.glBindTexture(c.GL_TEXTURE_2D, 0);
     }
 }
 

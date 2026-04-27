@@ -43,6 +43,7 @@ pub const mask_fragment_shader_src: [*c]const u8 =
     \\uniform sampler2D u_mask;
     \\uniform bool u_use_mask;
     \\uniform bool u_component_alpha;
+    \\uniform vec4 u_mask_swizzle;
     \\uniform sampler2D u_mask_alpha_map;
     \\uniform bool u_use_mask_alpha_map;
     \\uniform vec4 u_mask_alpha_swizzle;
@@ -52,6 +53,7 @@ pub const mask_fragment_shader_src: [*c]const u8 =
     \\uniform sampler2D u_clip_mask;
     \\uniform bool u_use_clip_mask;
     \\uniform vec4 u_clip_swizzle;
+    \\uniform bool u_dst_is_alpha_only;
     \\
     \\// Pick a color for parameter t (in [0, 1]) by linearly interpolating
     \\// between the surrounding stops. Stops are assumed pre-sorted ascending.
@@ -154,6 +156,7 @@ pub const mask_fragment_shader_src: [*c]const u8 =
     \\            mask = u_mask_solid_color;
     \\        } else {
     \\            mask = texture2D(u_mask, gl_TexCoord[2].st);
+    \\            mask.a = dot(mask, u_mask_swizzle);
     \\            if (u_use_mask_alpha_map) {
     \\                mask.a = dot(texture2D(u_mask_alpha_map, gl_TexCoord[3].st), u_mask_alpha_swizzle);
     \\            }
@@ -170,7 +173,11 @@ pub const mask_fragment_shader_src: [*c]const u8 =
     \\        if (clip < 0.5) discard;
     \\    }
     \\
-    \\    gl_FragColor = result;
+    \\    if (u_dst_is_alpha_only) {
+    \\        gl_FragColor = vec4(result.a, 0.0, 0.0, 0.0);
+    \\    } else {
+    \\        gl_FragColor = result;
+    \\    }
     \\}
 ;
 

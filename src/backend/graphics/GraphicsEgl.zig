@@ -1208,13 +1208,15 @@ fn apply_src_gradient(self: *Self, gradient: *const phx.Picture.Gradient) void {
 }
 
 fn render_color_to_premultiplied_rgba(color: phx.Render.Color) [4]f32 {
+    // Cairo (and thus GTK) sends RenderColor values already premultiplied, even
+    // though the X RENDER protocol nominally describes them as straight. Most X
+    // servers have aligned with the cairo convention, so we do the same.
     const max: f32 = 65535.0;
-    const a: f32 = @as(f32, @floatFromInt(color.alpha)) / max;
     return .{
-        @as(f32, @floatFromInt(color.red)) / max * a,
-        @as(f32, @floatFromInt(color.green)) / max * a,
-        @as(f32, @floatFromInt(color.blue)) / max * a,
-        a,
+        @as(f32, @floatFromInt(color.red)) / max,
+        @as(f32, @floatFromInt(color.green)) / max,
+        @as(f32, @floatFromInt(color.blue)) / max,
+        @as(f32, @floatFromInt(color.alpha)) / max,
     };
 }
 

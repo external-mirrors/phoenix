@@ -321,6 +321,7 @@ fn apply_picture_values(
             }
         }
         picture.clip_mask = clip_mask_id;
+        picture.clear_clip_rectangles();
     }
 
     if (request.get_value(bool, "graphics_exposure")) |v| picture.graphics_exposure = v;

@@ -148,7 +148,7 @@ pub fn handle_connection_setup_request(server: *phx.Server, client: *phx.Client,
         .maximum_request_length = 0xffff,
         .image_byte_order = if (x11.native_endian == .little) .lsb_first else .msg_first,
         .bitmap_format_bit_order = .least_significant, // TODO: Big-endian?
-        .bitmap_format_scanline_unit = 0,
+        .bitmap_format_scanline_unit = 32,
         .bitmap_format_scanline_pad = 32,
         .min_keycode = server.input.get_min_keycode(),
         .max_keycode = server.input.get_max_keycode(),
@@ -278,8 +278,8 @@ pub const Reply = struct {
     pub const ConnectionSetupSuccess = struct {
         status: ConnectionReplyStatus = .success,
         pad1: x11.Card8 = 0,
-        protocol_major_version: x11.Card16 = 28000, // TODO:
-        protocol_minor_version: x11.Card16 = 0, // TODO:
+        protocol_major_version: x11.Card16 = 11,
+        protocol_minor_version: x11.Card16 = 0,
         length: x11.Card16 = 0, // This is automatically updated with the size of the reply
         release_number: x11.Card32,
         resource_id_base: x11.Card32,
@@ -305,8 +305,8 @@ pub const Reply = struct {
     pub const ConnectionSetupFailed = struct {
         status: ConnectionReplyStatus = .failed,
         reason_length: x11.Card8 = 0,
-        protocol_major_version: x11.Card16 = 28000, // TODO:
-        protocol_minor_version: x11.Card16 = 0, // TODO:
+        protocol_major_version: x11.Card16 = 11,
+        protocol_minor_version: x11.Card16 = 0,
         length: x11.Card16 = 0, // This is automatically updated with the size of the reply
         reason: x11.ListOf(x11.Card8, .{ .length_field = "reason_length" }),
         pad1: x11.AlignmentPadding = .{},

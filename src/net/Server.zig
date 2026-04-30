@@ -53,6 +53,7 @@ screen_resources: phx.ScreenResources,
 
 cursor_x: i32,
 cursor_y: i32,
+current_cursor_window: ?*phx.Window = null,
 
 running: bool = false,
 shutting_down: std.atomic.Value(bool) = .init(false),
@@ -371,7 +372,8 @@ pub fn run(self: *Self) !void {
 
 fn set_socket_non_blocking(socket: std.posix.socket_t) void {
     const flags = std.posix.fcntl(socket, std.posix.F.GETFL, 0) catch unreachable;
-    _ = std.posix.fcntl(socket, std.posix.F.SETFL, flags | std.posix.SOCK.NONBLOCK) catch unreachable;
+    const nonblock = 1 << @bitOffsetOf(std.posix.system.O, "NONBLOCK");
+    _ = std.posix.fcntl(socket, std.posix.F.SETFL, flags | nonblock) catch unreachable;
 }
 
 fn add_client(self: *Self, connection: *std.net.Server.Connection) !*phx.Client {
@@ -824,6 +826,11 @@ fn handle_mouse_move(self: *Self, mouse_move: *MouseMoveMessage) void {
     // XXX: Optimize this. Maybe we dont want to do this on every mouse move. Also update cursor window when a window moves
     var cursor_window = phx.Window.get_window_at_position(self.root_window, cursor_pos_root, &cursor_pos_relative_to_window);
 
+    if (self.current_cursor_window != cursor_window) {
+        phx.Window.dispatch_crossing(self.current_cursor_window, cursor_window, current_server_time, cursor_pos_root, self.current_key_but_mask, self.root_window.id);
+        self.current_cursor_window = cursor_window;
+    }
+
     var motion_notify_event = phx.event.Event{
         .motion_notify = .{
             .detail = .normal, // XXX: Respect pointer motion hint
@@ -839,7 +846,7 @@ fn handle_mouse_move(self: *Self, mouse_move: *MouseMoveMessage) void {
             .same_screen = true,
         },
     };
-    cursor_window.write_core_event_to_event_listeners(&motion_notify_event);
+    cursor_window.dispatch_device_event(&motion_notify_event, cursor_pos_root);
 }
 
 fn handle_mouse_click(self: *Self, mouse_click: *MouseClickMessage) void {
@@ -852,6 +859,13 @@ fn handle_mouse_click(self: *Self, mouse_click: *MouseClickMessage) void {
     const cursor_pos_root = @Vector(2, i32){ mouse_click.x, mouse_click.y };
     var cursor_pos_relative_to_window = @Vector(2, i32){ 0, 0 };
     var cursor_window = phx.Window.get_window_at_position(self.root_window, cursor_pos_root, &cursor_pos_relative_to_window);
+
+    if (self.current_cursor_window != cursor_window) {
+        phx.Window.dispatch_crossing(self.current_cursor_window, cursor_window, current_server_time, cursor_pos_root, self.current_key_but_mask, self.root_window.id);
+        self.current_cursor_window = cursor_window;
+    }
+
+    const state_before = self.current_key_but_mask;
 
     switch (mouse_click.button) {
         .any => {},
@@ -892,18 +906,18 @@ fn handle_mouse_click(self: *Self, mouse_click: *MouseClickMessage) void {
         .root_y = @intCast(cursor_pos_root[1]),
         .event_x = @intCast(cursor_pos_relative_to_window[0]),
         .event_y = @intCast(cursor_pos_relative_to_window[1]),
-        .state = self.current_key_but_mask,
+        .state = state_before,
         .same_screen = true,
     };
 
     switch (mouse_click.state) {
         .press => {
             var button_press_event = phx.event.Event{ .button_press = button_event };
-            cursor_window.write_core_event_to_event_listeners(&button_press_event);
+            cursor_window.dispatch_device_event(&button_press_event, cursor_pos_root);
         },
         .release => {
             var button_release_event = phx.event.Event{ .button_release = @bitCast(button_event) };
-            cursor_window.write_core_event_to_event_listeners(&button_release_event);
+            cursor_window.dispatch_device_event(&button_release_event, cursor_pos_root);
         },
     }
 }
@@ -961,11 +975,11 @@ fn handle_key(self: *Self, key: *KeyMessage) void {
     switch (key.state) {
         .press => {
             var button_press_event = phx.event.Event{ .key_press = key_event };
-            cursor_window.write_core_event_to_event_listeners(&button_press_event);
+            cursor_window.dispatch_device_event(&button_press_event, cursor_pos_root);
         },
         .release => {
             var button_release_event = phx.event.Event{ .key_release = @bitCast(key_event) };
-            cursor_window.write_core_event_to_event_listeners(&button_release_event);
+            cursor_window.dispatch_device_event(&button_release_event, cursor_pos_root);
         },
     }
 }

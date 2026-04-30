@@ -31,12 +31,23 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .get_selection_owner => get_selection_owner(request_context),
         .convert_selection => convert_selection(request_context),
         .send_event => send_event(request_context),
+        .grab_pointer => grab_pointer(request_context),
+        .ungrab_pointer => ungrab_pointer(request_context),
+        .grab_button => grab_button(request_context),
+        .ungrab_button => ungrab_button(request_context),
+        .change_active_pointer_grab => change_active_pointer_grab(request_context),
+        .grab_keyboard => grab_keyboard(request_context),
+        .ungrab_keyboard => ungrab_keyboard(request_context),
+        .grab_key => grab_key(request_context),
+        .ungrab_key => ungrab_key(request_context),
+        .allow_events => allow_events(request_context),
         .grab_server => grab_server(request_context),
         .ungrab_server => ungrab_server(request_context),
         .query_pointer => query_pointer(request_context),
         .translate_coordinates => translate_coordinates(request_context),
         .set_input_focus => set_input_focus(request_context),
         .get_input_focus => get_input_focus(request_context),
+        .query_keymap => query_keymap(request_context),
         .open_font => open_font(request_context),
         .list_fonts => list_fonts(request_context),
         .create_pixmap => create_pixmap(request_context),
@@ -193,6 +204,7 @@ fn create_window(request_context: *phx.RequestContext) !void {
         .background_pixel = background_pixel,
         .border_pixmap = border_pixmap,
         .border_pixel = border_pixel,
+        .border_width = req.request.border_width,
         .do_not_propagate_mask = do_not_propagate_mask,
         .save_under = save_under,
         .override_redirect = override_redirect,
@@ -582,7 +594,7 @@ fn configure_window(request_context: *phx.RequestContext) !void {
                         .y = @intCast(new_window_attributes.geometry.y),
                         .width = @intCast(new_window_attributes.geometry.width),
                         .height = @intCast(new_window_attributes.geometry.height),
-                        .border_width = 1, // TODO:
+                        .border_width = new_window_attributes.border_width,
                         .value_mask = req.request.value_mask,
                     },
                 };
@@ -633,7 +645,7 @@ fn configure_window(request_context: *phx.RequestContext) !void {
                 .y = @intCast(window.attributes.geometry.y),
                 .width = @intCast(window.attributes.geometry.width),
                 .height = @intCast(window.attributes.geometry.height),
-                .border_width = 1, // TODO:
+                .border_width = window.attributes.border_width,
                 .above_sibling = @enumFromInt(none), // TODO:
                 .override_redirect = window.attributes.override_redirect,
             },
@@ -663,7 +675,7 @@ fn get_geometry(request_context: *phx.RequestContext) !void {
         .y = @intCast(geometry.y),
         .width = @intCast(geometry.width),
         .height = @intCast(geometry.height),
-        .border_width = 1, // TODO: Use real value
+        .border_width = if (request_context.server.get_window(@enumFromInt(@intFromEnum(req.request.drawable)))) |w| w.attributes.border_width else 0,
     };
     try request_context.client.write_reply(&rep);
 }
@@ -1153,6 +1165,71 @@ fn ungrab_server(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.UngrabServer, request_context.allocator);
     defer req.deinit();
     std.log.err("Received UngrabServer request from client {d}, ignoring...", .{request_context.client.connection.stream.handle});
+}
+
+// TODO: Implement these
+fn grab_pointer(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GrabPointer, request_context.allocator);
+    defer req.deinit();
+
+    var rep = Reply.GrabPointer{ .sequence_number = request_context.sequence_number };
+    try request_context.client.write_reply(&rep);
+}
+
+fn ungrab_pointer(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.UngrabPointer, request_context.allocator);
+    defer req.deinit();
+}
+
+fn grab_button(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GrabButton, request_context.allocator);
+    defer req.deinit();
+}
+
+fn ungrab_button(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.UngrabButton, request_context.allocator);
+    defer req.deinit();
+}
+
+fn change_active_pointer_grab(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.ChangeActivePointerGrab, request_context.allocator);
+    defer req.deinit();
+}
+
+fn grab_keyboard(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GrabKeyboard, request_context.allocator);
+    defer req.deinit();
+
+    var rep = Reply.GrabKeyboard{ .sequence_number = request_context.sequence_number };
+    try request_context.client.write_reply(&rep);
+}
+
+fn ungrab_keyboard(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.UngrabKeyboard, request_context.allocator);
+    defer req.deinit();
+}
+
+fn grab_key(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.GrabKey, request_context.allocator);
+    defer req.deinit();
+}
+
+fn ungrab_key(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.UngrabKey, request_context.allocator);
+    defer req.deinit();
+}
+
+fn allow_events(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.AllowEvents, request_context.allocator);
+    defer req.deinit();
+}
+
+fn query_keymap(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.QueryKeymap, request_context.allocator);
+    defer req.deinit();
+
+    var rep = Reply.QueryKeymap{ .sequence_number = request_context.sequence_number };
+    try request_context.client.write_reply(&rep);
 }
 
 fn query_pointer(request_context: *phx.RequestContext) !void {
@@ -2377,6 +2454,112 @@ pub const Request = struct {
         length: x11.Card16,
     };
 
+    pub const GrabPointer = struct {
+        opcode: phx.opcode.Major = .grab_pointer,
+        owner_events: bool,
+        length: x11.Card16,
+        grab_window: x11.WindowId,
+        event_mask: x11.Card16,
+        pointer_mode: x11.Card8,
+        keyboard_mode: x11.Card8,
+        confine_to: x11.WindowId,
+        cursor: x11.Card32,
+        time: x11.Timestamp,
+    };
+
+    pub const UngrabPointer = struct {
+        opcode: phx.opcode.Major = .ungrab_pointer,
+        pad1: x11.Card8,
+        length: x11.Card16,
+        time: x11.Timestamp,
+    };
+
+    pub const GrabButton = struct {
+        opcode: phx.opcode.Major = .grab_button,
+        owner_events: bool,
+        length: x11.Card16,
+        grab_window: x11.WindowId,
+        event_mask: x11.Card16,
+        pointer_mode: x11.Card8,
+        keyboard_mode: x11.Card8,
+        confine_to: x11.WindowId,
+        cursor: x11.Card32,
+        button: x11.Card8,
+        pad1: x11.Card8 = 0,
+        modifiers: x11.Card16,
+    };
+
+    pub const UngrabButton = struct {
+        opcode: phx.opcode.Major = .ungrab_button,
+        button: x11.Card8,
+        length: x11.Card16,
+        grab_window: x11.WindowId,
+        modifiers: x11.Card16,
+        pad1: [2]x11.Card8 = @splat(0),
+    };
+
+    pub const ChangeActivePointerGrab = struct {
+        opcode: phx.opcode.Major = .change_active_pointer_grab,
+        pad1: x11.Card8,
+        length: x11.Card16,
+        cursor: x11.Card32,
+        time: x11.Timestamp,
+        event_mask: x11.Card16,
+        pad2: [2]x11.Card8 = @splat(0),
+    };
+
+    pub const GrabKeyboard = struct {
+        opcode: phx.opcode.Major = .grab_keyboard,
+        owner_events: bool,
+        length: x11.Card16,
+        grab_window: x11.WindowId,
+        time: x11.Timestamp,
+        pointer_mode: x11.Card8,
+        keyboard_mode: x11.Card8,
+        pad1: [2]x11.Card8 = @splat(0),
+    };
+
+    pub const UngrabKeyboard = struct {
+        opcode: phx.opcode.Major = .ungrab_keyboard,
+        pad1: x11.Card8,
+        length: x11.Card16,
+        time: x11.Timestamp,
+    };
+
+    pub const GrabKey = struct {
+        opcode: phx.opcode.Major = .grab_key,
+        owner_events: bool,
+        length: x11.Card16,
+        grab_window: x11.WindowId,
+        modifiers: x11.Card16,
+        keycode: x11.Card8,
+        pointer_mode: x11.Card8,
+        keyboard_mode: x11.Card8,
+        pad1: [3]x11.Card8 = @splat(0),
+    };
+
+    pub const UngrabKey = struct {
+        opcode: phx.opcode.Major = .ungrab_key,
+        keycode: x11.Card8,
+        length: x11.Card16,
+        grab_window: x11.WindowId,
+        modifiers: x11.Card16,
+        pad1: [2]x11.Card8 = @splat(0),
+    };
+
+    pub const AllowEvents = struct {
+        opcode: phx.opcode.Major = .allow_events,
+        mode: x11.Card8,
+        length: x11.Card16,
+        time: x11.Timestamp,
+    };
+
+    pub const QueryKeymap = struct {
+        opcode: phx.opcode.Major = .query_keymap,
+        pad1: x11.Card8,
+        length: x11.Card16,
+    };
+
     pub const QueryPointer = struct {
         opcode: phx.opcode.Major = .query_pointer,
         pad1: x11.Card8,
@@ -2729,6 +2912,30 @@ pub const Reply = struct {
         win_y: i16,
         mask: phx.event.KeyButMask,
         pad1: [6]x11.Card8 = @splat(0),
+    };
+
+    pub const GrabPointer = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        status: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0,
+        pad1: [24]x11.Card8 = @splat(0),
+    };
+
+    pub const GrabKeyboard = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        status: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0,
+        pad1: [24]x11.Card8 = @splat(0),
+    };
+
+    pub const QueryKeymap = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0,
+        keys: [32]x11.Card8 = @splat(0),
     };
 
     pub const GetInputFocus = struct {

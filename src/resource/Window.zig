@@ -70,6 +70,8 @@ pub fn destroy(self: *Self) void {
 
     self.server.selection_owner_manager.clear_selections_by_window(self.server, self);
     self.server.xfixes_remove_subscriptions_for_window(self);
+    if (self.server.current_cursor_window == self)
+        self.server.current_cursor_window = null;
     self.revert_input_focus();
 
     self.remove_event_listeners_from_clients();
@@ -542,6 +544,148 @@ fn write_core_event_to_substructure_notify_listeners(self: *const Self, event: *
         parent.write_core_event_to_substructure_notify_listeners(event);
 }
 
+/// Per X11 spec, device events (key/button/motion) propagate from the source
+/// window up through ancestors until a window has a listener with a matching
+/// event mask, or until an intervening window's do_not_propagate_mask blocks
+/// further propagation.
+pub fn dispatch_device_event(source: *Self, event: *phx.event.Event, root_pos: @Vector(2, i32)) void {
+    var current: ?*Self = source;
+    var child: x11.WindowId = .none;
+    while (current) |w| {
+        const abs = w.get_absolute_position();
+        const event_x: i16 = @intCast(root_pos[0] - abs[0]);
+        const event_y: i16 = @intCast(root_pos[1] - abs[1]);
+        set_device_event_target(event, w.id, child, event_x, event_y);
+
+        var delivered = false;
+        for (w.core_event_listeners.items) |*listener| {
+            if (!core_event_mask_matches_event_code(listener.event_mask, event.any.code, event))
+                continue;
+            listener.client.write_event(event) catch |err| {
+                std.log.err(
+                    "Failed to write (buffer) core event of type \"{s}\" to client {d}, error: {s}",
+                    .{ @tagName(event.any.code), listener.client.connection.stream.handle, @errorName(err) },
+                );
+                continue;
+            };
+            delivered = true;
+        }
+        if (delivered) return;
+
+        if (event_blocked_by_do_not_propagate(event.any.code, w.attributes.do_not_propagate_mask)) return;
+
+        child = w.id;
+        current = w.parent;
+    }
+}
+
+fn set_device_event_target(event: *phx.event.Event, event_window: x11.WindowId, child_window: x11.WindowId, event_x: i16, event_y: i16) void {
+    switch (event.any.code) {
+        inline .key_press, .key_release, .button_press, .button_release, .motion_notify => |tag| {
+            const variant = &@field(event, @tagName(tag));
+            variant.event = event_window;
+            variant.child_window = child_window;
+            variant.event_x = event_x;
+            variant.event_y = event_y;
+        },
+        else => {},
+    }
+}
+
+/// Send LeaveNotify on `prev` and EnterNotify on `next` when the pointer
+/// crosses between windows. Each event is delivered to every window along
+/// the chain from the source up to the root that has a matching listener.
+/// This is a simplified version of the X11 spec — it omits the virtual
+/// events emitted on intermediate windows between the source and the
+/// common ancestor — but is sufficient for GTK to update pointer state.
+pub fn dispatch_crossing(
+    prev: ?*Self,
+    next: *Self,
+    time: x11.Timestamp,
+    root_pos: @Vector(2, i32),
+    state: phx.event.KeyButMask,
+    root_window_id: x11.WindowId,
+) void {
+    if (prev) |p| {
+        emit_crossing_chain(p, .leave_notify, time, root_pos, state, root_window_id);
+    }
+    emit_crossing_chain(next, .enter_notify, time, root_pos, state, root_window_id);
+}
+
+fn emit_crossing_chain(
+    source: *Self,
+    comptime code: phx.event.EventCode,
+    time: x11.Timestamp,
+    root_pos: @Vector(2, i32),
+    state: phx.event.KeyButMask,
+    root_window_id: x11.WindowId,
+) void {
+    var current: ?*Self = source;
+    var child: x11.WindowId = .none;
+    while (current) |w| {
+        const abs = w.get_absolute_position();
+        const event_x: i16 = @intCast(root_pos[0] - abs[0]);
+        const event_y: i16 = @intCast(root_pos[1] - abs[1]);
+        var event: phx.event.Event = switch (code) {
+            .enter_notify => .{ .enter_notify = .{
+                .detail = .nonlinear,
+                .time = time,
+                .root_window = root_window_id,
+                .event = w.id,
+                .child_window = child,
+                .root_x = @intCast(root_pos[0]),
+                .root_y = @intCast(root_pos[1]),
+                .event_x = event_x,
+                .event_y = event_y,
+                .state = state,
+                .mode = .normal,
+                .same_screen_focus = .{ .focus = false, .same_screen = true },
+            } },
+            .leave_notify => .{ .leave_notify = .{
+                .detail = .nonlinear,
+                .time = time,
+                .root_window = root_window_id,
+                .event = w.id,
+                .child_window = child,
+                .root_x = @intCast(root_pos[0]),
+                .root_y = @intCast(root_pos[1]),
+                .event_x = event_x,
+                .event_y = event_y,
+                .state = state,
+                .mode = .normal,
+                .same_screen_focus = .{ .focus = false, .same_screen = true },
+            } },
+            else => @compileError("emit_crossing_chain: invalid code"),
+        };
+        for (w.core_event_listeners.items) |*listener| {
+            if (!core_event_mask_matches_event_code(listener.event_mask, code, &event))
+                continue;
+            listener.client.write_event(&event) catch |err| {
+                std.log.err(
+                    "Failed to write crossing event to client {d}, error: {s}",
+                    .{ listener.client.connection.stream.handle, @errorName(err) },
+                );
+                continue;
+            };
+        }
+        child = w.id;
+        current = w.parent;
+    }
+}
+
+fn event_blocked_by_do_not_propagate(code: phx.event.EventCode, dnp: phx.core.DeviceEventMask) bool {
+    return switch (code) {
+        .key_press => dnp.key_press,
+        .key_release => dnp.key_release,
+        .button_press => dnp.button_press,
+        .button_release => dnp.button_release,
+        .motion_notify => dnp.pointer_motion or dnp.button_motion or
+            dnp.button1_motion or dnp.button2_motion or dnp.button3_motion or
+            dnp.button4_motion or dnp.button5_motion,
+        else => false,
+    };
+}
+
 const RedirectListener = struct {
     client: *phx.Client,
     window: *phx.Window,
@@ -591,6 +735,8 @@ pub fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, event_
                 return false;
             }
         },
+        .enter_notify => return event_mask.enter_window,
+        .leave_notify => return event_mask.leave_window,
         .focus_in => return event_mask.focus_change,
         .focus_out => return event_mask.focus_change,
         .expose => return event_mask.exposure,
@@ -619,6 +765,8 @@ inline fn core_event_should_propagate_to_parent_substructure_notify(event_code: 
         .button_press => false,
         .button_release => false,
         .motion_notify => false,
+        .enter_notify => false,
+        .leave_notify => false,
         .focus_in => false,
         .focus_out => false,
         .expose => false, // Only delivered to the exposed window itself
@@ -870,6 +1018,17 @@ pub fn map(self: *Self) void {
         },
     };
     self.write_core_event_to_event_listeners(&expose_event);
+
+    // TODO: Should this also be done in destroy? to move cursor window when a window is destroyed.
+    // Or do that in a unmap function and call unmap from destroy
+    const cursor_pos_root: @Vector(2, i32) = .{ self.server.cursor_x, self.server.cursor_y };
+    var rel_pos: @Vector(2, i32) = .{ 0, 0 };
+    const new_cursor_window = get_window_at_position(self.server.root_window, cursor_pos_root, &rel_pos);
+    if (self.server.current_cursor_window != new_cursor_window) {
+        const time = self.server.get_timestamp_milliseconds();
+        dispatch_crossing(self.server.current_cursor_window, new_cursor_window, time, cursor_pos_root, self.server.current_key_but_mask, self.server.root_window.id);
+        self.server.current_cursor_window = new_cursor_window;
+    }
 }
 
 /// Returns |root_window| if no window matches
@@ -915,6 +1074,7 @@ pub const Attributes = struct {
     do_not_propagate_mask: phx.core.DeviceEventMask,
     save_under: bool,
     override_redirect: bool,
+    border_width: x11.Card16 = 0,
 };
 
 const CoreEventListener = struct {

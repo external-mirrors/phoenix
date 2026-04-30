@@ -8,6 +8,8 @@ pub const EventCode = enum(x11.Card8) {
     button_press = 4,
     button_release = 5,
     motion_notify = 6,
+    enter_notify = 7,
+    leave_notify = 8,
     focus_in = 9,
     focus_out = 10,
     expose = 12,
@@ -35,7 +37,7 @@ pub const randr_screen_change_notify: x11.Card8 = randr_first_event + 0;
 pub const randr_notify: x11.Card8 = randr_first_event + 1;
 
 pub const mit_shm_first_event: x11.Card8 = 60;
-pub const mit_shm_put_image_completion: x11.Card8 = mit_shm_first_event + 3;
+pub const mit_shm_put_image_completion: x11.Card8 = mit_shm_first_event + 0;
 
 pub const xfixes_first_event: x11.Card8 = 70;
 pub const xfixes_selection_notify: x11.Card8 = xfixes_first_event + 0;
@@ -224,6 +226,52 @@ pub const MotionNotifyEvent = extern struct {
     }
 };
 
+pub const CrossingDetail = enum(x11.Card8) {
+    ancestor = 0,
+    virtual = 1,
+    inferior = 2,
+    nonlinear = 3,
+    nonlinear_virtual = 4,
+};
+
+pub const CrossingMode = enum(x11.Card8) {
+    normal = 0,
+    grab = 1,
+    ungrab = 2,
+};
+
+pub const CrossingSameScreenFocus = packed struct(x11.Card8) {
+    focus: bool = false,
+    same_screen: bool = false,
+    _pad: u6 = 0,
+};
+
+fn CrossingEvent(comptime code: EventCode) type {
+    return extern struct {
+        code: EventCode = code,
+        detail: CrossingDetail,
+        sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+        time: x11.Timestamp,
+        root_window: x11.WindowId,
+        event: x11.WindowId,
+        child_window: x11.WindowId,
+        root_x: i16,
+        root_y: i16,
+        event_x: i16,
+        event_y: i16,
+        state: KeyButMask,
+        mode: CrossingMode,
+        same_screen_focus: CrossingSameScreenFocus,
+
+        comptime {
+            std.debug.assert(@sizeOf(@This()) == 32);
+        }
+    };
+}
+
+pub const EnterNotifyEvent = CrossingEvent(.enter_notify);
+pub const LeaveNotifyEvent = CrossingEvent(.leave_notify);
+
 pub const FocusInEvent = extern struct {
     code: EventCode = .focus_in,
     detail: FocusDetail,
@@ -395,7 +443,7 @@ pub const ConfigureRequestEvent = extern struct {
 };
 
 pub const ResizeRequestEvent = extern struct {
-    code: EventCode = .configure_request,
+    code: EventCode = .resize_request,
     pad1: x11.Card8 = 0,
     sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
     window: x11.WindowId,
@@ -512,6 +560,8 @@ pub const Event = extern union {
     button_press: ButtonPressEvent,
     button_release: ButtonReleaseEvent,
     motion_notify: MotionNotifyEvent,
+    enter_notify: EnterNotifyEvent,
+    leave_notify: LeaveNotifyEvent,
     focus_in: FocusInEvent,
     focus_out: FocusOutEvent,
     expose: ExposeEvent,

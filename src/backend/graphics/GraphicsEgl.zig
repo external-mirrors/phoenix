@@ -1075,7 +1075,7 @@ fn perform_composite(self: *Self, op: *phx.Graphics.CompositeOperation) void {
             c.glMultiTexCoord2f(c.GL_TEXTURE1, 0, 0);
         }
 
-        if (use_mask) {
+        if (use_mask and !mask_is_solid) {
             const m = mask.?;
             const mx_pix: f32 = @floatFromInt(@as(i32, op.mask_x) + cx);
             const my_pix: f32 = @floatFromInt(@as(i32, op.mask_y) + cy);

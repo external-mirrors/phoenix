@@ -831,6 +831,15 @@ fn handle_mouse_move(self: *Self, mouse_move: *MouseMoveMessage) void {
         self.current_cursor_window = cursor_window;
     }
 
+    // var event_window = switch (self.input_focus.focus) {
+    //     .none => return,
+    //     .pointer_root => self.root_window,
+    //     .window => |window| window,
+    // };
+
+    // const event_window_pos_abs = event_window.get_absolute_position();
+    // cursor_pos_relative_to_window = cursor_pos_root - event_window_pos_abs;
+
     var motion_notify_event = phx.event.Event{
         .motion_notify = .{
             .detail = .normal, // XXX: Respect pointer motion hint
@@ -895,6 +904,15 @@ fn handle_mouse_click(self: *Self, mouse_click: *MouseClickMessage) void {
         }
     }
 
+    // var event_window = switch (self.input_focus.focus) {
+    //     .none => return,
+    //     .pointer_root => self.root_window,
+    //     .window => |window| window,
+    // };
+
+    // const event_window_pos_abs = event_window.get_absolute_position();
+    // cursor_pos_relative_to_window = cursor_pos_root - event_window_pos_abs;
+
     const button_event = phx.event.ButtonPressEvent{
         .code = if (mouse_click.state == .press) .button_press else .button_release,
         .button = mouse_click.button,
@@ -925,8 +943,17 @@ fn handle_mouse_click(self: *Self, mouse_click: *MouseClickMessage) void {
 fn handle_key(self: *Self, key: *KeyMessage) void {
     const current_server_time = self.get_timestamp_milliseconds();
     const cursor_pos_root = @Vector(2, i32){ key.x, key.y };
-    var cursor_pos_relative_to_window = @Vector(2, i32){ 0, 0 };
-    var cursor_window = phx.Window.get_window_at_position(self.root_window, cursor_pos_root, &cursor_pos_relative_to_window);
+    //var cursor_pos_relative_to_window = @Vector(2, i32){ 0, 0 };
+    //var cursor_window = phx.Window.get_window_at_position(self.root_window, cursor_pos_root, &cursor_pos_relative_to_window);
+
+    var event_window = switch (self.input_focus.focus) {
+        .none => return,
+        .pointer_root => self.root_window,
+        .window => |window| window,
+    };
+
+    const event_window_pos_abs = event_window.get_absolute_position();
+    const cursor_pos_relative_to_window = cursor_pos_root - event_window_pos_abs;
 
     const prev_capslock_pressed = self.keys_pressed.capslock;
     const prev_numlock_pressed = self.keys_pressed.numlock;
@@ -962,7 +989,7 @@ fn handle_key(self: *Self, key: *KeyMessage) void {
         .keycode = key.keycode,
         .time = current_server_time,
         .root_window = self.root_window.id,
-        .event = cursor_window.id,
+        .event = event_window.id,
         .child_window = .none, // XXX: Is there any case where we dont want this to be .none?
         .root_x = @intCast(cursor_pos_root[0]),
         .root_y = @intCast(cursor_pos_root[1]),
@@ -974,12 +1001,12 @@ fn handle_key(self: *Self, key: *KeyMessage) void {
 
     switch (key.state) {
         .press => {
-            var button_press_event = phx.event.Event{ .key_press = key_event };
-            cursor_window.dispatch_device_event(&button_press_event, cursor_pos_root);
+            var key_press_event = phx.event.Event{ .key_press = key_event };
+            event_window.dispatch_device_event(&key_press_event, cursor_pos_root);
         },
         .release => {
-            var button_release_event = phx.event.Event{ .key_release = @bitCast(key_event) };
-            cursor_window.dispatch_device_event(&button_release_event, cursor_pos_root);
+            var key_release_event = phx.event.Event{ .key_release = @bitCast(key_event) };
+            event_window.dispatch_device_event(&key_release_event, cursor_pos_root);
         },
     }
 }

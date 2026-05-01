@@ -206,7 +206,7 @@ fn get_output_info(request_context: *phx.RequestContext) !void {
             .clones = .{ .items = &.{} },
             .name = .{ .items = &.{} },
         };
-        try request_context.client.write_reply(&rep);
+        return request_context.client.write_reply(&rep);
     }
 
     var crtcs = [_]CrtcId{crtc.id};
@@ -391,7 +391,7 @@ fn get_crtc_info(request_context: *phx.RequestContext) !void {
             .outputs = .{ .items = &.{} },
             .possible_outputs = .{ .items = &.{} },
         };
-        try request_context.client.write_reply(&rep);
+        return request_context.client.write_reply(&rep);
     }
 
     var outputs = [_]OutputId{crtc.id.to_output_id()};
@@ -1060,7 +1060,7 @@ const Reply = struct {
     pub fn GetOutputProperty(comptime DataType: type) type {
         return struct {
             reply_type: phx.reply.ReplyType = .reply,
-            format: x11.Card8 = @sizeOf(DataType),
+            format: x11.Card8 = @sizeOf(DataType) * 8,
             sequence_number: x11.Card16,
             length: x11.Card32 = 0, // This is automatically updated with the size of the reply
             type: x11.AtomId,

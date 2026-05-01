@@ -48,8 +48,9 @@ pub fn load_keyboard_mapping(self: *Self) void {
 }
 
 pub fn get_keyboard_mapping(self: *const Self, first_keycode: usize, num_keycodes: usize) []const x11.KeySym {
-    const first = first_keycode - min_keycode;
-    return self.keyboard_mapping[first .. first + num_keycodes];
+    const first = (first_keycode - min_keycode) * keysyms_per_keycode;
+    const len = num_keycodes * keysyms_per_keycode;
+    return self.keyboard_mapping[first .. first + len];
 }
 
 pub fn get_min_keycode(_: *const Self) x11.KeyCode {

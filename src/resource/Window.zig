@@ -435,7 +435,12 @@ pub fn append_property(
 }
 
 pub fn delete_property(self: *Self, property_name: phx.Atom) bool {
-    return self.properties.remove(property_name.id);
+    if (self.properties.fetchRemove(property_name.id)) |kv| {
+        var value = kv.value;
+        value.deinit(self.allocator);
+        return true;
+    }
+    return false;
 }
 
 /// It's invalid to add multiple event listeners with the same client.

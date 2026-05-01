@@ -1775,6 +1775,7 @@ fn query_extension(request_context: *phx.RequestContext) !void {
     if (std.mem.eql(u8, req.request.name.items, "DRI3")) {
         rep.present = true;
         rep.major_opcode = @intFromEnum(phx.opcode.Major.dri3);
+        rep.first_event = phx.event.dri3_first_event;
     } else if (std.mem.eql(u8, req.request.name.items, "XFIXES")) {
         rep.present = true;
         rep.major_opcode = @intFromEnum(phx.opcode.Major.xfixes);
@@ -1782,13 +1783,16 @@ fn query_extension(request_context: *phx.RequestContext) !void {
     } else if (std.mem.eql(u8, req.request.name.items, "Present")) {
         rep.present = true;
         rep.major_opcode = @intFromEnum(phx.opcode.Major.present);
+        rep.first_event = phx.event.present_first_event;
     } else if (std.mem.eql(u8, req.request.name.items, "SYNC")) {
         rep.present = true;
         rep.major_opcode = @intFromEnum(phx.opcode.Major.sync);
+        rep.first_event = phx.event.sync_first_event;
         rep.first_error = phx.err.sync_first_error;
     } else if (std.mem.eql(u8, req.request.name.items, "GLX")) {
         rep.present = true;
         rep.major_opcode = @intFromEnum(phx.opcode.Major.glx);
+        rep.first_event = phx.event.glx_first_event;
         rep.first_error = phx.err.glx_first_error;
         // } else if (std.mem.eql(u8, req.request.name.items, "XKEYBOARD")) {
         //     rep.present = true;
@@ -2841,7 +2845,7 @@ pub const Reply = struct {
     fn GetProperty(comptime DataType: type) type {
         return struct {
             reply_type: phx.reply.ReplyType = .reply,
-            format: x11.Card8 = @sizeOf(DataType),
+            format: x11.Card8 = @sizeOf(DataType) * 8,
             sequence_number: x11.Card16,
             length: x11.Card32 = 0, // This is automatically updated with the size of the reply
             type: x11.AtomId,
@@ -2976,7 +2980,7 @@ pub const Reply = struct {
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         pad2: [24]x11.Card8 = @splat(0),
-        keysyms: x11.ListOf(x11.KeySym, .{ .length_field = "length" }),
+        keysyms: x11.ListOf(x11.KeySym, .{ .length_field = null }),
     };
 
     pub const GetModifierMapping = struct {
@@ -2985,7 +2989,7 @@ pub const Reply = struct {
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         pad2: [24]x11.Card8 = @splat(0),
-        keycodes: x11.ListOf(x11.KeyCode, .{ .length_field = "length" }),
+        keycodes: x11.ListOf(x11.KeyCode, .{ .length_field = null }),
     };
 
     // pub const ListExtensions = struct {

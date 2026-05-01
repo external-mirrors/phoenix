@@ -9,10 +9,10 @@ pub fn write_reply(comptime T: type, reply: *T, writer: *std.Io.Writer) !void {
     reply_set_length_fields_root(T, reply);
     std.log.debug(@typeName(T) ++ " reply: {f}", .{x11.stringify_fmt(reply)});
     var reply_writer = ReplyWriter.init(writer);
-    return write_reply_fields(T, reply, &reply_writer.interface);
+    return write_reply_fields(T, reply, &reply_writer.interface, true);
 }
 
-fn write_reply_fields(comptime T: type, reply: *T, writer: *std.Io.Writer) !void {
+fn write_reply_fields(comptime T: type, reply: *T, writer: *std.Io.Writer, comptime is_root: bool) !void {
     if (@typeInfo(T) != .@"struct")
         @compileError("Expected T to be a struct, got: " ++ @typeName(T) ++ " which is a " ++ @tagName(@typeInfo(T)));
 
@@ -20,8 +20,10 @@ fn write_reply_fields(comptime T: type, reply: *T, writer: *std.Io.Writer) !void
         if (@typeInfo(field.type) == .@"struct" and @hasDecl(field.type, "is_list_of")) {
             const list_of_options = comptime field.type.get_options();
             const list_of = &@field(reply, field.name);
-            if (list_of_options.length_field) |length_field|
+            if (list_of_options.length_field) |length_field| {
+                comptime std.debug.assert(!is_root or !std.mem.eql(u8, length_field, "length"));
                 @field(reply, length_field) = @intCast(list_of.items.len);
+            }
         }
         try write_reply_field(field.type, &@field(reply, field.name), writer);
     }
@@ -45,7 +47,7 @@ fn write_reply_field(comptime FieldType: type, value: *FieldType, writer: *std.I
                 std.debug.assert(s.backing_integer != null);
                 try writer.writeInt(s.backing_integer.?, @bitCast(value.*), x11.native_endian);
             } else {
-                try write_reply_fields(FieldType, value, writer);
+                try write_reply_fields(FieldType, value, writer, false);
             }
         },
         .array => |*arr| {
@@ -93,7 +95,7 @@ fn reply_set_length_fields_root(comptime T: type, reply: *T) void {
     var dummy_reply_writer = ReplyWriter.init(&size_calculate_writer.writer);
 
     // This can't fail since it doesn't actually write any data
-    write_reply_fields(T, reply, &dummy_reply_writer.interface) catch unreachable;
+    write_reply_fields(T, reply, &dummy_reply_writer.interface, true) catch unreachable;
     const calculated_reply_size: i32 = @intCast(size_calculate_writer.count);
 
     const header_size: i32 = switch (T) {

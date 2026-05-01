@@ -8,7 +8,7 @@ const Self = @This();
 // https://www.x.org/releases/X11R7.7/doc/xproto/x11protocol.html#server_information
 const min_keycode: u32 = 8;
 const max_keycode: u32 = 255;
-const keycode_range = max_keycode - min_keycode;
+const keycode_range = max_keycode - min_keycode + 1;
 const keysyms_per_keycode: u8 = 2;
 
 impl: InputImpl,

@@ -165,8 +165,18 @@ pub fn destroy_pixmap(self: *Self, pixmap: *phx.Pixmap) void {
     self.graphics.destroy_pixmap(pixmap);
 }
 
-pub fn present_pixmap(self: *Self, pixmap: *phx.Pixmap, window: *const phx.Window, target_msc: u64, x_off: i16, y_off: i16) !void {
-    return self.graphics.present_pixmap(pixmap, window, target_msc, x_off, y_off);
+pub fn present_pixmap(
+    self: *Self,
+    pixmap: *phx.Pixmap,
+    window: *const phx.Window,
+    serial: phx.x11.Card32,
+    target_msc: u64,
+    x_off: i16,
+    y_off: i16,
+    notifies: []const phx.Graphics.PresentNotify,
+    notifies_allocator: ?std.mem.Allocator,
+) !void {
+    return self.graphics.present_pixmap(pixmap, window, serial, target_msc, x_off, y_off, notifies, notifies_allocator);
 }
 
 pub fn get_supported_modifiers(self: *Self, window: *phx.Window, depth: u8, bpp: u8, modifiers: *[64]u64) ![]const u64 {

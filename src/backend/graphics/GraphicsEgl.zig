@@ -1515,16 +1515,30 @@ pub fn destroy_pixmap(self: *Self, pixmap: *phx.Pixmap) void {
     self.dirty.store(true, .release);
 }
 
-pub fn present_pixmap(self: *Self, pixmap: *phx.Pixmap, window: *const phx.Window, target_msc: u64, x_off: i16, y_off: i16) !void {
+pub fn present_pixmap(
+    self: *Self,
+    pixmap: *phx.Pixmap,
+    window: *const phx.Window,
+    serial: phx.x11.Card32,
+    target_msc: u64,
+    x_off: i16,
+    y_off: i16,
+    notifies: []const phx.Graphics.PresentNotify,
+    notifies_allocator: ?std.mem.Allocator,
+) !void {
     self.mutex.lock();
     defer self.mutex.unlock();
 
     try self.operations.append(self.allocator, .{ .present_pixmap = .{
         .pixmap = pixmap,
         .window = window.graphics_window,
+        .window_id = window.id,
+        .serial = serial,
         .target_msc = target_msc,
         .x_off = x_off,
         .y_off = y_off,
+        .notifies = notifies,
+        .notifies_allocator = notifies_allocator,
     } });
     pixmap.ref();
     self.dirty.store(true, .release);

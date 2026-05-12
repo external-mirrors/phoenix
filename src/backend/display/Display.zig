@@ -72,9 +72,9 @@ pub fn destroy_pixmap(self: *Self, pixmap: *phx.Pixmap) void {
     }
 }
 
-pub fn present_pixmap(self: *Self, pixmap: *phx.Pixmap, window: *const phx.Window, target_msc: u64, x_off: i16, y_off: i16) !void {
+pub fn present_pixmap(self: *Self, pixmap: *phx.Pixmap, window: *const phx.Window, serial: phx.x11.Card32, target_msc: u64, x_off: i16, y_off: i16, notifies: []const phx.Graphics.PresentNotify, notifies_allocator: ?std.mem.Allocator) !void {
     return switch (self.impl) {
-        inline else => |item| item.present_pixmap(pixmap, window, target_msc, x_off, y_off),
+        inline else => |item| item.present_pixmap(pixmap, window, serial, target_msc, x_off, y_off, notifies, notifies_allocator),
     };
 }
 

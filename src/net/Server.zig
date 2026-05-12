@@ -215,11 +215,11 @@ fn create_sigint_signal_fd() !std.posix.fd_t {
     std.os.linux.sigaddset(&signal_mask, std.posix.SIG.INT);
     _ = std.os.linux.sigprocmask(std.posix.SIG.BLOCK, &signal_mask, null);
 
-    const signal_fd: std.posix.fd_t = @intCast(std.os.linux.signalfd(-1, &signal_mask, 0));
-    if (signal_fd == -1)
+    const signal_fd = std.os.linux.signalfd(-1, &signal_mask, 0);
+    if (std.os.linux.E.init(signal_fd) != .SUCCESS)
         return error.FailedToCreateSignalFd;
 
-    return signal_fd;
+    return @intCast(signal_fd);
 }
 
 /// Following the X11 protocol standard
@@ -727,7 +727,17 @@ fn handle_messages(self: *Self) void {
             .mouse_click => |*mouse_click| self.handle_mouse_click(mouse_click),
             .key => |*key| self.handle_key(key),
             .present_pixmap_finished => |*present_pixmap_finished| {
-                // TODO: trigger event
+                phx.Present.send_complete_notify(
+                    self,
+                    present_pixmap_finished.operation.window_id,
+                    present_pixmap_finished.operation.serial,
+                    present_pixmap_finished.operation.target_msc,
+                );
+                phx.Present.send_complete_notify_for_notifies(
+                    self,
+                    present_pixmap_finished.operation.notifies,
+                    present_pixmap_finished.operation.target_msc,
+                );
                 present_pixmap_finished.operation.unref();
             },
             .put_image_finished => |*put_image_finished| {

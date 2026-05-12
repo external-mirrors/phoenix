@@ -13,15 +13,12 @@ pub fn init() Self {
 }
 
 pub fn ref(self: *Self) void {
-    _ = self.refcount.fetchAdd(1, .monotonic);
+    _ = self.refcount.fetchAdd(1, .release);
 }
 
 /// Returns the new refcount
 pub fn unref(self: *Self) u32 {
-    const ref_count_before_sub = self.refcount.fetchSub(1, .release);
-    if (ref_count_before_sub == 1)
-        _ = self.refcount.load(.acquire);
-    return ref_count_before_sub - 1;
+    return self.refcount.fetchSub(1, .acquire) - 1;
 }
 
 test "rc" {

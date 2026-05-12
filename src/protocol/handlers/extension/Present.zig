@@ -59,7 +59,19 @@ fn present_pixmap(request_context: *phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .pixmap, @intFromEnum(req.request.pixmap));
     };
 
-    try request_context.server.display.present_pixmap(pixmap, window, req.request.target_msc, req.request.x_off, req.request.y_off);
+    const notifies_in: []const Notify = req.request.notifies.items;
+    var notifies_copy: []phx.Graphics.PresentNotify = &.{};
+    var notifies_allocator: ?std.mem.Allocator = null;
+    if (notifies_in.len > 0) {
+        notifies_copy = try request_context.server.allocator.alloc(phx.Graphics.PresentNotify, notifies_in.len);
+        notifies_allocator = request_context.server.allocator;
+        for (notifies_in, 0..) |notify, i| {
+            notifies_copy[i] = .{ .window = notify.window, .serial = notify.serial };
+        }
+    }
+    errdefer if (notifies_allocator) |allocator| allocator.free(notifies_copy);
+
+    try request_context.server.display.present_pixmap(pixmap, window, req.request.serial, req.request.target_msc, req.request.x_off, req.request.y_off, notifies_copy, notifies_allocator);
 
     if (req.request.idle_fence.to_id().to_int() != 0) {
         // TODO: Should this be an error instead?
@@ -68,10 +80,7 @@ fn present_pixmap(request_context: *phx.RequestContext) !void {
         }
     }
 
-    // TODO: Implement properly
     // TODO: Handle wait_fence
-
-    //std.log.err("present pixmap: {f}", .{x11.stringify_fmt(req.request)});
 
     var idle_notify_event = Event.IdleNotify{
         .window = req.request.window,
@@ -80,29 +89,25 @@ fn present_pixmap(request_context: *phx.RequestContext) !void {
         .idle_fence = req.request.idle_fence,
     };
     window.write_extension_event_to_event_listeners(&idle_notify_event);
+}
 
-    for (req.request.notifies.items) |notify| {
-        const notify_window = request_context.server.get_window(notify.window) orelse unreachable;
-        var complete_event_notify = Event.CompleteNotify{
-            .kind = .pixmap,
-            .mode = .suboptimal_copy,
-            .window = notify.window,
-            .serial = notify.serial,
-            .ust = 0,
-            .msc = req.request.target_msc,
-        };
-        notify_window.write_extension_event_to_event_listeners(&complete_event_notify);
-    }
-
+pub fn send_complete_notify(server: *phx.Server, window_id: x11.WindowId, serial: x11.Card32, msc: u64) void {
+    const window = server.get_window(window_id) orelse return;
     var complete_event = Event.CompleteNotify{
         .kind = .pixmap,
-        .mode = .suboptimal_copy,
-        .window = req.request.window,
-        .serial = req.request.serial,
+        .mode = .copy,
+        .window = window_id,
+        .serial = serial,
         .ust = 0,
-        .msc = req.request.target_msc,
+        .msc = msc,
     };
     window.write_extension_event_to_event_listeners(&complete_event);
+}
+
+pub fn send_complete_notify_for_notifies(server: *phx.Server, notifies: []const phx.Graphics.PresentNotify, msc: u64) void {
+    for (notifies) |notify| {
+        send_complete_notify(server, notify.window, notify.serial, msc);
+    }
 }
 
 fn select_input(request_context: *phx.RequestContext) !void {

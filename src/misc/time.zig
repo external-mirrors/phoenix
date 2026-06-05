@@ -7,6 +7,11 @@ pub fn clock_get_monotonic_seconds() f64 {
     return seconds + nanoseconds * 0.000000001;
 }
 
+pub fn clock_get_monotonic_microseconds() u64 {
+    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch @panic("clock_gettime(MONOTIC) failed");
+    return @as(u64, @intCast(ts.sec)) * 1_000_000 + @as(u64, @intCast(ts.nsec)) / 1_000;
+}
+
 pub fn get_resolution() i64 {
     var res = std.posix.timespec{
         .sec = 0,

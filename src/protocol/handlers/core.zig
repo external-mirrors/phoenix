@@ -637,6 +637,9 @@ fn configure_window(request_context: *phx.RequestContext) !void {
     }
 
     if (modified) {
+        window.attributes = new_window_attributes;
+        request_context.server.display.configure_window(window, window.attributes.geometry);
+
         var configure_notify_event = phx.event.Event{
             .configure_notify = .{
                 .event = req.request.window,
@@ -651,9 +654,6 @@ fn configure_window(request_context: *phx.RequestContext) !void {
             },
         };
         window.write_core_event_to_event_listeners(&configure_notify_event);
-
-        window.attributes = new_window_attributes;
-        request_context.server.display.configure_window(window, window.attributes.geometry);
     }
 }
 
@@ -1678,7 +1678,7 @@ fn create_gc(request_context: *phx.RequestContext) !void {
         .drawable = req.request.drawable,
         .allocator = request_context.server.allocator,
     };
-    apply_gc_value_list_create(&gc, &req.request);
+    apply_gc_value_list_create(&gc, &req.request, request_context.server.allocator);
 
     try request_context.client.add_graphics_context(gc);
 }
@@ -1692,7 +1692,7 @@ fn change_gc(request_context: *phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .g_context, @intFromEnum(req.request.gc));
     };
 
-    apply_gc_value_list_change(gc, &req.request);
+    apply_gc_value_list_change(gc, &req.request, request_context.server.allocator);
 }
 
 fn free_gc(request_context: *phx.RequestContext) !void {
@@ -1726,16 +1726,23 @@ fn set_clip_rectangles(request_context: *phx.RequestContext) !void {
     gc.clip_y_origin = req.request.clip_y_origin;
 }
 
-fn apply_gc_value_list_create(gc: *phx.GraphicsContext, req: *const Request.CreateGC) void {
+fn apply_gc_value_list_create(gc: *phx.GraphicsContext, req: *const Request.CreateGC, allocator: std.mem.Allocator) void {
     if (req.get_value(u32, "graphics_exposures")) |v| gc.graphics_exposures = v != 0;
     if (req.get_value(i16, "clip_x_origin")) |v| gc.clip_x_origin = v;
     if (req.get_value(i16, "clip_y_origin")) |v| gc.clip_y_origin = v;
+    if (req.get_value(u32, "clip_mask")) |_| reset_gc_clip_rectangles(gc, allocator);
 }
 
-fn apply_gc_value_list_change(gc: *phx.GraphicsContext, req: *const Request.ChangeGC) void {
+fn apply_gc_value_list_change(gc: *phx.GraphicsContext, req: *const Request.ChangeGC, allocator: std.mem.Allocator) void {
     if (req.get_value(u32, "graphics_exposures")) |v| gc.graphics_exposures = v != 0;
     if (req.get_value(i16, "clip_x_origin")) |v| gc.clip_x_origin = v;
     if (req.get_value(i16, "clip_y_origin")) |v| gc.clip_y_origin = v;
+    if (req.get_value(u32, "clip_mask")) |_| reset_gc_clip_rectangles(gc, allocator);
+}
+
+fn reset_gc_clip_rectangles(gc: *phx.GraphicsContext, allocator: std.mem.Allocator) void {
+    if (gc.clip_rectangles) |old| allocator.free(old);
+    gc.clip_rectangles = null;
 }
 
 fn create_colormap(request_context: *phx.RequestContext) !void {

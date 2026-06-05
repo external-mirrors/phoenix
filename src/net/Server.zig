@@ -731,12 +731,14 @@ fn handle_messages(self: *Self) void {
                     self,
                     present_pixmap_finished.operation.window_id,
                     present_pixmap_finished.operation.serial,
-                    present_pixmap_finished.operation.target_msc,
+                    present_pixmap_finished.operation.actual_msc,
+                    present_pixmap_finished.operation.actual_ust,
                 );
                 phx.Present.send_complete_notify_for_notifies(
                     self,
                     present_pixmap_finished.operation.notifies,
-                    present_pixmap_finished.operation.target_msc,
+                    present_pixmap_finished.operation.actual_msc,
+                    present_pixmap_finished.operation.actual_ust,
                 );
                 present_pixmap_finished.operation.unref();
             },

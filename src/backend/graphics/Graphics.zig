@@ -231,6 +231,10 @@ pub const PresentPixmapOperation = struct {
     target_msc: u64,
     x_off: i16,
     y_off: i16,
+    // Actual msc/ust at present time — filled in by the renderer when the
+    // present operation is applied. Forwarded to the client via CompleteNotify.
+    actual_msc: u64 = 0,
+    actual_ust: u64 = 0,
     // Extra (window, serial) pairs the client requested CompleteNotify for.
     // Owned slice — freed by `unref`.
     notifies: []const PresentNotify,

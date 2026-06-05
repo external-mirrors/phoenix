@@ -78,6 +78,11 @@ glEGLImageTargetTexture2DOES: PFNGLEGLIMAGETARGETTEXTURE2DOESPROC,
 eglQueryDmaBufModifiersEXT: PFNEGLQUERYDMABUFMODIFIERSEXTPROC,
 
 dirty: std.atomic.Value(bool) = .init(true),
+// Monotonically increasing frame counter ("media stream count" in X Present
+// extension terms). Incremented once per actual render cycle, snapshotted at
+// PresentPixmap apply time so Present.CompleteNotify reports advancing msc
+// values — GTK's frame clock uses this for animation timing.
+current_msc: u64 = 0,
 
 const GlyphAtlasGpu = struct {
     texture_id: c.GLuint,
@@ -734,6 +739,8 @@ fn perform_copy_area(self: *Self, op: *phx.Graphics.CopyAreaOperation) void {
 
 fn perform_present_pixmap(self: *Self, op: *phx.Graphics.PresentPixmapOperation) void {
     // TODO: Only render and remove items if target_msc is <= current_msc
+    op.actual_msc = self.current_msc;
+    op.actual_ust = phx.time.clock_get_monotonic_microseconds();
     defer self.append_message(.{ .present_pixmap_finished = .{ .operation = op.* } });
 
     if (op.pixmap.texture_id == 0)
@@ -1363,6 +1370,7 @@ pub fn render(self: *Self) void {
 
     if (self.dirty.load(.acquire)) {
         self.dirty.store(false, .release);
+        self.current_msc +%= 1;
 
         c.glClearColor(0.0, 0.47450, 0.73725, 1.0);
         c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT | c.GL_STENCIL_BUFFER_BIT);
@@ -1378,6 +1386,7 @@ pub fn render(self: *Self) void {
 
         _ = c.eglSwapBuffers(self.egl_display, self.egl_surface);
     }
+
     self.server.append_message(&.{
         .vsync_finished = .{
             .timestamp_sec = phx.time.clock_get_monotonic_seconds(),

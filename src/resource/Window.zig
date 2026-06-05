@@ -226,7 +226,7 @@ pub fn on_input_focus_changed(server: *phx.Server, prev_focus: phx.InputFocus.Fo
                             };
                             prev_window.write_core_event_to_event_listeners(&focus_out_event);
 
-                            write_focus_event_every_window_between(new_window, prev_window, mode, .focus_in);
+                            write_focus_event_every_window_between(new_window, prev_window, mode, .focus_in, .virtual);
 
                             var focus_in_event = phx.event.Event{
                                 .focus_in = .{
@@ -247,11 +247,36 @@ pub fn on_input_focus_changed(server: *phx.Server, prev_focus: phx.InputFocus.Fo
                             };
                             prev_window.write_core_event_to_event_listeners(&focus_out_event);
 
-                            write_focus_event_every_window_between(prev_window, new_window, mode, .focus_out);
+                            write_focus_event_every_window_between(prev_window, new_window, mode, .focus_out, .virtual);
 
                             var focus_in_event = phx.event.Event{
                                 .focus_in = .{
                                     .detail = .inferior,
+                                    .window = new_window.id,
+                                    .mode = mode,
+                                },
+                            };
+                            new_window.write_core_event_to_event_listeners(&focus_in_event);
+                        },
+                        .nonlinear => {
+                            var focus_out_event = phx.event.Event{
+                                .focus_out = .{
+                                    .detail = .nonlinear,
+                                    .window = prev_window.id,
+                                    .mode = mode,
+                                },
+                            };
+                            prev_window.write_core_event_to_event_listeners(&focus_out_event);
+
+                            const lca = find_lowest_common_ancestor(prev_window, new_window);
+                            if (lca) |common_ancestor| {
+                                write_focus_event_every_window_between(prev_window, common_ancestor, mode, .focus_out, .nonlinear_virtual);
+                                write_focus_event_every_window_between(new_window, common_ancestor, mode, .focus_in, .nonlinear_virtual);
+                            }
+
+                            var focus_in_event = phx.event.Event{
+                                .focus_in = .{
+                                    .detail = .nonlinear,
                                     .window = new_window.id,
                                     .mode = mode,
                                 },
@@ -270,6 +295,7 @@ fn write_focus_event_every_window_between(
     parent_window: *Self,
     mode: phx.event.FocusMode,
     comptime focus_type: enum { focus_in, focus_out },
+    detail: phx.event.FocusDetail,
 ) void {
     var window = child_window.parent;
     while (window) |win| {
@@ -278,19 +304,19 @@ fn write_focus_event_every_window_between(
 
         switch (focus_type) {
             .focus_in => {
-                var focus_out_event = phx.event.Event{
+                var focus_in_event = phx.event.Event{
                     .focus_in = .{
-                        .detail = .virtual,
+                        .detail = detail,
                         .window = win.id,
                         .mode = mode,
                     },
                 };
-                win.write_core_event_to_event_listeners(&focus_out_event);
+                win.write_core_event_to_event_listeners(&focus_in_event);
             },
             .focus_out => {
                 var focus_out_event = phx.event.Event{
                     .focus_out = .{
-                        .detail = .virtual,
+                        .detail = detail,
                         .window = win.id,
                         .mode = mode,
                     },
@@ -306,6 +332,7 @@ fn write_focus_event_every_window_between(
 const WindowRelationship = enum {
     ancestor,
     inferior,
+    nonlinear,
 };
 
 fn get_window_relationship(this: *Self, other: *Self) WindowRelationship {
@@ -325,7 +352,18 @@ fn get_window_relationship(this: *Self, other: *Self) WindowRelationship {
         other_parent = parent.parent;
     }
 
-    unreachable;
+    return .nonlinear;
+}
+
+fn find_lowest_common_ancestor(a: *Self, b: *Self) ?*Self {
+    var b_ancestor: ?*Self = b.parent;
+    while (b_ancestor) |ba| : (b_ancestor = ba.parent) {
+        var a_ancestor: ?*Self = a.parent;
+        while (a_ancestor) |aa| : (a_ancestor = aa.parent) {
+            if (aa == ba) return ba;
+        }
+    }
+    return null;
 }
 
 fn get_first_viewable_parent(self: *Self) ?*Self {

@@ -91,22 +91,22 @@ fn present_pixmap(request_context: *phx.RequestContext) !void {
     window.write_extension_event_to_event_listeners(&idle_notify_event);
 }
 
-pub fn send_complete_notify(server: *phx.Server, window_id: x11.WindowId, serial: x11.Card32, msc: u64) void {
+pub fn send_complete_notify(server: *phx.Server, window_id: x11.WindowId, serial: x11.Card32, msc: u64, ust: u64) void {
     const window = server.get_window(window_id) orelse return;
     var complete_event = Event.CompleteNotify{
         .kind = .pixmap,
         .mode = .copy,
         .window = window_id,
         .serial = serial,
-        .ust = 0,
+        .ust = ust,
         .msc = msc,
     };
     window.write_extension_event_to_event_listeners(&complete_event);
 }
 
-pub fn send_complete_notify_for_notifies(server: *phx.Server, notifies: []const phx.Graphics.PresentNotify, msc: u64) void {
+pub fn send_complete_notify_for_notifies(server: *phx.Server, notifies: []const phx.Graphics.PresentNotify, msc: u64, ust: u64) void {
     for (notifies) |notify| {
-        send_complete_notify(server, notify.window, notify.serial, msc);
+        send_complete_notify(server, notify.window, notify.serial, msc, ust);
     }
 }
 

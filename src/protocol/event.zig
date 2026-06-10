@@ -47,7 +47,7 @@ pub const xfixes_selection_notify: x11.Card8 = xfixes_first_event + 0;
 // These extensions either have no events or use only XGenericEvent, but
 // libGLX/libXi/etc. register wire-to-event handlers at `first_event + offset`
 // regardless. If first_event is 0 (the default), the registration lands on
-// slots 0..N — overwriting the core event handlers (ButtonPress=4,
+// slots 0..N - overwriting the core event handlers (ButtonPress=4,
 // ButtonRelease=5, MotionNotify=6, etc.) and silently dropping all input.
 // Each extension must therefore have a unique first_event above the core
 // event range.

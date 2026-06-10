@@ -539,7 +539,7 @@ fn map_window(request_context: *phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
     };
 
-    window.map();
+    window.map(request_context.client);
 }
 
 fn map_subwindows(request_context: *phx.RequestContext) !void {
@@ -552,7 +552,7 @@ fn map_subwindows(request_context: *phx.RequestContext) !void {
     };
 
     for (window.children.items) |child| {
-        if (!child.attributes.mapped) child.map();
+        if (!child.attributes.mapped) child.map(request_context.client);
     }
 }
 
@@ -941,11 +941,10 @@ fn get_property(request_context: *phx.RequestContext) !void {
         return request_context.client.write_error(request_context, .value, req.request.long_offset);
     }
 
-    const length_in_bytes, const overflow_length = @mulWithOverflow(4, req.request.long_length);
-    if (overflow_length != 0) {
-        std.log.err("Received invalid long-length {d} (overflow) in GetProperty request", .{req.request.long_length});
-        return request_context.client.write_error(request_context, .value, req.request.long_length);
-    }
+    // Clients commonly pass huge values like LONG_MAX/0xFFFFFFFF when they
+    // want "the entire property" - the actual bytes read are bounded by the
+    // property's own size below, so saturate at u32 max rather than rejecting.
+    const length_in_bytes: x11.Card32 = req.request.long_length *| 4;
 
     const bytes_available_to_read = property_size_in_bytes - offset_in_bytes;
     const num_bytes_to_read = @min(bytes_available_to_read, length_in_bytes);
@@ -1199,7 +1198,7 @@ fn is_ancestor(ancestor: *phx.Window, descendant: *phx.Window) bool {
 }
 
 /// Clear the bits in `event_mask` that correspond to events suppressed by
-/// `dnp` — these are device events (key/button/motion) which share the same
+/// `dnp` - these are device events (key/button/motion) which share the same
 /// low-bit positions in EventMask and DeviceEventMask.
 fn mask_clear_dnp(event_mask: phx.core.EventMask, dnp: phx.core.DeviceEventMask) phx.core.EventMask {
     const dnp_u16: u16 = @bitCast(dnp);
@@ -1592,7 +1591,7 @@ fn create_glyph_cursor(request_context: *phx.RequestContext) !void {
 
     // Phoenix doesn't track font resources (OpenFont is a stub), so we don't
     // validate the source/mask fonts here. The cursor is created with the
-    // requested colors but no source/mask pixmap — same as CreateCursor's
+    // requested colors but no source/mask pixmap - same as CreateCursor's
     // result, suitable as a placeholder until cursor rendering is implemented.
     const cursor = phx.Cursor{
         .id = req.request.cid,
@@ -1694,7 +1693,7 @@ fn copy_area(request_context: *phx.RequestContext) !void {
     // the GC has graphics_exposures enabled and no source pixels were
     // obscured. Phoenix has no concept of obscured source regions (windows
     // are backed by full off-screen pixmaps in the compositor), so the copy
-    // is always treated as fully successful — emit NoExposure. Toolkits like
+    // is always treated as fully successful - emit NoExposure. Toolkits like
     // GTK rely on this event to drive their frame clock; without it, the
     // first paint never happens.
     if (gc.graphics_exposures) {

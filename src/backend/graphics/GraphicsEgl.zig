@@ -81,7 +81,7 @@ dirty: std.atomic.Value(bool) = .init(true),
 // Monotonically increasing frame counter ("media stream count" in X Present
 // extension terms). Incremented once per actual render cycle, snapshotted at
 // PresentPixmap apply time so Present.CompleteNotify reports advancing msc
-// values — GTK's frame clock uses this for animation timing.
+// values - GTK's frame clock uses this for animation timing.
 current_msc: u64 = 0,
 
 const GlyphAtlasGpu = struct {
@@ -1173,7 +1173,7 @@ fn gradient_kind_value(gradient: *const phx.Picture.Gradient) c.GLint {
 }
 
 fn apply_src_gradient(self: *Self, gradient: *const phx.Picture.Gradient) void {
-    // Shared stops/colors arrays — uploaded for every gradient kind.
+    // Shared stops/colors arrays - uploaded for every gradient kind.
     const stops_struct = gradient.stops();
     c.glUniform1i(self.mask_program.loc_src_gradient_num_stops, @intCast(stops_struct.num_stops));
 
@@ -1797,7 +1797,7 @@ fn perform_trapezoids(self: *Self, op: *phx.Graphics.TrapezoidsOperation) void {
     c.glLoadIdentity();
 
     // Reuse the composite shader. Trapezoids has no `mask` picture in the
-    // protocol — the only mask-shaped thing is the `mask_format` antialiased
+    // protocol - the only mask-shaped thing is the `mask_format` antialiased
     // coverage mask, which would require a CPU rasterizer and is not yet
     // wired up. Picture-level alpha map and clip mask are honored.
     c.glUseProgram(self.mask_program.program);
@@ -2090,7 +2090,7 @@ fn perform_composite_glyphs(self: *Self, op: *phx.Graphics.CompositeGlyphsOperat
     c.glActiveTexture(c.GL_TEXTURE0);
 
     const default_swizzle: [4]f32 = .{ 0, 0, 0, 1 };
-    // GL_R8 atlas — sampled component .r holds the alpha value.
+    // GL_R8 atlas - sampled component .r holds the alpha value.
     const a8_mask_swizzle: [4]f32 = .{ 1, 0, 0, 0 };
     c.glUniform1i(self.mask_program.loc_use_src_alpha_map, 0);
     c.glUniform4fv(self.mask_program.loc_src_alpha_swizzle, 1, &default_swizzle);

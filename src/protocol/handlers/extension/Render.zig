@@ -401,7 +401,7 @@ fn composite(request_context: *phx.RequestContext) !void {
         };
     }
 
-    // Solid-fill pictures cannot be Composite destinations — they have no
+    // Solid-fill pictures cannot be Composite destinations - they have no
     // backing storage to write into.
     const dst_drawable = dst.drawable orelse {
         std.log.err("RenderComposite: dst picture {d} has no drawable (solid fill?)", .{@intFromEnum(req.request.dst)});
@@ -650,7 +650,7 @@ pub fn float_to_fixed(value: f32) i32 {
 }
 
 /// Intersect the given line with the horizontal line y = y_target. Vertical
-/// (zero dy) lines collapse to p1.x — matches the Render protocol's behavior
+/// (zero dy) lines collapse to p1.x - matches the Render protocol's behavior
 /// of treating such lines as a constant x edge.
 fn line_x_at_y(line: LineFixed, y_target: f32) f32 {
     const x1 = fixed_to_float(line.p1.x);
@@ -1189,7 +1189,7 @@ fn set_picture_filter(request_context: *phx.RequestContext) !void {
     // The protocol allows a list of FIXED parameters after the name (used for
     // convolution kernels and the like). Phoenix's compositor implements the
     // standard filters as fixed pipelines, so the parameters are accepted
-    // and ignored — Cairo/GTK only sends parameters for `convolution`, which
+    // and ignored - Cairo/GTK only sends parameters for `convolution`, which
     // we treat as `bilinear`.
     picture.filter = filter;
 }

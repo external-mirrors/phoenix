@@ -518,7 +518,9 @@ pub fn add_core_event_listener(self: *Self, client: *phx.Client, event_mask: phx
 /// Removes the event listener if the event mask is empty
 pub fn modify_core_event_listener_by_index(self: *Self, index: usize, event_mask: phx.core.EventMask) !void {
     if (event_mask.is_empty()) {
+        const client = self.core_event_listeners.items[index].client;
         _ = self.core_event_listeners.orderedRemove(index);
+        self.unregister_window_from_client_if_no_listeners(client);
         return;
     }
 
@@ -656,9 +658,9 @@ fn set_device_event_target(event: *phx.event.Event, event_window: x11.WindowId, 
 /// Send LeaveNotify on `prev` and EnterNotify on `next` when the pointer
 /// crosses between windows. Each event is delivered to every window along
 /// the chain from the source up to the root that has a matching listener.
-/// This is a simplified version of the X11 spec — it omits the virtual
+/// This is a simplified version of the X11 spec - it omits the virtual
 /// events emitted on intermediate windows between the source and the
-/// common ancestor — but is sufficient for GTK to update pointer state.
+/// common ancestor - but is sufficient for GTK to update pointer state.
 pub fn dispatch_crossing(
     prev: ?*Self,
     next: *Self,
@@ -877,8 +879,26 @@ pub fn modify_extension_event_listener(self: *Self, client: *const phx.Client, e
 }
 
 pub fn remove_extension_event_listener(self: *Self, client: *const phx.Client, event_id: x11.ResourceId, extension_major_opcode: phx.opcode.Major) void {
-    if (self.get_extension_event_listener_index(client, event_id, extension_major_opcode)) |index|
+    if (self.get_extension_event_listener_index(client, event_id, extension_major_opcode)) |index| {
+        const client_ptr = self.extension_event_listeners.items[index].client;
         _ = self.extension_event_listeners.orderedRemove(index);
+        self.unregister_window_from_client_if_no_listeners(client_ptr);
+    }
+}
+
+/// After removing one listener entry for `client`, drop the window from the
+/// client's listening_to_windows ONLY if no other listener entry (core or
+/// extension) on this window still references the client. This keeps the
+/// invariant: a window appears in a client's listening_to_windows iff there
+/// is at least one listener entry on the window referencing that client.
+fn unregister_window_from_client_if_no_listeners(self: *Self, client: *phx.Client) void {
+    for (self.core_event_listeners.items) |*l| {
+        if (l.client == client) return;
+    }
+    for (self.extension_event_listeners.items) |*l| {
+        if (l.client == client) return;
+    }
+    client.unregister_as_window_event_listener(self);
 }
 
 pub fn get_extension_event_listener_index(self: *Self, client: *const phx.Client, event_id: x11.ResourceId, extension_major_opcode: phx.opcode.Major) ?usize {
@@ -1036,26 +1056,34 @@ pub fn get_absolute_position(self: *const Self) @Vector(2, i32) {
     return pos;
 }
 
-pub fn map(self: *Self) void {
+/// `requester` is the client that issued the MapWindow request. Per X11 spec,
+/// the redirect only fires when a DIFFERENT client than the substructure
+/// redirect listener tries to map. Pass `null` for server-internal maps (e.g.
+/// the automatic remap after a ReparentWindow) which should never be
+/// redirected.
+pub fn map(self: *Self, requester: ?*phx.Client) void {
     if (self.attributes.mapped)
         return;
 
     if (!self.attributes.override_redirect) {
         if (self.get_substructure_redirect_listener_parent_window()) |substruct_redirect_listener| {
-            var map_notify_event = phx.event.Event{
-                .map_request = .{
-                    .parent = substruct_redirect_listener.window.id,
-                    .window = self.id,
-                },
-            };
-            substruct_redirect_listener.client.write_event(&map_notify_event) catch |err| {
-                // TODO: What should be done if this happens? disconnect the client?
-                std.log.err(
-                    "Failed to write (buffer) core event of type \"{s}\" to client {d}, error: {s}",
-                    .{ @tagName(map_notify_event.any.code), substruct_redirect_listener.client.connection.stream.handle, @errorName(err) },
-                );
-            };
-            return;
+            const should_redirect = if (requester) |r| r != substruct_redirect_listener.client else false;
+            if (should_redirect) {
+                var map_notify_event = phx.event.Event{
+                    .map_request = .{
+                        .parent = substruct_redirect_listener.window.id,
+                        .window = self.id,
+                    },
+                };
+                substruct_redirect_listener.client.write_event(&map_notify_event) catch |err| {
+                    // TODO: What should be done if this happens? disconnect the client?
+                    std.log.err(
+                        "Failed to write (buffer) core event of type \"{s}\" to client {d}, error: {s}",
+                        .{ @tagName(map_notify_event.any.code), substruct_redirect_listener.client.connection.stream.handle, @errorName(err) },
+                    );
+                };
+                return;
+            }
         }
     }
 
@@ -1172,14 +1200,14 @@ pub fn reparent(self: *Self, new_parent: *Self, x: i16, y: i16) ReparentError!vo
         },
     };
     self.write_core_event_to_event_listeners(&reparent_notify_event);
-    // Also notify substructure listeners on the old parent — they had been
+    // Also notify substructure listeners on the old parent - they had been
     // tracking this window as a child until now.
     if (old_parent != new_parent) {
         var event_for_old_parent = reparent_notify_event;
         old_parent.write_core_event_to_substructure_notify_listeners(&event_for_old_parent);
     }
 
-    if (was_mapped) self.map();
+    if (was_mapped) self.map(null);
 
     revert_input_focus_if_unviewable(self.server);
 }

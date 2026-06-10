@@ -17,7 +17,7 @@ pub const GradientStops = struct {
 };
 
 pub const Gradient = union(enum) {
-    /// Two-circle radial gradient — t parameterizes a sweep from the inner
+    /// Two-circle radial gradient - t parameterizes a sweep from the inner
     /// circle (t=0) to the outer circle (t=1).
     radial: struct {
         /// Centers/radii in source coordinate space, 16.16 fixed.
@@ -29,7 +29,7 @@ pub const Gradient = union(enum) {
         outer_radius: i32,
         stops: GradientStops,
     },
-    /// Linear gradient — t = projection of the sample point onto the axis
+    /// Linear gradient - t = projection of the sample point onto the axis
     /// (p1, p2), normalized so p1→0 and p2→1.
     linear: struct {
         p1_x: i32,
@@ -38,7 +38,7 @@ pub const Gradient = union(enum) {
         p2_y: i32,
         stops: GradientStops,
     },
-    /// Conical (sweep) gradient — t = (angle from `center` minus `angle`) /
+    /// Conical (sweep) gradient - t = (angle from `center` minus `angle`) /
     /// 2π, wrapped to [0, 1]. `angle` is in degrees, 16.16 fixed.
     conical: struct {
         center_x: i32,

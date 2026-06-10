@@ -61,9 +61,13 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .free_gc => free_gc(request_context),
         .set_clip_rectangles => set_clip_rectangles(request_context),
         .copy_area => copy_area(request_context),
+        .poly_rectangle => poly_rectangle(request_context),
+        .poly_fill_rectangle => poly_fill_rectangle(request_context),
         .put_image => put_image(request_context),
         .create_colormap => create_colormap(request_context),
+        .alloc_color => alloc_color(request_context),
         .create_cursor => create_cursor(request_context),
+        .create_glyph_cursor => create_glyph_cursor(request_context),
         .free_cursor => free_cursor(request_context),
         .query_extension => query_extension(request_context),
         .get_keyboard_mapping => get_keyboard_mapping(request_context),
@@ -1582,6 +1586,64 @@ fn free_cursor(request_context: *phx.RequestContext) !void {
     request_context.server.remove_resource(req.request.cursor.to_id());
 }
 
+fn create_glyph_cursor(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.CreateGlyphCursor, request_context.allocator);
+    defer req.deinit();
+
+    // Phoenix doesn't track font resources (OpenFont is a stub), so we don't
+    // validate the source/mask fonts here. The cursor is created with the
+    // requested colors but no source/mask pixmap — same as CreateCursor's
+    // result, suitable as a placeholder until cursor rendering is implemented.
+    const cursor = phx.Cursor{
+        .id = req.request.cid,
+        .fore_red = req.request.fore_red,
+        .fore_green = req.request.fore_green,
+        .fore_blue = req.request.fore_blue,
+        .back_red = req.request.back_red,
+        .back_green = req.request.back_green,
+        .back_blue = req.request.back_blue,
+        .hotspot_x = 0,
+        .hotspot_y = 0,
+    };
+
+    try request_context.client.add_cursor(cursor);
+}
+
+fn alloc_color(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.AllocColor, request_context.allocator);
+    defer req.deinit();
+
+    const colormap = request_context.server.get_colormap(req.request.cmap) orelse {
+        std.log.err("AllocColor: invalid colormap {d}", .{@intFromEnum(req.request.cmap)});
+        return request_context.client.write_error(request_context, .colormap, @intFromEnum(req.request.cmap));
+    };
+
+    // Phoenix's TrueColor visual uses 8 bits per channel with standard RGBA
+    // masks (R=0x00FF0000, G=0x0000FF00, B=0x000000FF). For TrueColor, the
+    // pixel value is the packed RGB shifted into the mask positions, and the
+    // returned color components are the requested values rounded to the
+    // visual's precision (top 8 bits, bit-replicated back into 16).
+    const visual = colormap.visual;
+    const r_shift: u5 = @intCast(@ctz(visual.red_mask));
+    const g_shift: u5 = @intCast(@ctz(visual.green_mask));
+    const b_shift: u5 = @intCast(@ctz(visual.blue_mask));
+
+    const r8: u8 = @intCast(req.request.red >> 8);
+    const g8: u8 = @intCast(req.request.green >> 8);
+    const b8: u8 = @intCast(req.request.blue >> 8);
+
+    const pixel: u32 = (@as(u32, r8) << r_shift) | (@as(u32, g8) << g_shift) | (@as(u32, b8) << b_shift);
+
+    var rep = Reply.AllocColor{
+        .sequence_number = request_context.sequence_number,
+        .red = (@as(u16, r8) << 8) | r8,
+        .green = (@as(u16, g8) << 8) | g8,
+        .blue = (@as(u16, b8) << 8) | b8,
+        .pixel = pixel,
+    };
+    try request_context.client.write_reply(&rep);
+}
+
 fn copy_area(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CopyArea, request_context.allocator);
     defer req.deinit();
@@ -1645,6 +1707,120 @@ fn copy_area(request_context: *phx.RequestContext) !void {
             std.log.err("CopyArea: failed to send NoExposure event: {s}", .{@errorName(err)});
         };
     }
+}
+
+fn poly_rectangle(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.PolyRectangle, request_context.allocator);
+    defer req.deinit();
+
+    const drawable = request_context.server.get_drawable(req.request.drawable) orelse {
+        std.log.err("PolyRectangle: invalid drawable {d}", .{req.request.drawable});
+        return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.drawable));
+    };
+
+    const gc = request_context.server.get_graphics_context(req.request.gc) orelse {
+        std.log.err("PolyRectangle: invalid gc {d}", .{req.request.gc});
+        return request_context.client.write_error(request_context, .g_context, @intFromEnum(req.request.gc));
+    };
+
+    if (req.request.rectangles.items.len == 0)
+        return;
+
+    const depth = drawable.get_depth();
+    const r8: u8 = @intCast((gc.foreground >> 16) & 0xFF);
+    const g8: u8 = @intCast((gc.foreground >> 8) & 0xFF);
+    const b8: u8 = @intCast(gc.foreground & 0xFF);
+    const a8: u8 = if (depth == 32) @intCast((gc.foreground >> 24) & 0xFF) else 0xFF;
+    const color = phx.Render.Color{
+        .red = (@as(u16, r8) << 8) | r8,
+        .green = (@as(u16, g8) << 8) | g8,
+        .blue = (@as(u16, b8) << 8) | b8,
+        .alpha = (@as(u16, a8) << 8) | a8,
+    };
+
+    // Per X11 spec: each outline is "as if a five-point PolyLine" through
+    // (x,y), (x+w,y), (x+w,y+h), (x,y+h), (x,y). For a 1-pixel-wide line that
+    // means the perimeter pixels at columns x and x+w and rows y and y+h.
+    // Decompose into 4 thin solid fills per outline (corners overlap, but the
+    // SOURCE op makes overpainting a no-op).
+    const outline_rects = try request_context.allocator.alloc(phx.Render.Rectangle, req.request.rectangles.items.len * 4);
+    defer request_context.allocator.free(outline_rects);
+    for (req.request.rectangles.items, 0..) |r, i| {
+        const w_plus_1: x11.Card16 = r.width +| 1;
+        const h_plus_1: x11.Card16 = r.height +| 1;
+        outline_rects[i * 4 + 0] = .{ .x = r.x, .y = r.y, .width = w_plus_1, .height = 1 };
+        outline_rects[i * 4 + 1] = .{ .x = r.x, .y = r.y +| @as(i16, @intCast(r.height)), .width = w_plus_1, .height = 1 };
+        outline_rects[i * 4 + 2] = .{ .x = r.x, .y = r.y, .width = 1, .height = h_plus_1 };
+        outline_rects[i * 4 + 3] = .{ .x = r.x +| @as(i16, @intCast(r.width)), .y = r.y, .width = 1, .height = h_plus_1 };
+    }
+
+    const gc_rects = gc.clip_rectangles orelse &.{};
+    const clip_rects = try request_context.allocator.alloc(phx.Render.Rectangle, gc_rects.len);
+    defer request_context.allocator.free(clip_rects);
+    for (gc_rects, 0..) |gr, i| {
+        clip_rects[i] = .{ .x = gr.x, .y = gr.y, .width = gr.width, .height = gr.height };
+    }
+
+    try request_context.server.display.fill_rectangles(&.{
+        .drawable = drawable,
+        .op = .pict_op_src,
+        .color = color,
+        .rects = outline_rects,
+        .clip_rectangles = clip_rects,
+        .clip_x_origin = gc.clip_x_origin,
+        .clip_y_origin = gc.clip_y_origin,
+    });
+}
+
+fn poly_fill_rectangle(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.PolyFillRectangle, request_context.allocator);
+    defer req.deinit();
+
+    const drawable = request_context.server.get_drawable(req.request.drawable) orelse {
+        std.log.err("PolyFillRectangle: invalid drawable {d}", .{req.request.drawable});
+        return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.drawable));
+    };
+
+    const gc = request_context.server.get_graphics_context(req.request.gc) orelse {
+        std.log.err("PolyFillRectangle: invalid gc {d}", .{req.request.gc});
+        return request_context.client.write_error(request_context, .g_context, @intFromEnum(req.request.gc));
+    };
+
+    if (req.request.rectangles.items.len == 0)
+        return;
+
+    // Phoenix's TrueColor visual uses RGBA8 (red=0x00FF0000, green=0x0000FF00,
+    // blue=0x000000FF). Unpack the GC's foreground pixel, bit-replicate each
+    // 8-bit channel into the 16-bit Render.Color field, and force alpha=0xFFFF
+    // for depth 24 (which has no alpha bits in the visual).
+    const depth = drawable.get_depth();
+    const r8: u8 = @intCast((gc.foreground >> 16) & 0xFF);
+    const g8: u8 = @intCast((gc.foreground >> 8) & 0xFF);
+    const b8: u8 = @intCast(gc.foreground & 0xFF);
+    const a8: u8 = if (depth == 32) @intCast((gc.foreground >> 24) & 0xFF) else 0xFF;
+    const color = phx.Render.Color{
+        .red = (@as(u16, r8) << 8) | r8,
+        .green = (@as(u16, g8) << 8) | g8,
+        .blue = (@as(u16, b8) << 8) | b8,
+        .alpha = (@as(u16, a8) << 8) | a8,
+    };
+
+    const gc_rects = gc.clip_rectangles orelse &.{};
+    const clip_rects = try request_context.allocator.alloc(phx.Render.Rectangle, gc_rects.len);
+    defer request_context.allocator.free(clip_rects);
+    for (gc_rects, 0..) |gr, i| {
+        clip_rects[i] = .{ .x = gr.x, .y = gr.y, .width = gr.width, .height = gr.height };
+    }
+
+    try request_context.server.display.fill_rectangles(&.{
+        .drawable = drawable,
+        .op = .pict_op_src,
+        .color = color,
+        .rects = req.request.rectangles.items,
+        .clip_rectangles = clip_rects,
+        .clip_x_origin = gc.clip_x_origin,
+        .clip_y_origin = gc.clip_y_origin,
+    });
 }
 
 fn bits_per_pixel_for_depth(depth: u8) u32 {
@@ -1806,6 +1982,8 @@ fn set_clip_rectangles(request_context: *phx.RequestContext) !void {
 
 fn apply_gc_value_list_create(gc: *phx.GraphicsContext, req: *const Request.CreateGC, allocator: std.mem.Allocator) void {
     if (req.get_value(u32, "graphics_exposures")) |v| gc.graphics_exposures = v != 0;
+    if (req.get_value(u32, "foreground")) |v| gc.foreground = v;
+    if (req.get_value(u32, "background")) |v| gc.background = v;
     if (req.get_value(i16, "clip_x_origin")) |v| gc.clip_x_origin = v;
     if (req.get_value(i16, "clip_y_origin")) |v| gc.clip_y_origin = v;
     if (req.get_value(u32, "clip_mask")) |_| reset_gc_clip_rectangles(gc, allocator);
@@ -1813,6 +1991,8 @@ fn apply_gc_value_list_create(gc: *phx.GraphicsContext, req: *const Request.Crea
 
 fn apply_gc_value_list_change(gc: *phx.GraphicsContext, req: *const Request.ChangeGC, allocator: std.mem.Allocator) void {
     if (req.get_value(u32, "graphics_exposures")) |v| gc.graphics_exposures = v != 0;
+    if (req.get_value(u32, "foreground")) |v| gc.foreground = v;
+    if (req.get_value(u32, "background")) |v| gc.background = v;
     if (req.get_value(i16, "clip_x_origin")) |v| gc.clip_x_origin = v;
     if (req.get_value(i16, "clip_y_origin")) |v| gc.clip_y_origin = v;
     if (req.get_value(u32, "clip_mask")) |_| reset_gc_clip_rectangles(gc, allocator);
@@ -2764,6 +2944,24 @@ pub const Request = struct {
         height: x11.Card16,
     };
 
+    pub const PolyRectangle = struct {
+        opcode: phx.opcode.Major = .poly_rectangle,
+        pad1: x11.Card8 = 0,
+        length: x11.Card16,
+        drawable: x11.DrawableId,
+        gc: x11.GContextId,
+        rectangles: x11.ListOf(phx.Render.Rectangle, .{ .length_field = "length", .length_field_type = .request_remainder }),
+    };
+
+    pub const PolyFillRectangle = struct {
+        opcode: phx.opcode.Major = .poly_fill_rectangle,
+        pad1: x11.Card8 = 0,
+        length: x11.Card16,
+        drawable: x11.DrawableId,
+        gc: x11.GContextId,
+        rectangles: x11.ListOf(phx.Render.Rectangle, .{ .length_field = "length", .length_field_type = .request_remainder }),
+    };
+
     pub const PutImage = struct {
         opcode: phx.opcode.Major = .put_image,
         format: phx.MitShm.ImageFormat,
@@ -2856,6 +3054,34 @@ pub const Request = struct {
         pad1: x11.Card8 = 0,
         length: x11.Card16,
         cursor: x11.CursorId,
+    };
+
+    pub const CreateGlyphCursor = struct {
+        opcode: phx.opcode.Major = .create_glyph_cursor,
+        pad1: x11.Card8 = 0,
+        length: x11.Card16,
+        cid: x11.CursorId,
+        source_font: x11.FontId,
+        mask_font: x11.FontId, // Or none(0)
+        source_char: x11.Card16,
+        mask_char: x11.Card16,
+        fore_red: x11.Card16,
+        fore_green: x11.Card16,
+        fore_blue: x11.Card16,
+        back_red: x11.Card16,
+        back_green: x11.Card16,
+        back_blue: x11.Card16,
+    };
+
+    pub const AllocColor = struct {
+        opcode: phx.opcode.Major = .alloc_color,
+        pad1: x11.Card8 = 0,
+        length: x11.Card16,
+        cmap: x11.ColormapId,
+        red: x11.Card16,
+        green: x11.Card16,
+        blue: x11.Card16,
+        pad2: x11.Card16 = 0,
     };
 
     pub const CreateColormap = struct {
@@ -2952,6 +3178,19 @@ pub const Reply = struct {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         atom: x11.AtomId,
         pad2: [20]x11.Card8 = @splat(0),
+    };
+
+    pub const AllocColor = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        pad1: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        red: x11.Card16,
+        green: x11.Card16,
+        blue: x11.Card16,
+        pad2: x11.Card16 = 0,
+        pixel: x11.Card32,
+        pad3: [12]x11.Card8 = @splat(0),
     };
 
     pub const GetAtomName = struct {

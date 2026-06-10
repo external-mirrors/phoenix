@@ -26,6 +26,11 @@ drawable: x11.DrawableId,
 /// GraphicsExposure or NoExposure events depending on whether any source
 /// region was obscured.
 graphics_exposures: bool = true,
+/// Foreground pixel value used by drawing operations like PolyFillRectangle.
+/// Defaults to 0 (black) per X11 spec.
+foreground: u32 = 0,
+/// Background pixel value used by some drawing operations. Defaults to 1.
+background: u32 = 1,
 clip_x_origin: i16 = 0,
 clip_y_origin: i16 = 0,
 clip_ordering: ClipOrdering = .unsorted,

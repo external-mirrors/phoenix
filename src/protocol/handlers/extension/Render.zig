@@ -31,6 +31,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .composite_glyphs32 => composite_glyphs(request_context, u32),
         .fill_rectangles => fill_rectangles(request_context),
         .create_cursor => create_cursor(request_context),
+        .create_anim_cursor => create_anim_cursor(request_context),
         .set_picture_filter => set_picture_filter(request_context),
         .set_picture_transform => set_picture_transform(request_context),
         .create_solid_fill => create_solid_fill(request_context),
@@ -680,6 +681,43 @@ fn create_cursor(request_context: *phx.RequestContext) !void {
     try request_context.client.add_cursor(cursor);
 }
 
+fn create_anim_cursor(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.CreateAnimCursor, request_context.allocator);
+    defer req.deinit();
+
+    if (req.request.frames.items.len == 0) {
+        std.log.err("RenderCreateAnimCursor: no frames provided", .{});
+        return request_context.client.write_error(request_context, .length, 0);
+    }
+
+    for (req.request.frames.items) |frame| {
+        if (request_context.server.get_cursor(frame.cursor) == null) {
+            std.log.err("RenderCreateAnimCursor: invalid cursor {d} in frames", .{@intFromEnum(frame.cursor)});
+            return request_context.client.write_error(request_context, .cursor, @intFromEnum(frame.cursor));
+        }
+    }
+
+    // Phoenix has no animation infrastructure; clone the first frame's cursor
+    // under the new id so clients get a valid static cursor rather than an error.
+    const first = request_context.server.get_cursor(req.request.frames.items[0].cursor).?;
+    const cursor = phx.Cursor{
+        .id = req.request.cid,
+        .source_picture = first.source_picture,
+        .source_pixmap = first.source_pixmap,
+        .mask_pixmap = first.mask_pixmap,
+        .fore_red = first.fore_red,
+        .fore_green = first.fore_green,
+        .fore_blue = first.fore_blue,
+        .back_red = first.back_red,
+        .back_green = first.back_green,
+        .back_blue = first.back_blue,
+        .hotspot_x = first.hotspot_x,
+        .hotspot_y = first.hotspot_y,
+    };
+
+    try request_context.client.add_cursor(cursor);
+}
+
 /// Validate num_stops/stops.len/colors.len and copy into a GradientStops.
 /// On error, writes an X11 error reply and returns null.
 fn collect_gradient_stops(
@@ -1176,6 +1214,7 @@ const MinorOpcode = enum(x11.Card8) {
     create_cursor = 27,
     set_picture_transform = 28,
     set_picture_filter = 30,
+    create_anim_cursor = 31,
     create_solid_fill = 33,
     create_linear_gradient = 34,
     create_radial_gradient = 35,
@@ -1316,6 +1355,11 @@ pub const Trap = struct {
     bottom: i32,
     left: LineFixed,
     right: LineFixed,
+};
+
+pub const AnimCursorElt = struct {
+    cursor: x11.CursorId,
+    delay: x11.Card32,
 };
 
 pub const pict_format_id_first: x11.Card32 = 35;
@@ -1748,6 +1792,14 @@ pub const Request = struct {
         source: PictureId,
         x: x11.Card16,
         y: x11.Card16,
+    };
+
+    pub const CreateAnimCursor = struct {
+        major_opcode: phx.opcode.Major = .render,
+        minor_opcode: MinorOpcode = .create_anim_cursor,
+        length: x11.Card16,
+        cid: x11.CursorId,
+        frames: x11.ListOf(AnimCursorElt, .{ .length_field = "length", .length_field_type = .request_remainder }),
     };
 
     pub const CreatePicture = struct {

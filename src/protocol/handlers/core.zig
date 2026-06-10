@@ -60,6 +60,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .put_image => put_image(request_context),
         .create_colormap => create_colormap(request_context),
         .create_cursor => create_cursor(request_context),
+        .free_cursor => free_cursor(request_context),
         .query_extension => query_extension(request_context),
         .get_keyboard_mapping => get_keyboard_mapping(request_context),
         .get_modifier_mapping => get_modifier_mapping(request_context),
@@ -1504,6 +1505,19 @@ fn create_cursor(request_context: *phx.RequestContext) !void {
     try request_context.client.add_cursor(cursor);
 }
 
+fn free_cursor(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.FreeCursor, request_context.allocator);
+    defer req.deinit();
+
+    var cursor = request_context.server.get_cursor(req.request.cursor) orelse {
+        std.log.err("FreeCursor: invalid cursor {d}", .{@intFromEnum(req.request.cursor)});
+        return request_context.client.write_error(request_context, .cursor, @intFromEnum(req.request.cursor));
+    };
+
+    cursor.deinit();
+    request_context.server.remove_resource(req.request.cursor.to_id());
+}
+
 fn copy_area(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.CopyArea, request_context.allocator);
     defer req.deinit();
@@ -2740,6 +2754,13 @@ pub const Request = struct {
         back_blue: x11.Card16,
         x: x11.Card16,
         y: x11.Card16,
+    };
+
+    pub const FreeCursor = struct {
+        opcode: phx.opcode.Major = .free_cursor,
+        pad1: x11.Card8 = 0,
+        length: x11.Card16,
+        cursor: x11.CursorId,
     };
 
     pub const CreateColormap = struct {

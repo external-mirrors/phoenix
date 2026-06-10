@@ -70,6 +70,7 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .create_glyph_cursor => create_glyph_cursor(request_context),
         .free_cursor => free_cursor(request_context),
         .query_extension => query_extension(request_context),
+        .list_extensions => list_extensions(request_context),
         .get_keyboard_mapping => get_keyboard_mapping(request_context),
         .get_modifier_mapping => get_modifier_mapping(request_context),
         else => unreachable,
@@ -2036,55 +2037,37 @@ fn query_extension(request_context: *phx.RequestContext) !void {
         .first_error = 0,
     };
 
-    if (std.mem.eql(u8, req.request.name.items, "DRI3")) {
-        rep.present = true;
-        rep.major_opcode = @intFromEnum(phx.opcode.Major.dri3);
-        rep.first_event = phx.event.dri3_first_event;
-    } else if (std.mem.eql(u8, req.request.name.items, "XFIXES")) {
-        rep.present = true;
-        rep.major_opcode = @intFromEnum(phx.opcode.Major.xfixes);
-        rep.first_event = phx.event.xfixes_first_event;
-    } else if (std.mem.eql(u8, req.request.name.items, "Present")) {
-        rep.present = true;
-        rep.major_opcode = @intFromEnum(phx.opcode.Major.present);
-        rep.first_event = phx.event.present_first_event;
-    } else if (std.mem.eql(u8, req.request.name.items, "SYNC")) {
-        rep.present = true;
-        rep.major_opcode = @intFromEnum(phx.opcode.Major.sync);
-        rep.first_event = phx.event.sync_first_event;
-        rep.first_error = phx.err.sync_first_error;
-    } else if (std.mem.eql(u8, req.request.name.items, "GLX")) {
-        rep.present = true;
-        rep.major_opcode = @intFromEnum(phx.opcode.Major.glx);
-        rep.first_event = phx.event.glx_first_event;
-        rep.first_error = phx.err.glx_first_error;
-        // } else if (std.mem.eql(u8, req.request.name.items, "XKEYBOARD")) {
-        //     rep.present = true;
-        //     rep.major_opcode = @intFromEnum(phx.opcode.Major.xkb);
-    } else if (std.mem.eql(u8, req.request.name.items, "RENDER")) {
-        rep.present = true;
-        rep.major_opcode = @intFromEnum(phx.opcode.Major.render);
-        rep.first_error = phx.err.render_first_error;
-    } else if (std.mem.eql(u8, req.request.name.items, "RANDR")) {
-        rep.present = true;
-        rep.major_opcode = @intFromEnum(phx.opcode.Major.randr);
-        rep.first_event = phx.event.randr_first_event;
-        rep.first_error = phx.err.randr_first_error;
-    } else if (std.mem.eql(u8, req.request.name.items, "Generic Event Extension")) {
-        rep.present = true;
-        rep.major_opcode = @intFromEnum(phx.opcode.Major.generic_event_extension);
-    } else if (std.mem.eql(u8, req.request.name.items, "XWAYLAND")) {
-        rep.present = false;
-        rep.major_opcode = @intFromEnum(phx.opcode.Major.xwayland);
-    } else if (std.mem.eql(u8, req.request.name.items, "MIT-SHM")) {
-        rep.present = true;
-        rep.major_opcode = @intFromEnum(phx.opcode.Major.mit_shm);
-        rep.first_event = phx.event.mit_shm_first_event;
-        rep.first_error = phx.err.mit_shm_first_error;
-    } else {
-        std.log.err("QueryExtension: unsupported extension: {s}", .{req.request.name.items});
+    for (&supported_extensions) |*extension| {
+        if (std.mem.eql(u8, req.request.name.items, extension.name)) {
+            rep.present = true;
+            rep.major_opcode = extension.major_opcode;
+            rep.first_event = extension.first_event;
+            rep.first_error = extension.first_error;
+            break;
+        }
     }
 
+    if (!rep.present)
+        std.log.err("QueryExtension: unsupported extension: {s}", .{req.request.name.items});
+
+    try request_context.client.write_reply(&rep);
+}
+
+fn list_extensions(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.ListExtensions, request_context.allocator);
+    defer req.deinit();
+
+    var extension_names: [supported_extensions.len]String8WithLength = undefined;
+    for (&supported_extensions, 0..) |*extension, i| {
+        extension_names[i] = .{
+            .data = .{ .items = @constCast(extension.name) },
+        };
+    }
+
+    var rep = Reply.ListExtensions{
+        .sequence_number = request_context.sequence_number,
+        .extension_names = .{ .items = &extension_names },
+    };
     try request_context.client.write_reply(&rep);
 }
 
@@ -2500,6 +2483,82 @@ const PropertyFormat = enum(x11.Card8) {
     format8 = 8,
     format16 = 16,
     format32 = 32,
+};
+
+const Extension = struct {
+    name: []const u8,
+    major_opcode: x11.Card8,
+    first_event: x11.Card8,
+    first_error: x11.Card8,
+};
+
+const supported_extensions = [_]Extension{
+    .{
+        .name = "DRI3",
+        .major_opcode = @intFromEnum(phx.opcode.Major.dri3),
+        .first_event = phx.event.dri3_first_event,
+        .first_error = 0,
+    },
+    .{
+        .name = "XFIXES",
+        .major_opcode = @intFromEnum(phx.opcode.Major.xfixes),
+        .first_event = phx.event.xfixes_first_event,
+        .first_error = 0,
+    },
+    .{
+        .name = "Present",
+        .major_opcode = @intFromEnum(phx.opcode.Major.present),
+        .first_event = phx.event.present_first_event,
+        .first_error = 0,
+    },
+    .{
+        .name = "SYNC",
+        .major_opcode = @intFromEnum(phx.opcode.Major.sync),
+        .first_event = phx.event.sync_first_event,
+        .first_error = phx.err.sync_first_error,
+    },
+    .{
+        .name = "GLX",
+        .major_opcode = @intFromEnum(phx.opcode.Major.glx),
+        .first_event = phx.event.glx_first_event,
+        .first_error = phx.err.glx_first_error,
+    },
+    // .{
+    //     .name = "XKEYBOARD",
+    //     .major_opcode = @intFromEnum(phx.opcode.Major.xkb),
+    //     .first_event = 0,
+    //     .first_error = 0,
+    // },
+    .{
+        .name = "RENDER",
+        .major_opcode = @intFromEnum(phx.opcode.Major.render),
+        .first_event = 0,
+        .first_error = phx.err.render_first_error,
+    },
+    .{
+        .name = "RANDR",
+        .major_opcode = @intFromEnum(phx.opcode.Major.randr),
+        .first_event = phx.event.randr_first_event,
+        .first_error = phx.err.randr_first_error,
+    },
+    .{
+        .name = "Generic Event Extension",
+        .major_opcode = @intFromEnum(phx.opcode.Major.generic_event_extension),
+        .first_event = 0,
+        .first_error = 0,
+    },
+    .{
+        .name = "XWAYLAND",
+        .major_opcode = @intFromEnum(phx.opcode.Major.xwayland),
+        .first_event = 0,
+        .first_error = 0,
+    },
+    .{
+        .name = "MIT-SHM",
+        .major_opcode = @intFromEnum(phx.opcode.Major.mit_shm),
+        .first_event = phx.event.mit_shm_first_event,
+        .first_error = phx.err.mit_shm_first_error,
+    },
 };
 
 // There has to be a better way to do this. Just let me cast integer types directly zig goddamnit!
@@ -3105,6 +3164,12 @@ pub const Request = struct {
         pad3: x11.AlignmentPadding = .{},
     };
 
+    pub const ListExtensions = struct {
+        opcode: phx.opcode.Major = .list_extensions,
+        pad1: x11.Card8,
+        length: x11.Card16,
+    };
+
     pub const GetKeyboardMapping = struct {
         opcode: phx.opcode.Major = .get_keyboard_mapping,
         pad1: x11.Card8,
@@ -3333,6 +3398,16 @@ pub const Reply = struct {
         first_event: x11.Card8,
         first_error: x11.Card8,
         pad2: [20]x11.Card8 = @splat(0),
+    };
+
+    pub const ListExtensions = struct {
+        reply_type: phx.reply.ReplyType = .reply,
+        num_extensions: x11.Card8 = 0,
+        sequence_number: x11.Card16,
+        length: x11.Card32 = 0, // This is automatically updated with the size of the reply
+        pad1: [24]x11.Card8 = @splat(0),
+        extension_names: x11.ListOf(String8WithLength, .{ .length_field = "num_extensions" }),
+        pad3: x11.AlignmentPadding = .{},
     };
 
     pub const GetKeyboardMapping = struct {

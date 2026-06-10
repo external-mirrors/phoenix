@@ -58,6 +58,7 @@ pub const Major = enum(x11.Card8) {
     create_glyph_cursor = 94,
     free_cursor = 95,
     query_extension = 98,
+    list_extensions = 99,
     get_keyboard_mapping = 101,
     get_modifier_mapping = 119,
 

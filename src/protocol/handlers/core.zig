@@ -18,7 +18,11 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
         .change_window_attributes => change_window_attributes(request_context),
         .get_window_attributes => get_window_attributes(request_context),
         .destroy_window => destroy_window(request_context),
+        .reparent_window => reparent_window(request_context),
         .map_window => map_window(request_context),
+        .map_subwindows => map_subwindows(request_context),
+        .unmap_window => unmap_window(request_context),
+        .unmap_subwindows => unmap_subwindows(request_context),
         .configure_window => configure_window(request_context),
         .get_geometry => get_geometry(request_context),
         .query_tree => query_tree(request_context),
@@ -532,6 +536,71 @@ fn map_window(request_context: *phx.RequestContext) !void {
     };
 
     window.map();
+}
+
+fn map_subwindows(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.MapSubwindows, request_context.allocator);
+    defer req.deinit();
+
+    const window = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in MapSubwindows request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+
+    for (window.children.items) |child| {
+        if (!child.attributes.mapped) child.map();
+    }
+}
+
+fn unmap_window(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.UnmapWindow, request_context.allocator);
+    defer req.deinit();
+
+    var window = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in UnmapWindow request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+
+    window.unmap(false);
+}
+
+fn unmap_subwindows(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.UnmapSubwindows, request_context.allocator);
+    defer req.deinit();
+
+    const window = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in UnmapSubwindows request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+
+    for (window.children.items) |child| {
+        if (child.attributes.mapped) child.unmap(false);
+    }
+}
+
+fn reparent_window(request_context: *phx.RequestContext) !void {
+    var req = try request_context.client.read_request(Request.ReparentWindow, request_context.allocator);
+    defer req.deinit();
+
+    var window = request_context.server.get_window(req.request.window) orelse {
+        std.log.err("Received invalid window {d} in ReparentWindow request", .{req.request.window});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    };
+
+    if (window == request_context.server.root_window) {
+        std.log.err("ReparentWindow: cannot reparent the root window", .{});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+    }
+
+    const new_parent = request_context.server.get_window(req.request.parent) orelse {
+        std.log.err("Received invalid parent window {d} in ReparentWindow request", .{req.request.parent});
+        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.parent));
+    };
+
+    window.reparent(new_parent, req.request.x, req.request.y) catch |err| switch (err) {
+        error.InvalidParent => return request_context.client.write_error(request_context, .match, @intFromEnum(req.request.parent)),
+        error.OutOfMemory => return error.OutOfMemory,
+    };
 }
 
 fn configure_window(request_context: *phx.RequestContext) !void {
@@ -1483,11 +1552,6 @@ fn create_cursor(request_context: *phx.RequestContext) !void {
         }
     }
 
-    if (req.request.x >= source.dmabuf_data.width or req.request.y >= source.dmabuf_data.height) {
-        std.log.err("CreateCursor: hotspot ({d},{d}) outside source {d}x{d}", .{ req.request.x, req.request.y, source.dmabuf_data.width, source.dmabuf_data.height });
-        return request_context.client.write_error(request_context, .match, 0);
-    }
-
     const cursor = phx.Cursor{
         .id = req.request.cid,
         .source_pixmap = req.request.source,
@@ -2336,6 +2400,37 @@ pub const Request = struct {
         pad1: x11.Card8,
         length: x11.Card16,
         window: x11.WindowId,
+    };
+
+    pub const MapSubwindows = struct {
+        opcode: phx.opcode.Major = .map_subwindows,
+        pad1: x11.Card8,
+        length: x11.Card16,
+        window: x11.WindowId,
+    };
+
+    pub const UnmapWindow = struct {
+        opcode: phx.opcode.Major = .unmap_window,
+        pad1: x11.Card8,
+        length: x11.Card16,
+        window: x11.WindowId,
+    };
+
+    pub const UnmapSubwindows = struct {
+        opcode: phx.opcode.Major = .unmap_subwindows,
+        pad1: x11.Card8,
+        length: x11.Card16,
+        window: x11.WindowId,
+    };
+
+    pub const ReparentWindow = struct {
+        opcode: phx.opcode.Major = .reparent_window,
+        pad1: x11.Card8 = 0,
+        length: x11.Card16,
+        window: x11.WindowId,
+        parent: x11.WindowId,
+        x: i16,
+        y: i16,
     };
 
     pub const ConfigureWindow = struct {

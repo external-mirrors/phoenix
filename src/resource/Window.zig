@@ -91,28 +91,46 @@ pub fn remove_from_owner_recursive(self: *Self) void {
 }
 
 fn revert_input_focus(self: *Self) void {
-    if (std.meta.activeTag(self.server.input_focus.focus) == .window and self.server.input_focus.focus.window == self) {
-        const prev_focus = self.server.input_focus.focus;
-        switch (self.server.input_focus.revert_to) {
-            .none => {
-                self.server.input_focus.focus = .{ .none = {} };
-                self.server.input_focus.revert_to = .none;
-            },
-            .pointer_root => {
-                self.server.input_focus.focus = .{ .pointer_root = {} };
-                self.server.input_focus.revert_to = .none;
-            },
-            .parent => {
-                if (self.get_first_viewable_parent()) |viewable_parent| {
-                    self.server.input_focus.focus = .{ .window = viewable_parent };
-                } else {
-                    self.server.input_focus.focus = .{ .none = {} };
-                }
-                self.server.input_focus.revert_to = .none;
-            },
-        }
-        on_input_focus_changed(self.server, prev_focus, self.server.input_focus.focus);
+    if (std.meta.activeTag(self.server.input_focus.focus) != .window) return;
+    if (self.server.input_focus.focus.window != self) return;
+    perform_focus_revert(self.server, self);
+}
+
+/// Per X11 spec: when the focus window or any of its inferiors becomes
+/// unviewable (via UnmapWindow, ReparentWindow under an unmapped ancestor,
+/// etc.), focus is automatically reverted per the focus window's revert_to
+/// attribute. Call this after any operation that may have changed a window's
+/// viewability.
+pub fn revert_input_focus_if_unviewable(server: *phx.Server) void {
+    const focused = switch (server.input_focus.focus) {
+        .window => |w| w,
+        else => return,
+    };
+    if (focused.get_map_state() == .viewable) return;
+    perform_focus_revert(server, focused);
+}
+
+fn perform_focus_revert(server: *phx.Server, focused: *Self) void {
+    const prev_focus = server.input_focus.focus;
+    switch (server.input_focus.revert_to) {
+        .none => {
+            server.input_focus.focus = .{ .none = {} };
+            server.input_focus.revert_to = .none;
+        },
+        .pointer_root => {
+            server.input_focus.focus = .{ .pointer_root = {} };
+            server.input_focus.revert_to = .none;
+        },
+        .parent => {
+            if (focused.get_first_viewable_parent()) |viewable_parent| {
+                server.input_focus.focus = .{ .window = viewable_parent };
+            } else {
+                server.input_focus.focus = .{ .none = {} };
+            }
+            server.input_focus.revert_to = .none;
+        },
     }
+    on_input_focus_changed(server, prev_focus, server.input_focus.focus);
 }
 
 pub fn on_input_focus_changed(server: *phx.Server, prev_focus: phx.InputFocus.Focus, new_focus: phx.InputFocus.Focus) void {
@@ -786,8 +804,10 @@ pub fn core_event_mask_matches_event_code(event_mask: phx.core.EventMask, event_
         .graphics_exposure => return false, // Delivered directly to the requesting client, not via window event mask
         .no_exposure => return false, // Delivered directly to the requesting client, not via window event mask
         .create_notify => return false, // This only applies to parents
+        .unmap_notify => return event_mask.structure_notify,
         .map_notify => return event_mask.structure_notify,
         .map_request => return false, // This only applies to the substructure redirect parent (client)
+        .reparent_notify => return event_mask.structure_notify,
         .configure_notify => return event_mask.structure_notify,
         .configure_request => return false, // This only applies to the substructure redirect parent (client)
         .resize_request => return event_mask.resize_redirect,
@@ -816,8 +836,10 @@ inline fn core_event_should_propagate_to_parent_substructure_notify(event_code: 
         .graphics_exposure => false, // Sent directly to the requesting client
         .no_exposure => false, // Sent directly to the requesting client
         .create_notify => true,
+        .unmap_notify => true,
         .map_notify => true,
         .map_request => false,
+        .reparent_notify => true,
         .configure_notify => true,
         .configure_request => false,
         .resize_request => false,
@@ -1072,6 +1094,94 @@ pub fn map(self: *Self) void {
         dispatch_crossing(self.server.current_cursor_window, new_cursor_window, time, cursor_pos_root, self.server.current_key_but_mask, self.server.root_window.id);
         self.server.current_cursor_window = new_cursor_window;
     }
+}
+
+pub fn unmap(self: *Self, from_configure: bool) void {
+    if (!self.attributes.mapped)
+        return;
+
+    self.attributes.mapped = false;
+    self.graphics_window.mapped = false;
+    self.server.display.set_dirty();
+
+    revert_input_focus_if_unviewable(self.server);
+
+    var unmap_notify_event = phx.event.Event{
+        .unmap_notify = .{
+            .event = .none,
+            .window = self.id,
+            .from_configure = from_configure,
+        },
+    };
+    self.write_core_event_to_event_listeners(&unmap_notify_event);
+
+    if (self.server.current_cursor_window == self)
+        self.server.current_cursor_window = null;
+
+    const cursor_pos_root: @Vector(2, i32) = .{ self.server.cursor_x, self.server.cursor_y };
+    var rel_pos: @Vector(2, i32) = .{ 0, 0 };
+    const new_cursor_window = get_window_at_position(self.server.root_window, cursor_pos_root, &rel_pos);
+    if (self.server.current_cursor_window != new_cursor_window) {
+        const time = self.server.get_timestamp_milliseconds();
+        dispatch_crossing(self.server.current_cursor_window, new_cursor_window, time, cursor_pos_root, self.server.current_key_but_mask, self.server.root_window.id);
+        self.server.current_cursor_window = new_cursor_window;
+    }
+}
+
+pub fn is_ancestor_of(self: *Self, other: *Self) bool {
+    var parent = other.parent;
+    while (parent) |par| {
+        if (par == self) return true;
+        parent = par.parent;
+    }
+    return false;
+}
+
+pub const ReparentError = error{
+    InvalidParent,
+    OutOfMemory,
+};
+
+pub fn reparent(self: *Self, new_parent: *Self, x: i16, y: i16) ReparentError!void {
+    if (self.parent == null) return error.InvalidParent;
+    if (self == new_parent or self.is_ancestor_of(new_parent)) return error.InvalidParent;
+    if (self.attributes.class == .input_output and new_parent.attributes.class == .input_only) return error.InvalidParent;
+
+    const was_mapped = self.attributes.mapped;
+    if (was_mapped) self.unmap(false);
+
+    const old_parent = self.parent.?;
+    if (old_parent != new_parent) {
+        old_parent.remove_child(self);
+        try new_parent.children.append(new_parent.allocator, self);
+        self.parent = new_parent;
+    }
+
+    self.attributes.geometry.x = x;
+    self.attributes.geometry.y = y;
+    self.server.display.configure_window(self, self.attributes.geometry);
+
+    var reparent_notify_event = phx.event.Event{
+        .reparent_notify = .{
+            .event = .none,
+            .window = self.id,
+            .parent = new_parent.id,
+            .x = x,
+            .y = y,
+            .override_redirect = self.attributes.override_redirect,
+        },
+    };
+    self.write_core_event_to_event_listeners(&reparent_notify_event);
+    // Also notify substructure listeners on the old parent — they had been
+    // tracking this window as a child until now.
+    if (old_parent != new_parent) {
+        var event_for_old_parent = reparent_notify_event;
+        old_parent.write_core_event_to_substructure_notify_listeners(&event_for_old_parent);
+    }
+
+    if (was_mapped) self.map();
+
+    revert_input_focus_if_unviewable(self.server);
 }
 
 /// Returns |root_window| if no window matches

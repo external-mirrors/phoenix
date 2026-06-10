@@ -16,8 +16,10 @@ pub const EventCode = enum(x11.Card8) {
     graphics_exposure = 13,
     no_exposure = 14,
     create_notify = 16,
+    unmap_notify = 18,
     map_notify = 19,
     map_request = 20,
+    reparent_notify = 21,
     configure_notify = 22,
     configure_request = 23,
     resize_request = 25,
@@ -395,6 +397,37 @@ pub const MapNotifyEvent = extern struct {
     }
 };
 
+pub const UnmapNotifyEvent = extern struct {
+    code: EventCode = .unmap_notify,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+    event: x11.WindowId,
+    window: x11.WindowId,
+    from_configure: bool,
+    pad2: [19]x11.Card8 = @splat(0),
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
+
+pub const ReparentNotifyEvent = extern struct {
+    code: EventCode = .reparent_notify,
+    pad1: x11.Card8 = 0,
+    sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
+    event: x11.WindowId,
+    window: x11.WindowId,
+    parent: x11.WindowId,
+    x: i16,
+    y: i16,
+    override_redirect: bool,
+    pad2: [11]x11.Card8 = @splat(0),
+
+    comptime {
+        std.debug.assert(@sizeOf(@This()) == 32);
+    }
+};
+
 pub const MapRequestEvent = extern struct {
     code: EventCode = .map_request,
     pad1: x11.Card8 = 0,
@@ -580,8 +613,10 @@ pub const Event = extern union {
     graphics_exposure: GraphicsExposureEvent,
     no_exposure: NoExposureEvent,
     create_notify: CreateNotifyEvent,
+    unmap_notify: UnmapNotifyEvent,
     map_notify: MapNotifyEvent,
     map_request: MapRequestEvent,
+    reparent_notify: ReparentNotifyEvent,
     configure_notify: ConfigureNotifyEvent,
     configure_request: ConfigureRequestEvent,
     resize_request: ResizeRequestEvent,

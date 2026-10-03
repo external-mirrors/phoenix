@@ -1,5 +1,6 @@
 const std = @import("std");
-const phx = @import("src/phoenix.zig");
+
+const Translator = @import("translate_c").Translator;
 
 pub fn build(b: *std.Build) !void {
     const backends_option = b.option([]const u8, "backends",
@@ -11,25 +12,28 @@ pub fn build(b: *std.Build) !void {
         return error.MissingBackendOption;
     }
 
-    const generate_docs_option = b.option(bool, "generate-docs", "Generate X11 protocol documentation") orelse false;
-    if (generate_docs_option) {
-        try generate_docs(b.install_path);
-        return;
-    }
-
+    const generate_docs = b.option(bool, "generate-docs", "Generate X11 protocol documentation") orelse false;
     const debugger = b.option(bool, "debugger", "Build with debugger support") orelse false;
 
     const target = b.standardTargetOptions(.{});
-    const optimize = if (debugger) .Debug else b.standardOptimizeOption(.{});
+    const optimize = if (debugger) .debug else b.standardOptimizeOption(.{});
+
+    if (generate_docs) {
+        add_generate_docs_step(b, target);
+        return;
+    }
+
+    const c_translator = create_c_translator(b, target, optimize, backends);
 
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
-        .strip = optimize != .Debug,
+        .strip = optimize != .debug,
         // .single_threaded = true,
     });
+    exe_mod.addImport("c", c_translator.mod);
 
     const config = b.addOptions();
     config.addOption(Backends, "backends", backends);
@@ -38,42 +42,18 @@ pub fn build(b: *std.Build) !void {
     const exe = b.addExecutable(.{
         .name = "phoenix",
         .root_module = exe_mod,
-        // Needed to make debug symbols work correctly in debug mode at the moment (zig 0.15.2) without having to use a fork of lldb (https://codeberg.org/ziglang/zig#testing-zig-code-with-lldb)
+        // Needed to make debug symbols work correctly in debug mode at the moment (zig 0.17.0) without having to use a fork of lldb (https://codeberg.org/ziglang/zig#testing-zig-code-with-lldb)
         .use_lld = if (debugger) true else null,
         .use_llvm = if (debugger) true else null,
     });
     b.installArtifact(exe);
-
-    exe.root_module.linkSystemLibrary("xkbcommon", .{});
-
-    if (backends.x11) {
-        // TODO: Remove this, we can just use our existing X11 code to connect to the X server directly
-        exe.root_module.linkSystemLibrary("xcb", .{});
-        exe.root_module.linkSystemLibrary("xcb-xkb", .{});
-    }
-
-    if (backends.wayland) {
-        exe.root_module.linkSystemLibrary("wayland-client", .{});
-        exe.root_module.linkSystemLibrary("wayland-egl", .{});
-    }
-
-    if (backends.drm) {
-        // TODO: Use ioctl directly instead of depending on these
-        exe.root_module.linkSystemLibrary("libdrm", .{});
-        exe.root_module.linkSystemLibrary("gbm", .{});
-    }
-
-    exe.root_module.linkSystemLibrary("gl", .{});
-    exe.root_module.linkSystemLibrary("egl", .{});
 
     const check = b.step("check", "Check if Phoenix compiles");
     check.dependOn(&exe.step);
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    run_cmd.addPassthruArgs();
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
@@ -85,6 +65,64 @@ pub fn build(b: *std.Build) !void {
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_exe_unit_tests.step);
+}
+
+fn create_c_translator(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Optimize, backends: Backends) Translator {
+    var system_libs: std.ArrayList(Translator.LinkSystemLib) = .empty;
+    system_libs.appendSlice(b.allocator, &.{
+        .{ .name = "xkbcommon" },
+        .{ .name = "gl" },
+        .{ .name = "egl" },
+        // TODO: Remove this, we can just use our existing X11 code to connect to the X server directly
+        .{ .name = "xcb" },
+        .{ .name = "xcb-xkb" },
+    }) catch @panic("OOM");
+
+    if (backends.wayland) {
+        system_libs.appendSlice(b.allocator, &.{
+            .{ .name = "wayland-client" },
+            .{ .name = "wayland-egl" },
+        }) catch @panic("OOM");
+    }
+
+    if (backends.drm) {
+        // TODO: Use ioctl directly instead of depending on these
+        system_libs.appendSlice(b.allocator, &.{
+            .{ .name = "libdrm" },
+            .{ .name = "gbm" },
+        }) catch @panic("OOM");
+    }
+
+    const translator: Translator = .init(b.dependency("translate_c", .{}), .{
+        .c_source_file = b.path("src/c.h"),
+        .target = target,
+        .optimize = optimize,
+        .link_system_libs = system_libs.items,
+    });
+    if (backends.wayland)
+        translator.defineCMacro("PHX_BACKEND_WAYLAND", null);
+    if (backends.drm)
+        translator.defineCMacro("PHX_BACKEND_DRM", null);
+    return translator;
+}
+
+fn add_generate_docs_step(b: *std.Build, target: std.Build.ResolvedTarget) void {
+    const generate_docs_exe = b.addExecutable(.{
+        .name = "generate_docs",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/generate_docs.zig"),
+            .target = target,
+            .optimize = .debug,
+        }),
+    });
+
+    const run_generate_docs = b.addRunArtifact(generate_docs_exe);
+    const protocol_docs_dir = run_generate_docs.addOutputDirectoryArg("protocol");
+    b.installDirectory(.{
+        .source_dir = protocol_docs_dir,
+        .install_dir = .prefix,
+        .install_subdir = "protocol",
+    });
 }
 
 fn backends_from_string_list(backends: []const u8) !Backends {
@@ -112,105 +150,6 @@ fn backends_from_string_list(backends: []const u8) !Backends {
         }
     }
     return result;
-}
-
-fn generate_docs(install_path: []const u8) !void {
-    var install_path_dir = try std.fs.openDirAbsolute(install_path, .{});
-    defer install_path_dir.close();
-
-    install_path_dir.makeDir("protocol") catch |err| switch (err) {
-        error.PathAlreadyExists => {},
-        else => return err,
-    };
-
-    @setEvalBranchQuota(9000);
-    try generate_protocol_docs(phx.ConnectionSetup, &install_path_dir);
-    try generate_protocol_docs(phx.core, &install_path_dir);
-    try generate_protocol_docs(phx.Dri3, &install_path_dir);
-    try generate_protocol_docs(phx.Glx, &install_path_dir);
-    try generate_protocol_docs(phx.Present, &install_path_dir);
-    try generate_protocol_docs(phx.Randr, &install_path_dir);
-    try generate_protocol_docs(phx.Render, &install_path_dir);
-    try generate_protocol_docs(phx.Sync, &install_path_dir);
-    try generate_protocol_docs(phx.Xfixes, &install_path_dir);
-    try generate_protocol_docs(phx.Xkb, &install_path_dir);
-    try generate_protocol_docs(phx.GenericEvent, &install_path_dir);
-    try generate_protocol_docs(phx.MitShm, &install_path_dir);
-
-    // TODO: Also generate replies, errors and events (including phx.event.Event)
-}
-
-fn generate_protocol_docs(comptime file_struct: type, install_path_dir: *std.fs.Dir) !void {
-    const filename = type_get_name_only(@typeName(file_struct));
-    var filepath_buf: [256]u8 = undefined;
-    const filepath = std.fmt.bufPrint(&filepath_buf, "protocol/{s}.txt", .{filename}) catch unreachable;
-
-    const file = try install_path_dir.createFile(filepath, .{});
-    defer file.close();
-
-    var file_buffer: [4096]u8 = undefined;
-    var writer = file.writer(&file_buffer);
-    var file_out = &writer.interface;
-
-    try file_out.print("Requests\n", .{});
-    inline for (@typeInfo(file_struct.Request).@"struct".decls) |decl| {
-        const request_type = @field(file_struct.Request, decl.name);
-        if (comptime std.meta.activeTag(@typeInfo(request_type)) != .@"struct")
-            continue;
-
-        try file_out.print("{s}\n", .{type_get_name_only(@typeName(request_type))});
-        inline for (@typeInfo(request_type).@"struct".fields) |field| {
-            switch (@typeInfo(field.type)) {
-                .@"struct" => {
-                    // TODO: Handle UnionList
-                    if (@hasDecl(field.type, "is_list_of")) {
-                        const field_value = comptime "ListOf" ++ type_get_name_only(@typeName(field.type.get_element_type()));
-                        const list_options = field.type.get_options();
-                        try file_out.print("    {s: <14}    {s: <10}    {s}\n", .{ list_options.length_field orelse "", field_value, field.name });
-                    } else if (field.type == phx.x11.AlignmentPadding) {
-                        try file_out.print("    {s: <14}    {s: <10}    p=padding\n", .{ "p", "" });
-                    } else {
-                        const field_value = type_get_name_only(@typeName(field.type));
-                        try file_out.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), field_value, field.name });
-                    }
-                },
-                .@"enum" => |*e| {
-                    const field_type_name = comptime type_get_name_only(@typeName(field.type));
-                    const field_value = if (field.defaultValue()) |default_value| default_value else field_type_name;
-                    if (field.type == phx.opcode.Major or comptime std.mem.eql(u8, field_type_name, "MinorOpcode")) {
-                        try file_out.print("    {d: <14}    {d: <10}    {s}\n", .{ @sizeOf(field.type), @intFromEnum(field_value), field.name });
-                    } else if (!e.is_exhaustive) {
-                        try file_out.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), type_get_name_only(@typeName(field.type)), field.name });
-                    } else {
-                        try file_out.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), "", field.name });
-                        inline for (e.fields) |enum_field| {
-                            try file_out.print("        {d: <3}  {s}\n", .{ enum_field.value, enum_field.name });
-                        }
-                    }
-                },
-                else => {
-                    const type_name = switch (field.type) {
-                        u8 => "CARD8",
-                        u16 => "CARD16",
-                        u32 => "CARD32",
-                        u64 => "CARD64",
-                        bool => "BOOL",
-                        i16 => "INT16",
-                        else => type_get_name_only(@typeName(field.type)),
-                    };
-                    try file_out.print("    {d: <14}    {s: <10}    {s}\n", .{ @sizeOf(field.type), type_name, field.name });
-                },
-            }
-        }
-        try file_out.print("\n", .{});
-    }
-
-    try file_out.flush();
-}
-
-fn type_get_name_only(type_name: []const u8) []const u8 {
-    const index = std.mem.lastIndexOfScalar(u8, type_name, '.') orelse return type_name;
-    return type_name[index + 1 ..];
 }
 
 const Backends = struct {

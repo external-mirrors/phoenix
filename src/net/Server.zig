@@ -7,32 +7,33 @@ const Self = @This();
 
 pub const vendor = "Phoenix";
 
-pub const screen_true_color_visual_id: x11.VisualId = @enumFromInt(0x21);
+pub const screen_true_color_visual_id: x11.VisualId = @fromBackingInt(0x21);
 const screen_true_color_visual = phx.Visual.create_true_color(screen_true_color_visual_id);
 
-pub const screen_true_color_colormap_id: x11.ColormapId = @enumFromInt(0x20);
+pub const screen_true_color_colormap_id: x11.ColormapId = @fromBackingInt(0x20);
 const screen_true_color_colormap = phx.Colormap{
     .id = screen_true_color_colormap_id,
     .visual = &screen_true_color_visual,
 };
 
-pub const servertime_counter_id: phx.Sync.CounterId = @enumFromInt(0x30);
+pub const servertime_counter_id: phx.Sync.CounterId = @fromBackingInt(0x30);
 
 const unix_domain_socket_path = "/tmp/.X11-unix/X4";
 
-screen: x11.ScreenId = @enumFromInt(0),
+screen: x11.ScreenId = @fromBackingInt(0),
 
 allocator: std.mem.Allocator,
+io: std.Io,
 root_client: *phx.Client,
 root_window: *phx.Window,
-server_net: std.net.Server,
-epoll_fd: i32,
+listen_socket: std.posix.socket_t,
+epoll_fd: std.posix.fd_t,
 epoll_events: [32]std.os.linux.epoll_event = undefined,
 signal_fd: std.posix.fd_t,
 event_fd: std.posix.fd_t,
 messages: std.ArrayListUnmanaged(Message) = .empty,
 messages_back: std.ArrayListUnmanaged(Message) = .empty,
-messages_mutex: std.Thread.Mutex = .{},
+messages_mutex: std.Io.Mutex = .init,
 resource_id_base_manager: phx.ResourceIdBaseManager,
 atom_manager: phx.AtomManager,
 client_manager: phx.ClientManager,
@@ -42,7 +43,7 @@ input: phx.Input,
 input_focus: phx.InputFocus = .{
     .focus = .{ .none = {} },
     .revert_to = .none,
-    .last_focus_change_time = @enumFromInt(1),
+    .last_focus_change_time = @fromBackingInt(1),
 },
 keyboard_grabbed: bool = false,
 
@@ -75,17 +76,16 @@ pub const XFixesSelectionSubscription = struct {
 };
 
 /// The server will catch sigint and close down (if |run| has been executed)
-pub fn create(allocator: std.mem.Allocator) !*Self {
+pub fn create(allocator: std.mem.Allocator, io: std.Io) !*Self {
     var self = try allocator.create(Self);
     errdefer allocator.destroy(self);
 
     const started_time_seconds = phx.time.clock_get_monotonic_seconds();
 
-    const address = try std.net.Address.initUnix(unix_domain_socket_path);
-    std.posix.unlink(unix_domain_socket_path) catch {}; // TODO: Dont just remove the file? what if it's used by something else. I guess they will have a reference to it so it wont get deleted?
-    const server = try address.listen(.{ .force_nonblocking = true });
-    // TODO:
-    //defer server.deinit();
+    phx.os.unlink(unix_domain_socket_path) catch {}; // TODO: Dont just remove the file? what if it's used by something else. I guess they will have a reference to it so it wont get deleted?
+    const listen_socket = try phx.os.listen_unix_socket(unix_domain_socket_path);
+    var listen_socket_owned = true;
+    errdefer if (listen_socket_owned) phx.os.close(listen_socket);
 
     var atom_manager = try phx.AtomManager.init(allocator);
     errdefer atom_manager.deinit();
@@ -96,24 +96,23 @@ pub fn create(allocator: std.mem.Allocator) !*Self {
     var selection_owner_manager = phx.SelectionOwnerManager.init(allocator);
     errdefer selection_owner_manager.deinit();
 
-    const epoll_fd = try std.posix.epoll_create1(0);
-    if (epoll_fd == -1) return error.FailedToCreateEpoll;
-    errdefer std.posix.close(epoll_fd);
+    const epoll_fd = try phx.os.epoll_create1(0);
+    errdefer phx.os.close(epoll_fd);
 
     const signal_fd = try create_sigint_signal_fd();
-    errdefer std.posix.close(signal_fd);
+    errdefer phx.os.close(signal_fd);
 
-    const event_fd = try std.posix.eventfd(0, std.os.linux.EFD.CLOEXEC);
-    errdefer std.posix.close(event_fd);
+    const event_fd = try phx.os.eventfd(0, std.os.linux.EFD.CLOEXEC);
+    errdefer phx.os.close(event_fd);
 
     try epoll_add_input(epoll_fd, signal_fd);
-    errdefer std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, signal_fd, null) catch {};
+    errdefer phx.os.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, signal_fd, null) catch {};
 
     try epoll_add_input(epoll_fd, event_fd);
-    errdefer std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, event_fd, null) catch {};
+    errdefer phx.os.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_DEL, event_fd, null) catch {};
 
     // TODO: Choose backend from argv but give an error if phoenix is built without that backend
-    var display = try phx.Display.create_x11(self, allocator);
+    var display = try phx.Display.create_x11(self, allocator, io);
     errdefer display.destroy();
 
     comptime {
@@ -130,14 +129,15 @@ pub fn create(allocator: std.mem.Allocator) !*Self {
 
     try installed_colormaps.append(allocator, screen_true_color_colormap);
 
-    var screen_resources = try display.get_screen_resources(@enumFromInt(1), allocator);
+    var screen_resources = try display.get_screen_resources(@fromBackingInt(1), allocator);
     errdefer screen_resources.deinit();
 
     self.* = .{
         .allocator = allocator,
+        .io = io,
         .root_client = undefined,
         .root_window = undefined,
-        .server_net = server,
+        .listen_socket = listen_socket,
         .epoll_fd = epoll_fd,
         .signal_fd = signal_fd,
         .event_fd = event_fd,
@@ -154,17 +154,9 @@ pub fn create(allocator: std.mem.Allocator) !*Self {
         .cursor_y = 0,
     };
 
-    var server_connection = std.net.Server.Connection{
-        .stream = self.server_net.stream,
-        .address = self.server_net.listen_address,
-    };
-    errdefer {
-        if (server_connection.stream.handle > 0)
-            server_connection.stream.close();
-    }
-
-    self.root_client = self.add_client(&server_connection) catch |err| {
-        std.log.err("Failed to add server client: {d}, error: {s}", .{ server_connection.stream.handle, @errorName(err) });
+    listen_socket_owned = false;
+    self.root_client = self.add_client(listen_socket) catch |err| {
+        std.log.err("Failed to add server client: {d}, error: {s}", .{ listen_socket, @errorName(err) });
         return error.FailedToSetupRootClient;
     };
 
@@ -195,19 +187,19 @@ pub fn destroy(self: *Self) void {
     self.messages_back.deinit(self.allocator);
     self.all_shm_segments.deinit(self.allocator);
     self.xfixes_selection_subscriptions.deinit(self.allocator);
-    std.posix.close(self.epoll_fd);
-    std.posix.close(self.signal_fd);
-    std.posix.close(self.event_fd);
-    std.posix.unlink(unix_domain_socket_path) catch {};
+    phx.os.close(self.epoll_fd);
+    phx.os.close(self.signal_fd);
+    phx.os.close(self.event_fd);
+    phx.os.unlink(unix_domain_socket_path) catch {};
     self.allocator.destroy(self);
 }
 
-fn epoll_add_input(epoll_fd: i32, fd: std.posix.fd_t) !void {
+fn epoll_add_input(epoll_fd: std.posix.fd_t, fd: std.posix.fd_t) !void {
     var epoll_event = std.os.linux.epoll_event{
         .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.ET,
         .data = .{ .fd = fd },
     };
-    try std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_ADD, fd, &epoll_event);
+    try phx.os.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_ADD, fd, &epoll_event);
 }
 
 fn create_sigint_signal_fd() !std.posix.fd_t {
@@ -216,7 +208,7 @@ fn create_sigint_signal_fd() !std.posix.fd_t {
     _ = std.os.linux.sigprocmask(std.posix.SIG.BLOCK, &signal_mask, null);
 
     const signal_fd = std.os.linux.signalfd(-1, &signal_mask, 0);
-    if (std.os.linux.E.init(signal_fd) != .SUCCESS)
+    if (std.os.linux.errno(signal_fd) != .SUCCESS)
         return error.FailedToCreateSignalFd;
 
     return @intCast(signal_fd);
@@ -231,7 +223,7 @@ pub fn get_timestamp_milliseconds(self: *Self) x11.Timestamp {
     // timestamp should never be that value
     if (timestamp_milliseconds == 0)
         timestamp_milliseconds = 1;
-    return @enumFromInt(timestamp_milliseconds);
+    return @fromBackingInt(timestamp_milliseconds);
 }
 
 pub fn get_timestamp_milliseconds_i64(self: *Self) i64 {
@@ -242,7 +234,7 @@ pub fn get_timestamp_milliseconds_i64(self: *Self) i64 {
 
 fn create_root_window(self: *Self) !*phx.Window {
     const screen_info = self.screen_resources.create_screen_info();
-    const root_window_id: x11.WindowId = @enumFromInt(0x3b2 | self.root_client.resource_id_base);
+    const root_window_id: x11.WindowId = @fromBackingInt(0x3b2 | self.root_client.resource_id_base);
     const window_attributes = phx.Window.Attributes{
         .depth = 24,
         .geometry = .{
@@ -291,14 +283,14 @@ pub fn run(self: *Self) !void {
     self.cursor_y = cursor_pos[1];
 
     while (self.running) {
-        const num_events = std.posix.epoll_wait(self.epoll_fd, &self.epoll_events, -1);
+        const num_events = phx.os.epoll_wait(self.epoll_fd, &self.epoll_events, -1);
         for (0..num_events) |event_index| {
             const epoll_event = &self.epoll_events[event_index];
 
             if (epoll_event.data.fd == self.event_fd) {
                 if (epoll_event.events & std.os.linux.EPOLL.IN != 0) {
                     var buf: [@sizeOf(u64)]u8 = undefined;
-                    _ = std.posix.read(self.event_fd, &buf) catch unreachable;
+                    _ = phx.os.read(self.event_fd, &buf) catch unreachable;
 
                     self.handle_messages();
                 }
@@ -307,18 +299,16 @@ pub fn run(self: *Self) !void {
                     std.log.info("Received SIGINT signal, stopping " ++ vendor, .{});
                     self.running = false;
                 }
-            } else if (epoll_event.data.fd == self.server_net.stream.handle) {
-                var connection = self.server_net.accept() catch |err| {
+            } else if (epoll_event.data.fd == self.listen_socket) {
+                const client_socket = phx.os.accept(self.listen_socket) catch |err| {
                     std.log.err("Connection from client failed, error: {s}", .{@errorName(err)});
                     continue;
                 };
 
-                std.log.info("Client connected: {d}, waiting for client connection setup", .{connection.stream.handle});
+                std.log.info("Client connected: {d}, waiting for client connection setup", .{client_socket});
 
-                _ = self.add_client(&connection) catch |err| {
-                    std.log.err("Failed to add client: {d}, disconnecting client. Error: {s}", .{ connection.stream.handle, @errorName(err) });
-                    if (connection.stream.handle > 0)
-                        connection.stream.close();
+                _ = self.add_client(client_socket) catch |err| {
+                    std.log.err("Failed to add client: {d}, disconnecting client. Error: {s}", .{ client_socket, @errorName(err) });
                 };
             } else if (epoll_event.events & std.os.linux.EPOLL.IN != 0) {
                 var client = self.client_manager.get_client_by_fd(epoll_event.data.fd) orelse {
@@ -328,7 +318,7 @@ pub fn run(self: *Self) !void {
 
                 client.read_client_data_to_buffer() catch |err| {
                     std.log.err("Failed to add data to client buffer, disconnecting client. Error: {s}", .{@errorName(err)});
-                    _ = remove_client(self, client.connection.stream.handle);
+                    _ = remove_client(self, client.socket);
                     continue;
                 };
 
@@ -341,8 +331,8 @@ pub fn run(self: *Self) !void {
                 };
 
                 client.flush_write_buffer() catch |err| {
-                    std.log.err("Failed to write data to client: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
-                    _ = remove_client(self, client.connection.stream.handle);
+                    std.log.err("Failed to write data to client: {d}, disconnecting client. Error: {s}", .{ client.socket, @errorName(err) });
+                    _ = remove_client(self, client.socket);
                     continue;
                 };
             }
@@ -350,7 +340,7 @@ pub fn run(self: *Self) !void {
             if (epoll_event.events & (std.os.linux.EPOLL.RDHUP | std.os.linux.EPOLL.HUP) != 0) {
                 if (epoll_event.data.fd == self.signal_fd or epoll_event.data.fd == self.event_fd) {
                     // What? how is this possible?
-                } else if (epoll_event.data.fd == self.server_net.stream.handle) {
+                } else if (epoll_event.data.fd == self.listen_socket) {
                     std.log.err("Server socket failed (HUP), closing " ++ vendor, .{});
                     self.running = false;
                     break;
@@ -370,14 +360,12 @@ pub fn run(self: *Self) !void {
     }
 }
 
-fn set_socket_non_blocking(socket: std.posix.socket_t) void {
-    const flags = std.posix.fcntl(socket, std.posix.F.GETFL, 0) catch unreachable;
-    const nonblock = 1 << @bitOffsetOf(std.posix.system.O, "NONBLOCK");
-    _ = std.posix.fcntl(socket, std.posix.F.SETFL, flags | nonblock) catch unreachable;
-}
+/// Takes ownership of |socket|, it's closed on failure
+fn add_client(self: *Self, socket: std.posix.socket_t) !*phx.Client {
+    var socket_owned = true;
+    errdefer if (socket_owned) phx.os.close(socket);
 
-fn add_client(self: *Self, connection: *std.net.Server.Connection) !*phx.Client {
-    set_socket_non_blocking(connection.stream.handle);
+    try phx.os.set_non_blocking(socket);
 
     const resource_id_base = self.resource_id_base_manager.get_next_free() orelse {
         std.log.warn("All resources id bases are exhausted, no more clients can be accepted", .{});
@@ -387,20 +375,20 @@ fn add_client(self: *Self, connection: *std.net.Server.Connection) !*phx.Client 
 
     var new_client_epoll_event = std.os.linux.epoll_event{
         .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.OUT | std.os.linux.EPOLL.ET,
-        .data = .{ .fd = connection.stream.handle },
+        .data = .{ .fd = socket },
     };
-    try std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_ADD, connection.stream.handle, &new_client_epoll_event);
-    errdefer std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_DEL, connection.stream.handle, null) catch {};
+    try phx.os.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_ADD, socket, &new_client_epoll_event);
+    errdefer phx.os.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_DEL, socket, null) catch {};
 
-    var client = phx.Client.init(connection.*, resource_id_base, self, new_client_epoll_event.events, self.allocator);
-    connection.stream.handle = -1;
+    var client = phx.Client.init(socket, resource_id_base, self, new_client_epoll_event.events, self.allocator);
+    socket_owned = false;
     errdefer client.deinit();
 
     return self.client_manager.add_client(client);
 }
 
 fn remove_client(self: *Self, client_fd: std.posix.socket_t) bool {
-    std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_DEL, client_fd, null) catch |err| {
+    phx.os.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_DEL, client_fd, null) catch |err| {
         std.log.err("Epoll del failed for client: {d}. Error: {s}", .{ client_fd, @errorName(err) });
     };
 
@@ -416,7 +404,7 @@ fn remove_client(self: *Self, client_fd: std.posix.socket_t) bool {
 pub fn set_client_muted(self: *Self, client: *phx.Client, muted: bool, read_write: struct { read: bool, write: bool }) void {
     var epoll_event = std.os.linux.epoll_event{
         .events = client.poll_flags,
-        .data = .{ .fd = client.connection.stream.handle },
+        .data = .{ .fd = client.socket },
     };
 
     if (muted) {
@@ -433,7 +421,7 @@ pub fn set_client_muted(self: *Self, client: *phx.Client, muted: bool, read_writ
             epoll_event.events |= std.os.linux.EPOLL.OUT;
     }
 
-    try std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_MOD, client.connection.stream.handle, &epoll_event);
+    try phx.os.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_MOD, client.socket, &epoll_event);
     client.poll_flags = epoll_event.events;
 }
 
@@ -442,8 +430,8 @@ fn process_all_client_requests(self: *Self, client: *phx.Client) bool {
         switch (client.state) {
             .connecting => {
                 const one_request_handled = phx.ConnectionSetup.handle_connection_setup_request(self, client, self.root_window, self.allocator) catch |err| {
-                    std.log.err("Client connection setup failed: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
-                    _ = remove_client(self, client.connection.stream.handle);
+                    std.log.err("Client connection setup failed: {d}, disconnecting client. Error: {s}", .{ client.socket, @errorName(err) });
+                    _ = remove_client(self, client.socket);
                     return false;
                 };
 
@@ -455,8 +443,8 @@ fn process_all_client_requests(self: *Self, client: *phx.Client) bool {
             },
             .connected => {
                 const one_request_handled = handle_client_request(self, client) catch |err| {
-                    std.log.err("Client request handling failed: {d}, disconnecting client. Error: {s}", .{ client.connection.stream.handle, @errorName(err) });
-                    _ = remove_client(self, client.connection.stream.handle);
+                    std.log.err("Client request handling failed: {d}, disconnecting client. Error: {s}", .{ client.socket, @errorName(err) });
+                    _ = remove_client(self, client.socket);
                     return false;
                 };
 
@@ -710,13 +698,12 @@ fn swap_message_lists(self: *Self) void {
 }
 
 fn handle_messages(self: *Self) void {
-    self.messages_mutex.lock();
-    const messages_now = self.messages;
-    self.messages.clearRetainingCapacity();
+    self.messages_mutex.lockUncancelable(self.io);
     self.swap_message_lists();
-    self.messages_mutex.unlock();
+    self.messages_mutex.unlock(self.io);
+    defer self.messages_back.clearRetainingCapacity();
 
-    for (messages_now.items) |*message| {
+    for (self.messages_back.items) |*message| {
         switch (message.*) {
             .shutdown => self.running = false,
             .vsync_finished => |vsync_finished| {
@@ -946,7 +933,7 @@ fn handle_mouse_click(self: *Self, mouse_click: *MouseClickMessage) void {
             cursor_window.dispatch_device_event(&button_press_event, cursor_pos_root);
         },
         .release => {
-            var button_release_event = phx.event.Event{ .button_release = @bitCast(button_event) };
+            var button_release_event = phx.event.Event{ .button_release = std.mem.bytesToValue(phx.event.ButtonReleaseEvent, std.mem.asBytes(&button_event)) };
             cursor_window.dispatch_device_event(&button_release_event, cursor_pos_root);
         },
     }
@@ -1017,7 +1004,7 @@ fn handle_key(self: *Self, key: *KeyMessage) void {
             event_window.dispatch_device_event(&key_press_event, cursor_pos_root);
         },
         .release => {
-            var key_release_event = phx.event.Event{ .key_release = @bitCast(key_event) };
+            var key_release_event = phx.event.Event{ .key_release = std.mem.bytesToValue(phx.event.KeyReleaseEvent, std.mem.asBytes(&key_event)) };
             event_window.dispatch_device_event(&key_release_event, cursor_pos_root);
         },
     }
@@ -1030,13 +1017,13 @@ pub fn append_message(self: *Self, message: *const Message) !void {
         return;
     }
 
-    self.messages_mutex.lock();
-    defer self.messages_mutex.unlock();
+    self.messages_mutex.lockUncancelable(self.io);
+    defer self.messages_mutex.unlock(self.io);
 
     try self.messages.append(self.allocator, message.*);
     if (self.messages.items.len == 1) {
         const value: u64 = 1;
-        _ = std.posix.write(self.event_fd, std.mem.bytesAsSlice(u8, std.mem.asBytes(&value))) catch unreachable;
+        _ = phx.os.write(self.event_fd, std.mem.bytesAsSlice(u8, std.mem.asBytes(&value))) catch unreachable;
     }
 }
 

@@ -6,11 +6,9 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling xkb request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
-    const minor_opcode = std.meta.intToEnum(MinorOpcode, request_context.header.minor_opcode) catch |err| switch (err) {
-        error.InvalidEnumTag => {
-            std.log.err("Unimplemented xkb request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
-            return request_context.client.write_error(request_context, .implementation, 0);
-        },
+    const minor_opcode = std.enums.fromInt(MinorOpcode, request_context.header.minor_opcode) orelse {
+        std.log.err("Unimplemented xkb request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
+        return request_context.client.write_error(request_context, .implementation, 0);
     };
 
     return switch (minor_opcode) {
@@ -174,7 +172,7 @@ fn get_device_info(request_context: *phx.RequestContext) !void {
         .has_own_state = false,
         .default_keyboard_fb = .xkb_default_xi_id,
         .default_led_fb = .xkb_default_xi_id,
-        .dev_type = @enumFromInt(0),
+        .dev_type = @fromBackingInt(0),
         .name = .{ .items = device_name },
         .button_actions = .{ .items = &.{} },
         .leds = .{ .items = &.{} },

@@ -76,7 +76,7 @@ pub fn unref(self: *Self) void {
 
         for (self.dmabuf_data.fd[0..self.dmabuf_data.num_items]) |dmabuf_fd| {
             if (dmabuf_fd > 0)
-                std.posix.close(dmabuf_fd);
+                phx.os.close(dmabuf_fd);
         }
 
         if (self.shm_segment) |*shm| shm.unref();

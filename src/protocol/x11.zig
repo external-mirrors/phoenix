@@ -72,7 +72,7 @@ pub const ResourceId = enum(Card32) {
     _,
 
     pub fn to_int(self: ResourceId) u32 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 };
 
@@ -82,7 +82,7 @@ pub const WindowId = enum(Card32) {
     _,
 
     pub fn to_id(self: WindowId) ResourceId {
-        return @enumFromInt(@intFromEnum(self));
+        return @fromBackingInt(@backingInt(self));
     }
 };
 
@@ -92,7 +92,7 @@ pub const ColormapId = enum(Card32) {
     _,
 
     pub fn to_id(self: ColormapId) ResourceId {
-        return @enumFromInt(@intFromEnum(self));
+        return @fromBackingInt(@backingInt(self));
     }
 };
 
@@ -102,7 +102,7 @@ pub const PixmapId = enum(Card32) {
     _,
 
     pub fn to_id(self: PixmapId) ResourceId {
-        return @enumFromInt(@intFromEnum(self));
+        return @fromBackingInt(@backingInt(self));
     }
 };
 
@@ -111,7 +111,7 @@ pub const DrawableId = enum(Card32) {
     _,
 
     pub fn to_id(self: DrawableId) ResourceId {
-        return @enumFromInt(@intFromEnum(self));
+        return @fromBackingInt(@backingInt(self));
     }
 };
 
@@ -128,7 +128,7 @@ pub const GContextId = enum(Card32) {
     _,
 
     pub fn to_id(self: GContextId) ResourceId {
-        return @enumFromInt(@intFromEnum(self));
+        return @fromBackingInt(@backingInt(self));
     }
 };
 
@@ -137,7 +137,7 @@ pub const CursorId = enum(Card32) {
     _,
 
     pub fn to_id(self: CursorId) ResourceId {
-        return @enumFromInt(@intFromEnum(self));
+        return @fromBackingInt(@backingInt(self));
     }
 };
 
@@ -145,7 +145,7 @@ pub const KeyCode = enum(Card8) {
     _,
 
     pub fn to_int(key_code: KeyCode) Card8 {
-        return @intFromEnum(key_code);
+        return @backingInt(key_code);
     }
 };
 
@@ -165,7 +165,7 @@ pub const Timestamp = enum(Card32) {
     _,
 
     pub fn to_int(self: Timestamp) u32 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 };
 
@@ -202,7 +202,7 @@ pub const PropertyValue = struct {
 
 pub const PropertyHashMap = std.HashMapUnmanaged(AtomId, PropertyValue, struct {
     pub fn hash(_: @This(), key: AtomId) u64 {
-        return @intFromEnum(key);
+        return @backingInt(key);
     }
 
     pub fn eql(_: @This(), a: AtomId, b: AtomId) bool {

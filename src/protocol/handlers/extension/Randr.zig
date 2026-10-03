@@ -6,11 +6,9 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling randr request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Replace with minor opcode range check after all minor opcodes are implemented (same in other extensions)
-    const minor_opcode = std.meta.intToEnum(MinorOpcode, request_context.header.minor_opcode) catch |err| switch (err) {
-        error.InvalidEnumTag => {
-            std.log.err("Unimplemented randr request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
-            return request_context.client.write_error(request_context, .implementation, 0);
-        },
+    const minor_opcode = std.enums.fromInt(MinorOpcode, request_context.header.minor_opcode) orelse {
+        std.log.err("Unimplemented randr request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
+        return request_context.client.write_error(request_context, .implementation, 0);
     };
 
     return switch (minor_opcode) {
@@ -55,7 +53,7 @@ fn select_input(request_context: *phx.RequestContext) !void {
     const version_1_4 = (phx.Version{ .major = 1, .minor = 4 }).to_int();
     const version_1_6 = (phx.Version{ .major = 1, .minor = 6 }).to_int();
     const supports_non_desktop = client_version >= version_1_6;
-    const event_id_none: x11.ResourceId = @enumFromInt(0);
+    const event_id_none: x11.ResourceId = @fromBackingInt(0);
 
     if (client_version < version_1_2) {
         req.request.enable.crtc_change = false;
@@ -72,7 +70,7 @@ fn select_input(request_context: *phx.RequestContext) !void {
 
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in RandrSelectInput request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     if (window.get_extension_event_listener_index(request_context.client, event_id_none, .randr)) |_| {
@@ -154,7 +152,7 @@ fn get_screen_resources(comptime RequestType: type, comptime ReplyType: type, re
 
     _ = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in {s} request", .{ req.request.window, @typeName(RequestType) });
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     var mode_infos_with_name = try screen_resource_create_mode_infos(&request_context.server.screen_resources, request_context.allocator);
@@ -187,15 +185,15 @@ fn get_output_info(request_context: *phx.RequestContext) !void {
 
     const crtc = request_context.server.screen_resources.get_crtc_by_id(req.request.output.to_crtc_id()) orelse {
         std.log.err("Received invalid output {d} in RandrGetOutputInfo request", .{req.request.output});
-        return request_context.client.write_error(request_context, .randr_output, @intFromEnum(req.request.output));
+        return request_context.client.write_error(request_context, .randr_output, @backingInt(req.request.output));
     };
 
     if (req.request.config_timestamp != request_context.server.screen_resources.config_changed_timestamp) {
         var rep = Reply.GetOutputInfo{
             .status = .invalid_config_time,
             .sequence_number = request_context.sequence_number,
-            .config_set_timestamp = @enumFromInt(0),
-            .crtc = @enumFromInt(0),
+            .config_set_timestamp = @fromBackingInt(0),
+            .crtc = @fromBackingInt(0),
             .width_mm = 0,
             .height_mm = 0,
             .connection = .unknown,
@@ -244,7 +242,7 @@ fn list_output_properties(request_context: *phx.RequestContext) !void {
 
     const crtc = request_context.server.screen_resources.get_crtc_by_id(req.request.output.to_crtc_id()) orelse {
         std.log.err("Received invalid output {d} in RandrListOutputProperties request", .{req.request.output});
-        return request_context.client.write_error(request_context, .randr_output, @intFromEnum(req.request.output));
+        return request_context.client.write_error(request_context, .randr_output, @backingInt(req.request.output));
     };
 
     var crtc_property_names = try request_context.allocator.alloc(x11.AtomId, crtc.properties.count());
@@ -271,12 +269,12 @@ fn get_output_property(request_context: *phx.RequestContext) !void {
 
     const crtc = request_context.server.screen_resources.get_crtc_by_id(req.request.output.to_crtc_id()) orelse {
         std.log.err("Received invalid output {d} in RandrGetOutputProperty request", .{req.request.output});
-        return request_context.client.write_error(request_context, .randr_output, @intFromEnum(req.request.output));
+        return request_context.client.write_error(request_context, .randr_output, @backingInt(req.request.output));
     };
 
     const property_atom = request_context.server.atom_manager.get_atom_by_id(req.request.property) orelse {
         std.log.err("Received invalid property atom {d} in RandrGetOutputProperty request", .{req.request.property});
-        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.property));
+        return request_context.client.write_error(request_context, .atom, @backingInt(req.request.property));
     };
 
     const type_atom_name =
@@ -285,7 +283,7 @@ fn get_output_property(request_context: *phx.RequestContext) !void {
         else
             request_context.server.atom_manager.get_atom_name_by_id(req.request.type) orelse {
                 std.log.err("Received invalid type atom {d} in RandrGetOutputProperty request", .{req.request.type});
-                return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.type));
+                return request_context.client.write_error(request_context, .atom, @backingInt(req.request.type));
             };
 
     const property = crtc.get_property(property_atom) orelse {
@@ -355,7 +353,7 @@ fn get_output_property(request_context: *phx.RequestContext) !void {
     if (req.request.delete and bytes_remaining_after_read == 0) {
         if (crtc.delete_property(property_atom, false)) {
             var idle_notify_event = Event.OutputPropertyNotify{
-                .window = @enumFromInt(0),
+                .window = @fromBackingInt(0),
                 .output = req.request.output,
                 .property_name = property_atom.id,
                 .crtc_changed_timestamp = crtc.config_changed_timestamp,
@@ -372,7 +370,7 @@ fn get_crtc_info(request_context: *phx.RequestContext) !void {
 
     const crtc = request_context.server.screen_resources.get_crtc_by_id(req.request.crtc) orelse {
         std.log.err("Received invalid output {d} in RandrGetCrtcInfo request", .{req.request.crtc});
-        return request_context.client.write_error(request_context, .randr_crtc, @intFromEnum(req.request.crtc));
+        return request_context.client.write_error(request_context, .randr_crtc, @backingInt(req.request.crtc));
     };
     const active_mode = crtc.get_active_mode();
 
@@ -380,12 +378,12 @@ fn get_crtc_info(request_context: *phx.RequestContext) !void {
         var rep = Reply.GetCrtcInfo{
             .status = .invalid_config_time,
             .sequence_number = request_context.sequence_number,
-            .config_set_timestamp = @enumFromInt(0),
+            .config_set_timestamp = @fromBackingInt(0),
             .x = 0,
             .y = 0,
             .width = 0,
             .height = 0,
-            .mode = @enumFromInt(0),
+            .mode = @fromBackingInt(0),
             .current_rotation = .{},
             .possible_rotations = .{},
             .outputs = .{ .items = &.{} },
@@ -426,7 +424,7 @@ fn get_crtc_gamma_size(request_context: *phx.RequestContext) !void {
 
     const crtc = request_context.server.screen_resources.get_crtc_by_id(req.request.crtc) orelse {
         std.log.err("Received invalid output {d} in RandrGetCrtcGammaSize request", .{req.request.crtc});
-        return request_context.client.write_error(request_context, .randr_crtc, @intFromEnum(req.request.crtc));
+        return request_context.client.write_error(request_context, .randr_crtc, @backingInt(req.request.crtc));
     };
 
     var rep = Reply.GetCrtcGammaSize{
@@ -442,7 +440,7 @@ fn get_crtc_gamma(request_context: *phx.RequestContext) !void {
 
     const crtc = request_context.server.screen_resources.get_crtc_by_id(req.request.crtc) orelse {
         std.log.err("Received invalid output {d} in RandrGetCrtcGamma request", .{req.request.crtc});
-        return request_context.client.write_error(request_context, .randr_crtc, @intFromEnum(req.request.crtc));
+        return request_context.client.write_error(request_context, .randr_crtc, @backingInt(req.request.crtc));
     };
 
     var rep = Reply.GetCrtcGamma{
@@ -460,7 +458,7 @@ fn get_crtc_transform(request_context: *phx.RequestContext) !void {
 
     const crtc = request_context.server.screen_resources.get_crtc_by_id(req.request.crtc) orelse {
         std.log.err("Received invalid output {d} in RandrGetCrtcTransform request", .{req.request.crtc});
-        return request_context.client.write_error(request_context, .randr_crtc, @intFromEnum(req.request.crtc));
+        return request_context.client.write_error(request_context, .randr_crtc, @backingInt(req.request.crtc));
     };
 
     var rep = Reply.GetCrtcTransform{
@@ -482,7 +480,7 @@ fn get_output_primary(request_context: *phx.RequestContext) !void {
 
     _ = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in RandrGetOutputPrimary request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     const primary_crtc_id = if (request_context.server.screen_resources.get_primary_crtc()) |primary_crtc| primary_crtc.id else .none;
@@ -500,7 +498,7 @@ fn get_monitors(request_context: *phx.RequestContext) !void {
 
     _ = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in RandrGetMonitors request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     var monitors = try request_context.allocator.alloc(MonitorInfo, request_context.server.screen_resources.crtcs.items.len);
@@ -703,15 +701,15 @@ const MinorOpcode = enum(x11.Card8) {
 };
 
 const none: x11.Card32 = 0;
-const any_property_type: x11.AtomId = @enumFromInt(0);
+const any_property_type: x11.AtomId = @fromBackingInt(0);
 
 pub const CrtcId = enum(x11.Card32) {
     none = 0,
     _,
 
     pub fn to_output_id(self: CrtcId) OutputId {
-        const output_id: x11.Card32 = @intFromEnum(self);
-        return @enumFromInt(output_id);
+        const output_id: x11.Card32 = @backingInt(self);
+        return @fromBackingInt(output_id);
     }
 };
 
@@ -720,8 +718,8 @@ pub const OutputId = enum(x11.Card32) {
     _,
 
     pub fn to_crtc_id(self: OutputId) CrtcId {
-        const crtc_id: x11.Card32 = @intFromEnum(self);
-        return @enumFromInt(crtc_id);
+        const crtc_id: x11.Card32 = @backingInt(self);
+        return @fromBackingInt(crtc_id);
     }
 };
 
@@ -818,17 +816,6 @@ pub fn SubPixel(comptime DataType: type) type {
     };
 }
 
-fn UnsignedIntegerType(comptime NumBits: comptime_int) type {
-    return @Type(
-        .{
-            .int = .{
-                .signedness = .unsigned,
-                .bits = NumBits,
-            },
-        },
-    );
-}
-
 pub fn Rotation(comptime DataType: type) type {
     return packed struct(DataType) {
         rotation_0: bool = false,
@@ -838,7 +825,7 @@ pub fn Rotation(comptime DataType: type) type {
         reflect_x: bool = false,
         reflect_y: bool = false,
 
-        _padding: UnsignedIntegerType(@bitSizeOf(DataType) - 6) = 0,
+        _padding: @Int(.unsigned, @bitSizeOf(DataType) - 6) = 0,
     };
 }
 
@@ -1081,7 +1068,7 @@ const Reply = struct {
         format: x11.Card8 = 0,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        type: x11.AtomId = @enumFromInt(none),
+        type: x11.AtomId = @fromBackingInt(none),
         bytes_after: x11.Card32 = 0,
         data_length: x11.Card32 = 0,
         pad1: [12]x11.Card8 = @splat(0),

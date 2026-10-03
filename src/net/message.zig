@@ -1,4 +1,5 @@
 const std = @import("std");
+const phx = @import("../phoenix.zig");
 
 pub const max_fds = 16;
 
@@ -30,6 +31,6 @@ pub const ReplyFd = struct {
 
     pub fn deinit(self: ReplyFd) void {
         if (self.close_after_sent and self.fd > 0)
-            std.posix.close(self.fd);
+            phx.os.close(self.fd);
     }
 };

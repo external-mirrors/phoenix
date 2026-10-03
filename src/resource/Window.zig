@@ -574,7 +574,7 @@ pub fn write_core_event_to_event_listeners(self: *const Self, event: *phx.event.
             // TODO: What should be done if this happens? disconnect the client?
             std.log.err(
                 "Failed to write (buffer) core event of type \"{s}\" to client {d}, error: {s}",
-                .{ @tagName(event.any.code), event_listener.client.connection.stream.handle, @errorName(err) },
+                .{ @tagName(event.any.code), event_listener.client.socket, @errorName(err) },
             );
             continue;
         };
@@ -597,7 +597,7 @@ fn write_core_event_to_substructure_notify_listeners(self: *const Self, event: *
             // TODO: What should be done if this happens? disconnect the client?
             std.log.err(
                 "Failed to write (buffer) core event of type \"{s}\" to client {d}, error: {s}",
-                .{ @tagName(event.any.code), event_listener.client.connection.stream.handle, @errorName(err) },
+                .{ @tagName(event.any.code), event_listener.client.socket, @errorName(err) },
             );
             continue;
         };
@@ -627,7 +627,7 @@ pub fn dispatch_device_event(source: *Self, event: *phx.event.Event, root_pos: @
             listener.client.write_event(event) catch |err| {
                 std.log.err(
                     "Failed to write (buffer) core event of type \"{s}\" to client {d}, error: {s}",
-                    .{ @tagName(event.any.code), listener.client.connection.stream.handle, @errorName(err) },
+                    .{ @tagName(event.any.code), listener.client.socket, @errorName(err) },
                 );
                 continue;
             };
@@ -726,7 +726,7 @@ fn emit_crossing_chain(
             listener.client.write_event(&event) catch |err| {
                 std.log.err(
                     "Failed to write crossing event to client {d}, error: {s}",
-                    .{ listener.client.connection.stream.handle, @errorName(err) },
+                    .{ listener.client.socket, @errorName(err) },
                 );
                 continue;
             };
@@ -902,7 +902,7 @@ fn unregister_window_from_client_if_no_listeners(self: *Self, client: *phx.Clien
 }
 
 pub fn get_extension_event_listener_index(self: *Self, client: *const phx.Client, event_id: x11.ResourceId, extension_major_opcode: phx.opcode.Major) ?usize {
-    const event_id_none: x11.ResourceId = @enumFromInt(0);
+    const event_id_none: x11.ResourceId = @fromBackingInt(0);
     if (event_id == event_id_none) {
         for (self.extension_event_listeners.items, 0..) |*event_listener, i| {
             if (event_listener.event_id == event_id_none and event_listener.client == client and event_listener.extension_major_opcode == extension_major_opcode)
@@ -940,13 +940,13 @@ pub fn write_extension_event_to_event_listeners(self: *const Self, ev: anytype) 
         }
 
         if (comptime @hasField(@TypeOf(ev.*), "length")) {
-            ev.event_id = @enumFromInt(event_listener.event_id.to_int());
+            ev.event_id = @fromBackingInt(event_listener.event_id.to_int());
 
             event_listener.client.write_event_extension(ev) catch |err| {
                 // TODO: What should be done if this happens? disconnect the client?
                 std.log.err(
                     "Failed to write (buffer) extension event {d} to client {d}, error: {s}",
-                    .{ @intFromEnum(phx.event.EventCode.generic_event_extension), event_listener.client.connection.stream.handle, @errorName(err) },
+                    .{ @backingInt(phx.event.EventCode.generic_event_extension), event_listener.client.socket, @errorName(err) },
                 );
                 continue;
             };
@@ -955,7 +955,7 @@ pub fn write_extension_event_to_event_listeners(self: *const Self, ev: anytype) 
                 // TODO: What should be done if this happens? disconnect the client?
                 std.log.err(
                     "Failed to write event {d} to client {d}, error: {s}",
-                    .{ ev.code, event_listener.client.connection.stream.handle, @errorName(err) },
+                    .{ ev.code, event_listener.client.socket, @errorName(err) },
                 );
                 continue;
             };
@@ -1079,7 +1079,7 @@ pub fn map(self: *Self, requester: ?*phx.Client) void {
                     // TODO: What should be done if this happens? disconnect the client?
                     std.log.err(
                         "Failed to write (buffer) core event of type \"{s}\" to client {d}, error: {s}",
-                        .{ @tagName(map_notify_event.any.code), substruct_redirect_listener.client.connection.stream.handle, @errorName(err) },
+                        .{ @tagName(map_notify_event.any.code), substruct_redirect_listener.client.socket, @errorName(err) },
                     );
                 };
                 return;

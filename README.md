@@ -83,8 +83,8 @@ Strings are in ISO Latin-1 encoding in the X11 protocol unless specified otherwi
 ## Installing
 Run:
 ```sh
-zig build -Doptimize=ReleaseSafe
-sudo zig build install -p /usr/local -Doptimize=ReleaseSafe
+zig build -Doptimize=safe
+sudo zig build install -p /usr/local -Doptimize=safe
 ```
 
 ## Uninstalling
@@ -102,7 +102,7 @@ Run `zig build -Dgenerate-docs=true`. This will generate `.txt` files in `./zig-
 Note that the generated documentation feature is a work-in-progress.
 
 ## Dependencies
-* [Zig 0.15.2](https://ziglang.org/download/)
+* [Zig 0.17.0](https://ziglang.org/download/)
 * libxkbcommon
 * X11 (`libxcb`) - for nested mode under X11, when building Phoenix with `-Dbackends=x11`
 * Wayland (`wayland-client`, `wayland-egl`) - for nested mode under Wayland, when building Phoenix with `-Dbackends=wayland` (not currently supported)

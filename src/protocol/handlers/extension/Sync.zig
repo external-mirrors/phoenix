@@ -6,11 +6,9 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling sync request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
-    const minor_opcode = std.meta.intToEnum(MinorOpcode, request_context.header.minor_opcode) catch |err| switch (err) {
-        error.InvalidEnumTag => {
-            std.log.err("Unimplemented sync request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
-            return request_context.client.write_error(request_context, .implementation, 0);
-        },
+    const minor_opcode = std.enums.fromInt(MinorOpcode, request_context.header.minor_opcode) orelse {
+        std.log.err("Unimplemented sync request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
+        return request_context.client.write_error(request_context, .implementation, 0);
     };
 
     return switch (minor_opcode) {
@@ -184,7 +182,7 @@ pub const CounterId = enum(x11.Card32) {
     _,
 
     pub fn to_id(self: CounterId) x11.ResourceId {
-        return @enumFromInt(@intFromEnum(self));
+        return @fromBackingInt(@backingInt(self));
     }
 };
 
@@ -192,7 +190,7 @@ pub const FenceId = enum(x11.Card32) {
     _,
 
     pub fn to_id(self: FenceId) x11.ResourceId {
-        return @enumFromInt(@intFromEnum(self));
+        return @fromBackingInt(@backingInt(self));
     }
 };
 

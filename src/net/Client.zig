@@ -7,7 +7,7 @@ const x11 = phx.x11;
 const Self = @This();
 
 allocator: std.mem.Allocator,
-connection: std.net.Server.Connection,
+socket: std.posix.socket_t,
 state: State,
 
 read_buffer: ReadDataBuffer,
@@ -47,7 +47,7 @@ last_error_value: u32 = 0,
 poll_flags: u32,
 
 pub fn init(
-    connection: std.net.Server.Connection,
+    socket: std.posix.socket_t,
     resource_id_base: u32,
     server: *phx.Server,
     poll_flags: u32,
@@ -55,7 +55,7 @@ pub fn init(
 ) Self {
     return .{
         .allocator = allocator,
-        .connection = connection,
+        .socket = socket,
         .state = .connecting,
 
         .read_buffer = .init(max_read_buffer_size),
@@ -88,7 +88,7 @@ pub fn deinit(self: *Self) void {
     }
     self.resources.deinit();
 
-    self.connection.stream.close();
+    phx.os.close(self.socket);
 
     self.read_buffer.deinit(self.allocator);
     self.write_buffer.deinit(self.allocator);
@@ -96,7 +96,7 @@ pub fn deinit(self: *Self) void {
     for (self.read_buffer_fds.get_slices()) |read_fds| {
         for (read_fds) |read_fd| {
             if (read_fd > 0)
-                std.posix.close(read_fd);
+                phx.os.close(read_fd);
         }
     }
 
@@ -130,10 +130,10 @@ pub fn peek_read_buffer(self: *Self, comptime T: type) ?T {
 }
 
 pub fn read_client_data_to_buffer(self: *Self) !void {
-    // TODO: Write directly to read_buffer instead from connection.stream
+    // TODO: Write directly to read_buffer instead from socket
     var read_buffer: [4096]u8 = undefined;
     while (true) {
-        var recv_result = phx.netutils.recvmsg(self.connection.stream.handle, &read_buffer) catch |err| switch (err) {
+        var recv_result = phx.netutils.recvmsg(self.socket, &read_buffer) catch |err| switch (err) {
             error.WouldBlock => return,
             else => return err,
         };
@@ -164,7 +164,7 @@ pub fn flush_write_buffer(self: *Self) !void {
         }
         const fds = fd_buf[0..reply_fds.len];
 
-        const bytes_written = phx.netutils.sendmsg(self.connection.stream.handle, write_buffer, fds) catch |err| switch (err) {
+        const bytes_written = phx.netutils.sendmsg(self.socket, write_buffer, fds) catch |err| switch (err) {
             error.WouldBlock => return,
             else => return err,
         };
@@ -195,7 +195,7 @@ pub fn discard_and_close_read_fds(self: *Self, num_fds: usize) void {
     const fds_to_cleanup = self.read_buffer_fds.read_to_slice(&fd_buf);
     for (fds_to_cleanup) |fd| {
         if (fd > 0)
-            std.posix.close(fd);
+            phx.os.close(fd);
     }
     _ = self.read_buffer_fds.discard(fds_to_cleanup.len);
 }
@@ -316,7 +316,7 @@ pub fn write_event_static_size(self: *Self, ev: anytype) !void {
 
 fn flush_write_buffer_ignore_error(self: *Self) void {
     self.flush_write_buffer() catch |err| {
-        std.log.err("Failed to write data to client: {d}, error: {s}", .{ self.connection.stream.handle, @errorName(err) });
+        std.log.err("Failed to write data to client: {d}, error: {s}", .{ self.socket, @errorName(err) });
         // XXX: What should be done with the client here?
     };
 }
@@ -418,7 +418,7 @@ pub fn unregister_as_window_event_listener(self: *Self, window: *const phx.Windo
 pub fn get_credentials(self: *Self) ?Credentials {
     var peercred: phx.c.ucred = undefined;
     comptime std.debug.assert(builtin.os.tag == .linux);
-    std.posix.getsockopt(self.connection.stream.handle, std.posix.SOL.SOCKET, std.posix.SO.PEERCRED, std.mem.asBytes(&peercred)) catch {
+    phx.os.getsockopt(self.socket, std.posix.SOL.SOCKET, std.posix.SO.PEERCRED, std.mem.asBytes(&peercred)) catch {
         return null;
     };
     return .{

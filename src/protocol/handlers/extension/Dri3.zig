@@ -7,11 +7,9 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling dri3 request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
-    const minor_opcode = std.meta.intToEnum(MinorOpcode, request_context.header.minor_opcode) catch |err| switch (err) {
-        error.InvalidEnumTag => {
-            std.log.err("Unimplemented dri3 request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
-            return request_context.client.write_error(request_context, .implementation, 0);
-        },
+    const minor_opcode = std.enums.fromInt(MinorOpcode, request_context.header.minor_opcode) orelse {
+        std.log.err("Unimplemented dri3 request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
+        return request_context.client.write_error(request_context, .implementation, 0);
     };
 
     return switch (minor_opcode) {
@@ -55,7 +53,7 @@ fn validate_drm_auth(card_fd: std.posix.fd_t, render_fd: std.posix.fd_t) bool {
     // client.
     var magic: c.drm_magic_t = undefined;
     if (c.drmGetMagic(render_fd, &magic) < 0) {
-        if (std.c._errno().* == @intFromEnum(std.c.E.ACCES)) {
+        if (std.c._errno().* == @backingInt(std.c.E.ACCES)) {
             //Assume that we're on a render node, and the fd is
             //already as authenticated as it should be.
             return true;
@@ -84,13 +82,13 @@ fn open(request_context: *phx.RequestContext) !void {
     const render_path = c.drmGetRenderDeviceNameFromFd(card_fd) orelse return error.FailedToGetCardRenderPath;
     defer std.c.free(render_path);
 
-    var render_fd = std.posix.openZ(render_path, .{ .ACCMODE = .RDWR, .CLOEXEC = true }, 0) catch |err| {
+    var render_fd = phx.os.open(render_path, .{ .ACCMODE = .RDWR, .CLOEXEC = true }, 0) catch |err| {
         std.log.err("Dri3Open: failed to open render path {s}, error: {s}", .{ render_path, @errorName(err) });
         return request_context.client.write_error(request_context, .access, 0);
     };
     defer {
         if (render_fd > 0)
-            std.posix.close(render_fd);
+            phx.os.close(render_fd);
     }
 
     if (!validate_drm_auth(card_fd, render_fd))
@@ -131,11 +129,11 @@ fn pixmap_from_buffer(request_context: *phx.RequestContext) !void {
     // TODO: Close fds if failure, or always close them on discard but have a "steal" function. When those are passed to import_dmabuf, they should be cleaned up there
     defer request_context.client.discard_read_fds(1);
 
-    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-    var resolved_path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var path_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    var resolved_path_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
 
     const path = try std.fmt.bufPrint(&path_buf, "/proc/self/fd/{d}", .{dmabuf_fd});
-    const resolved_path = std.posix.readlink(path, &resolved_path_buf) catch "unknown";
+    const resolved_path = phx.os.readlink(path, &resolved_path_buf) catch "unknown";
     std.log.info("dmabuf: {d}: {s}", .{ dmabuf_fd, resolved_path });
 
     const import_dmabuf = phx.Graphics.DmabufImport{
@@ -183,14 +181,14 @@ fn fence_from_fd(request_context: *phx.RequestContext) !void {
     var close_fds = true;
     defer {
         if (close_fds)
-            std.posix.close(fence_fd);
+            phx.os.close(fence_fd);
     }
 
-    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-    var resolved_path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var path_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    var resolved_path_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
 
     if (std.fmt.bufPrint(&path_buf, "/proc/self/fd/{d}", .{fence_fd})) |path| {
-        const resolved_path = std.posix.readlink(path, &resolved_path_buf) catch "unknown";
+        const resolved_path = phx.os.readlink(path, &resolved_path_buf) catch "unknown";
         std.log.info("fence: {d}: {s}", .{ fence_fd, resolved_path });
     } else |_| {}
 
@@ -206,7 +204,7 @@ fn get_supported_modifiers(request_context: *phx.RequestContext) !void {
     defer req.deinit();
 
     const window = request_context.server.get_window(req.request.window) orelse {
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     // TODO: Handle screen as well

@@ -6,11 +6,9 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling mit-shm request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Replace with minor opcode range check after all minor opcodes are implemented (same in other extensions)
-    const minor_opcode = std.meta.intToEnum(MinorOpcode, request_context.header.minor_opcode) catch |err| switch (err) {
-        error.InvalidEnumTag => {
-            std.log.err("Unimplemented mit-shm request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
-            return request_context.client.write_error(request_context, .implementation, 0);
-        },
+    const minor_opcode = std.enums.fromInt(MinorOpcode, request_context.header.minor_opcode) orelse {
+        std.log.err("Unimplemented mit-shm request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
+        return request_context.client.write_error(request_context, .implementation, 0);
     };
 
     return switch (minor_opcode) {
@@ -34,8 +32,8 @@ fn query_version(request_context: *phx.RequestContext) !void {
         .sequence_number = request_context.sequence_number,
         .major_version = @truncate(request_context.client.extension_versions.mit_shm.major),
         .minor_version = @truncate(request_context.client.extension_versions.mit_shm.minor),
-        .uid = @intCast(std.os.linux.geteuid()),
-        .gid = @intCast(std.os.linux.getegid()),
+        .uid = @intCast(std.posix.system.geteuid()),
+        .gid = @intCast(std.posix.system.getegid()),
         .pixmap_format = .z_pixmap,
     };
     try request_context.client.write_reply(&rep);
@@ -72,7 +70,7 @@ fn attach(request_context: *phx.RequestContext) !void {
 
     const addr = phx.c.shmat(shmid, null, if (req.request.read_only) phx.c.SHM_RDONLY else 0);
     if (addr == null or addr.? == SHMAT_INVALID_ADDR) {
-        const err: std.posix.E = @enumFromInt(std.c._errno().*);
+        const err: std.posix.E = @fromBackingInt(@intCast(std.c._errno().*));
         std.log.err("MitShmAttach: shmtat failed for shmid {d}, error: {s}", .{ shmid, @tagName(err) });
         return request_context.client.write_error(request_context, .access, 0);
     }
@@ -89,7 +87,7 @@ fn attach(request_context: *phx.RequestContext) !void {
     }
 
     if (!shm_access(request_context, &shmctl_buf.shm_perm, req.request.read_only)) {
-        std.log.err("MitShmAttach: client {d} doesn't have access to shmid {d}", .{ request_context.client.connection.stream.handle, shmid });
+        std.log.err("MitShmAttach: client {d} doesn't have access to shmid {d}", .{ request_context.client.socket, shmid });
         return request_context.client.write_error(request_context, .access, 0);
     }
 
@@ -325,7 +323,7 @@ pub const SegId = enum(x11.Card32) {
     _,
 
     pub fn to_id(self: SegId) x11.ResourceId {
-        return @enumFromInt(@intFromEnum(self));
+        return @fromBackingInt(@backingInt(self));
     }
 };
 
@@ -419,7 +417,7 @@ pub const Event = struct {
         pad1: x11.Card8 = 0,
         sequence_number: x11.Card16 = 0, // Filled automatically in Client.write_event
         drawable: x11.DrawableId,
-        minor_event: x11.Card16 = @intFromEnum(MinorOpcode.put_image),
+        minor_event: x11.Card16 = @backingInt(MinorOpcode.put_image),
         major_event: phx.opcode.Major = .mit_shm,
         pad2: x11.Card8 = 0,
         shmseg: SegId,

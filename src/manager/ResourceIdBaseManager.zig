@@ -12,7 +12,7 @@ pub const resource_id_base_mask: u32 = 0xFFFFFFFF - resource_id_mask;
 pub const resource_id_base_size: u32 = 0xFF; // Dont change this
 const base_bit_shift: u32 = @popCount(@as(u32, resource_id_mask)) + 1;
 
-free_resource_id_bases: std.StaticBitSet(resource_id_base_size) = .initFull(),
+free_resource_id_bases: std.StaticBitSet(resource_id_base_size) = .full,
 
 pub fn get_next_free(self: *Self) ?u32 {
     if (self.free_resource_id_bases.toggleFirstSet()) |index| {

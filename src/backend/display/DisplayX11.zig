@@ -8,7 +8,7 @@ const cstdlib = std.c;
 const Self = @This();
 
 // TODO:
-const gl_debug = builtin.mode == .Debug;
+const gl_debug = builtin.mode == .debug;
 
 server: *phx.Server,
 allocator: std.mem.Allocator,
@@ -29,9 +29,9 @@ event_fd: std.posix.fd_t,
 
 // No need to explicitly cleanup all x11 resources on failure, xcb_disconnect will do that (server-side)
 
-pub fn init(server: *phx.Server, allocator: std.mem.Allocator) !Self {
-    const event_fd = try std.posix.eventfd(0, std.os.linux.EFD.CLOEXEC);
-    errdefer std.posix.close(event_fd);
+pub fn init(server: *phx.Server, allocator: std.mem.Allocator, io: std.Io) !Self {
+    const event_fd = try phx.os.eventfd(0, std.os.linux.EFD.CLOEXEC);
+    errdefer phx.os.close(event_fd);
 
     const connection = c.xcb_connect(null, null) orelse return error.FailedToConnectToXServer;
     errdefer c.xcb_disconnect(connection);
@@ -79,6 +79,7 @@ pub fn init(server: *phx.Server, allocator: std.mem.Allocator) !Self {
         window_id,
         gl_debug,
         allocator,
+        io,
     );
     errdefer graphics.destroy();
 
@@ -130,7 +131,7 @@ pub fn deinit(self: *Self) void {
     c.xcb_disconnect(self.connection);
     self.connection = undefined;
 
-    std.posix.close(self.event_fd);
+    phx.os.close(self.event_fd);
 }
 
 pub fn run_update_thread(self: *Self) !void {
@@ -214,7 +215,7 @@ pub fn destroy_glyph_set_atlas(self: *Self, glyph_set: *phx.GlyphSet) void {
 }
 
 pub fn get_keyboard_state(self: *Self, params: *const phx.Xkb.Request.GetState, _: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetState {
-    const cookie = c.xcb_xkb_get_state(self.connection, @intFromEnum(params.device_spec));
+    const cookie = c.xcb_xkb_get_state(self.connection, @backingInt(params.device_spec));
 
     var err: [*c]c.xcb_generic_error_t = null;
     defer if (err) |e| cstdlib.free(e);
@@ -257,23 +258,23 @@ pub fn get_keyboard_map(self: *Self, params: *const phx.Xkb.Request.GetMap, aren
 
     const cookie = c.xcb_xkb_get_map(
         self.connection,
-        @intFromEnum(params.device_spec),
+        @backingInt(params.device_spec),
         @bitCast(params.full),
         @bitCast(params.partial),
         params.first_type,
         params.num_types,
-        @intFromEnum(params.first_key_sym),
+        @backingInt(params.first_key_sym),
         params.num_key_syms,
-        @intFromEnum(params.first_key_action),
+        @backingInt(params.first_key_action),
         params.num_key_action,
-        @intFromEnum(params.first_key_behavior),
+        @backingInt(params.first_key_behavior),
         params.num_key_behaviors,
         @bitCast(params.virtual_mods),
-        @intFromEnum(params.first_key_explicit),
+        @backingInt(params.first_key_explicit),
         params.num_key_explicit,
-        @intFromEnum(params.first_mod_map_key),
+        @backingInt(params.first_mod_map_key),
         params.num_mod_map_keys,
-        @intFromEnum(params.first_virtual_mod_map_key),
+        @backingInt(params.first_virtual_mod_map_key),
         params.num_virtual_mod_map_keys,
     );
 
@@ -318,28 +319,28 @@ pub fn get_keyboard_map(self: *Self, params: *const phx.Xkb.Request.GetMap, aren
     return .{
         .device_id = xcb_reply.deviceID,
         .sequence_number = 0,
-        .min_key_code = @enumFromInt(xcb_reply.minKeyCode),
-        .max_key_code = @enumFromInt(xcb_reply.maxKeyCode),
+        .min_key_code = @fromBackingInt(xcb_reply.minKeyCode),
+        .max_key_code = @fromBackingInt(xcb_reply.maxKeyCode),
         .present = present,
         .first_type = xcb_reply.firstType,
         .num_types = xcb_reply.nTypes,
         .total_types = xcb_reply.totalTypes,
-        .first_key_sym = @enumFromInt(xcb_reply.firstKeySym),
+        .first_key_sym = @fromBackingInt(xcb_reply.firstKeySym),
         .total_syms = xcb_reply.totalSyms,
         .num_key_syms = xcb_reply.nKeySyms,
-        .first_key_action = @enumFromInt(xcb_reply.firstKeyAction),
+        .first_key_action = @fromBackingInt(xcb_reply.firstKeyAction),
         .total_actions = xcb_reply.totalActions,
         .num_key_actions = xcb_reply.nKeyActions,
-        .first_key_behavior = @enumFromInt(xcb_reply.firstKeyBehavior),
+        .first_key_behavior = @fromBackingInt(xcb_reply.firstKeyBehavior),
         .num_key_behaviors = xcb_reply.nKeyBehaviors,
         .total_key_behaviors = xcb_reply.totalKeyBehaviors,
-        .first_key_explicit = @enumFromInt(xcb_reply.firstKeyExplicit),
+        .first_key_explicit = @fromBackingInt(xcb_reply.firstKeyExplicit),
         .num_key_explicit = xcb_reply.nKeyExplicit,
         .total_key_explicit = xcb_reply.totalKeyExplicit,
-        .first_mod_map_key = @enumFromInt(xcb_reply.firstModMapKey),
+        .first_mod_map_key = @fromBackingInt(xcb_reply.firstModMapKey),
         .num_mod_map_keys = xcb_reply.nModMapKeys,
         .total_mod_map_keys = xcb_reply.totalModMapKeys,
-        .first_virtual_mod_map_key = @enumFromInt(xcb_reply.firstVModMapKey),
+        .first_virtual_mod_map_key = @fromBackingInt(xcb_reply.firstVModMapKey),
         .num_virtual_mod_map_keys = xcb_reply.nVModMapKeys,
         .total_virtual_mod_map_keys = xcb_reply.totalVModMapKeys,
         .virtual_mods_mask = @bitCast(xcb_reply.virtualMods),
@@ -358,7 +359,7 @@ pub fn get_keyboard_map(self: *Self, params: *const phx.Xkb.Request.GetMap, aren
 pub fn get_keyboard_names(self: *Self, params: *const phx.Xkb.Request.GetNames, arena: *std.heap.ArenaAllocator) !phx.Xkb.Reply.GetNames {
     const allocator = arena.allocator();
 
-    const cookie = c.xcb_xkb_get_names(self.connection, @intFromEnum(params.device_spec), @bitCast(params.which));
+    const cookie = c.xcb_xkb_get_names(self.connection, @backingInt(params.device_spec), @bitCast(params.which));
 
     var err: [*c]c.xcb_generic_error_t = null;
     defer if (err) |e| cstdlib.free(e);
@@ -398,12 +399,12 @@ pub fn get_keyboard_names(self: *Self, params: *const phx.Xkb.Request.GetNames, 
         .device_id = xcb_reply.deviceID,
         .sequence_number = 0,
         .which = @bitCast(xcb_reply.which),
-        .min_key_code = @enumFromInt(xcb_reply.minKeyCode),
-        .max_key_code = @enumFromInt(xcb_reply.maxKeyCode),
+        .min_key_code = @fromBackingInt(xcb_reply.minKeyCode),
+        .max_key_code = @fromBackingInt(xcb_reply.maxKeyCode),
         .n_types = xcb_reply.nTypes,
         .group_names = @bitCast(xcb_reply.groupNames),
         .virtual_mods = @bitCast(xcb_reply.virtualMods),
-        .first_key = @enumFromInt(xcb_reply.firstKey),
+        .first_key = @fromBackingInt(xcb_reply.firstKey),
         .n_keys = xcb_reply.nKeys,
         .indicators = xcb_reply.indicators,
         .n_radio_groups = xcb_reply.nRadioGroups,
@@ -489,11 +490,11 @@ fn get_keyboard_map_key_actions(map: *const c.xcb_xkb_get_map_map_t, num_key_act
 
     std.log.err("TODO: Implement get_keyboard_map_key_actions properly", .{});
     // for (actions, 0..) |*action, i| {
-    //     const key_action_type: phx.Xkb.KeyActionType = @enumFromInt(map.acts_rtrn_acts[i].type);
+    //     const key_action_type: phx.Xkb.KeyActionType = @fromBackingInt(map.acts_rtrn_acts[i].type);
     //     switch (key_action_type) {
     //         inline else => |e| {
     //             const enum_name = comptime @tagName(e);
-    //             const active_field_name = comptime @typeInfo(c.xcb_xkb_action_t).@"union".fields[@intFromEnum(e)].name;
+    //             const active_field_name = comptime @typeInfo(c.xcb_xkb_action_t).@"union".fields[@backingInt(e)].name;
     //             action.* = @unionInit(phx.Xkb.KeyAction, enum_name, undefined);
     //             copy_key_actions(&@field(action, enum_name), &@field(&map.acts_rtrn_acts[i], active_field_name));
     //         },
@@ -546,7 +547,7 @@ pub fn get_screen_resources(_: *Self, timestamp: x11.Timestamp, allocator: std.m
     errdefer allocator.free(modes);
 
     modes[0] = .{
-        .id = @enumFromInt(1),
+        .id = @fromBackingInt(1),
         .width = 1280,
         .height = 720,
         .dot_clock = 1280 * 720 * 60,
@@ -562,7 +563,7 @@ pub fn get_screen_resources(_: *Self, timestamp: x11.Timestamp, allocator: std.m
 
     // Since we have a virtual monitor (a window) it doesn't have a real clock rate, set it to 1080p 60fps for now
     modes[1] = .{
-        .id = @enumFromInt(2),
+        .id = @fromBackingInt(2),
         .width = 1920,
         .height = 1080,
         .dot_clock = 1920 * 1080 * 60,
@@ -577,7 +578,7 @@ pub fn get_screen_resources(_: *Self, timestamp: x11.Timestamp, allocator: std.m
     };
 
     try screen_resources.append_crtc(&.{
-        .id = @enumFromInt(1),
+        .id = @fromBackingInt(1),
         .x = 0,
         .y = 0,
         // Since we have a virtual monitor (a window) it doesn't have any physical size, so we set it to whatever
@@ -613,7 +614,7 @@ pub fn is_running(self: *Self) bool {
 
 pub fn wakeup(self: *Self) void {
     const value: u64 = 1;
-    _ = std.posix.write(self.event_fd, std.mem.bytesAsSlice(u8, std.mem.asBytes(&value))) catch unreachable;
+    _ = phx.os.write(self.event_fd, std.mem.bytesAsSlice(u8, std.mem.asBytes(&value))) catch unreachable;
 }
 
 pub fn set_dirty(self: *Self) void {
@@ -628,7 +629,7 @@ fn update_thread(self: *Self) !void {
         return;
     };
 
-    const timer_fd = std.posix.timerfd_create(.MONOTONIC, .{}) catch |err| {
+    const timer_fd = phx.os.timerfd_create(.MONOTONIC) catch |err| {
         std.log.err("DisplayX11: Failed to create timerfd!, error: {s}", .{@errorName(err)});
         self.running = false;
         self.signal_server_shutdown();
@@ -637,7 +638,7 @@ fn update_thread(self: *Self) !void {
 
     // 16 milliseconds in nanoseconds
     const frame_timeout: isize = 16 * 1000 * 1000;
-    const timer_value = std.posix.system.itimerspec{
+    const timer_value = std.os.linux.itimerspec{
         .it_value = .{
             .sec = 0,
             .nsec = frame_timeout,
@@ -647,7 +648,7 @@ fn update_thread(self: *Self) !void {
             .nsec = frame_timeout,
         },
     };
-    std.posix.timerfd_settime(timer_fd, .{}, &timer_value, null) catch unreachable;
+    phx.os.timerfd_settime(timer_fd, &timer_value) catch unreachable;
 
     const xcb_fd = c.xcb_get_file_descriptor(self.connection);
     var poll_fds = [_]std.posix.pollfd{
@@ -688,11 +689,11 @@ fn update_thread(self: *Self) !void {
         for (&poll_fds) |*poll_fd| {
             if (poll_fd.fd == self.event_fd and (poll_fd.revents & std.posix.POLL.IN) != 0) {
                 var buf: [@sizeOf(u64)]u8 = undefined;
-                _ = std.posix.read(self.event_fd, &buf) catch unreachable;
+                _ = phx.os.read(self.event_fd, &buf) catch unreachable;
                 has_display_updates = true;
             } else if (poll_fd.fd == timer_fd and (poll_fd.revents & std.posix.POLL.IN) != 0) {
                 var buf: [@sizeOf(u64)]u8 = undefined;
-                _ = std.posix.read(timer_fd, &buf) catch unreachable;
+                _ = phx.os.read(timer_fd, &buf) catch unreachable;
                 render_timeout_hit = true;
             }
             poll_fd.revents = 0;
@@ -752,7 +753,7 @@ fn update_thread(self: *Self) !void {
                         .key = .{
                             .x = key_press.event_x,
                             .y = key_press.event_y,
-                            .keycode = @enumFromInt(key_press.detail),
+                            .keycode = @fromBackingInt(key_press.detail),
                             .state = if (event_type == c.XCB_KEY_PRESS) .press else .release,
                             .real_event = true,
                         },
@@ -788,8 +789,8 @@ fn update_thread(self: *Self) !void {
 }
 
 fn handle_messages(self: *Self) void {
-    self.server.display.messages_mutex.lock();
-    defer self.server.display.messages_mutex.unlock();
+    self.server.display.messages_mutex.lockUncancelable(self.server.io);
+    defer self.server.display.messages_mutex.unlock(self.server.io);
 
     for (self.server.display.messages.items) |*message| {
         switch (message.*) {

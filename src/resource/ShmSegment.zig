@@ -44,7 +44,7 @@ pub fn init_owned(data: []u8, allocator: std.mem.Allocator) !Self {
     refcount_shared.* = .init();
 
     return .{
-        .id = @enumFromInt(0),
+        .id = @fromBackingInt(0),
         .shmid = -1,
         .read_only = false,
         .addr = @ptrCast(data.ptr),

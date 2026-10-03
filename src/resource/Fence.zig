@@ -19,5 +19,5 @@ pub fn init_from_fd(id: phx.Sync.FenceId, fence_fd: std.posix.fd_t) !Self {
 pub fn deinit(self: *Self) void {
     self.shm_fence.destroy();
     if (self.fence_fd > 0)
-        std.posix.close(self.fence_fd);
+        phx.os.close(self.fence_fd);
 }

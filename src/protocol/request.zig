@@ -8,8 +8,9 @@ pub fn read_request(comptime T: type, limited_reader: *std.Io.Reader.Limited, ar
 
 fn read_request_with_context(comptime T: type, reader_context: ReaderContext) !T {
     var request: T = undefined;
-    inline for (@typeInfo(T).@"struct".fields) |*field| {
-        try read_request_field(T, &request, field.type, field.name, reader_context);
+    const struct_info = @typeInfo(T).@"struct";
+    inline for (struct_info.field_names, struct_info.field_types) |field_name, FieldType| {
+        try read_request_field(T, &request, FieldType, field_name, reader_context);
     }
     return request;
 }
@@ -23,11 +24,10 @@ fn read_request_field(
 ) !void {
     switch (@typeInfo(FieldType)) {
         .@"enum" => |e| {
-            @field(request, field_name) = try std.meta.intToEnum(FieldType, try reader_context.reader.takeInt(e.tag_type, x11.native_endian));
+            @field(request, field_name) = std.enums.fromInt(FieldType, try reader_context.reader.takeInt(e.tag_type, x11.native_endian)) orelse return error.InvalidEnumTag;
         },
-        .int => |int| {
-            const int_type = @Type(.{ .int = int });
-            @field(request, field_name) = try reader_context.reader.takeInt(int_type, x11.native_endian);
+        .int => {
+            @field(request, field_name) = try reader_context.reader.takeInt(FieldType, x11.native_endian);
         },
         .bool => {
             @field(request, field_name) = if (try reader_context.reader.takeInt(u8, x11.native_endian) == 0) false else true;
@@ -51,7 +51,7 @@ fn read_request_field(
                 const union_length_field = @field(request, union_options.length_field);
                 switch (union_type_field) {
                     inline else => |union_type_field_value| {
-                        const union_tag_type = comptime std.meta.TagPayload(union_type, union_type_field_value);
+                        const union_tag_type = comptime @FieldType(union_type, @tagName(union_type_field_value));
                         const union_array_data_type = std.meta.Elem(union_tag_type);
                         const union_value = try read_request_array(union_array_data_type, union_length_field, reader_context);
                         @field(request, field_name).data = @unionInit(union_type, @tagName(union_type_field_value), union_value);
@@ -66,11 +66,10 @@ fn read_request_field(
         },
         .array => |*arr| {
             switch (@typeInfo(arr.child)) {
-                .int => |int| {
-                    const int_type = @Type(.{ .int = int });
+                .int => {
                     // TODO: Use readSliceAll instead
                     for (0..@field(request, field_name).len) |i| {
-                        @field(request, field_name)[i] = try reader_context.reader.takeInt(int_type, x11.native_endian);
+                        @field(request, field_name)[i] = try reader_context.reader.takeInt(arr.child, x11.native_endian);
                     }
                 },
                 else => @compileError("Only int arrays are supported right now, got array of " ++ @typeName(arr.child)),
@@ -123,7 +122,7 @@ fn sizeof_wire(comptime T: type) usize {
         .bool => 1,
         .@"struct" => |s| blk: {
             var total: usize = 0;
-            for (s.fields) |f| total += sizeof_wire(f.type);
+            for (s.field_types) |FieldType| total += sizeof_wire(FieldType);
             break :blk total;
         },
         else => @compileError("sizeof_wire: unsupported type " ++ @typeName(T)),
@@ -133,12 +132,11 @@ fn sizeof_wire(comptime T: type) usize {
 fn read_request_array(comptime ElementType: type, list_length: usize, reader_context: ReaderContext) ![]ElementType {
     var items = try reader_context.allocator.alloc(ElementType, list_length);
     switch (@typeInfo(ElementType)) {
-        .int => |int| {
-            const int_type = @Type(.{ .int = int });
+        .int => {
             // TODO: Use readSliceAll instead
             for (0..items.len) |i| {
                 //items[i] = try read_request_with_context(ElementType, reader_context);
-                items[i] = try reader_context.reader.takeInt(int_type, x11.native_endian);
+                items[i] = try reader_context.reader.takeInt(ElementType, x11.native_endian);
             }
         },
         .@"struct" => {
@@ -163,13 +161,13 @@ const ReaderContext = struct {
         return Self{
             .reader = reader,
             .allocator = allocator,
-            .max_bytes_to_read = @intFromEnum(limited_reader.remaining),
+            .max_bytes_to_read = @backingInt(limited_reader.remaining),
         };
     }
 
     pub fn num_bytes_read(self: *const Self) usize {
         const limited_reader: *std.Io.Reader.Limited = @fieldParentPtr("interface", self.reader);
-        const underlying_pulled = self.max_bytes_to_read - @intFromEnum(limited_reader.remaining);
+        const underlying_pulled = self.max_bytes_to_read - @backingInt(limited_reader.remaining);
         const buffered_pending = self.reader.end - self.reader.seek;
         return underlying_pulled - buffered_pending;
     }

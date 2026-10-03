@@ -1,4 +1,5 @@
 const std = @import("std");
+const phx = @import("../phoenix.zig");
 const builtin = @import("builtin");
 comptime {
     // TODO: Implement xshmfence on other operating systems
@@ -14,7 +15,7 @@ pub const xshmfence = extern struct {
     v: i32,
 
     pub fn create_from_fd(fd: std.posix.fd_t) !*xshmfence {
-        const addr = try std.posix.mmap(null, @sizeOf(xshmfence), std.posix.PROT.READ | std.posix.PROT.WRITE, .{ .TYPE = .SHARED }, fd, 0);
+        const addr = try std.posix.mmap(null, @sizeOf(xshmfence), .{ .READ = true, .WRITE = true }, .{ .TYPE = .SHARED }, fd, 0);
         return @ptrCast(addr.ptr);
     }
 
@@ -53,8 +54,8 @@ pub const xshmfence = extern struct {
 
 test "xshmfence trigger" {
     const fd = try std.posix.memfd_create("xshmfence", std.os.linux.MFD.CLOEXEC | std.os.linux.MFD.ALLOW_SEALING);
-    defer std.posix.close(fd);
-    try std.posix.ftruncate(fd, @sizeOf(xshmfence));
+    defer phx.os.close(fd);
+    try phx.os.ftruncate(fd, @sizeOf(xshmfence));
 
     var fence = try xshmfence.create_from_fd(fd);
     defer fence.destroy();

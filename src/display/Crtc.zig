@@ -275,7 +275,7 @@ pub const PropertyValue = struct {
 
 pub const PropertyHashMap = std.HashMapUnmanaged(x11.AtomId, PropertyValue, struct {
     pub fn hash(_: @This(), key: x11.AtomId) u64 {
-        return @intFromEnum(key);
+        return @backingInt(key);
     }
 
     pub fn eql(_: @This(), a: x11.AtomId, b: x11.AtomId) bool {

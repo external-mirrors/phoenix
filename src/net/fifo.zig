@@ -178,7 +178,7 @@ fn Reader(comptime FifoType: type) type {
 
         fn stream(r: *std.Io.Reader, w: *std.Io.Writer, limit: std.Io.Limit) std.Io.Reader.StreamError!usize {
             var self: *Self = @fieldParentPtr("interface", r);
-            const num_bytes_to_write: usize = @intFromEnum(limit);
+            const num_bytes_to_write: usize = @backingInt(limit);
 
             var total_num_bytes_written: usize = 0;
             defer self.pos += total_num_bytes_written;
@@ -216,7 +216,7 @@ fn Reader(comptime FifoType: type) type {
         fn discard(r: *std.Io.Reader, limit: std.Io.Limit) std.Io.Reader.Error!usize {
             var self: *Self = @fieldParentPtr("interface", r);
             const pos_before = self.pos;
-            self.pos = @min(self.fifo.size, std.math.add(usize, self.pos, @intFromEnum(limit)) catch self.fifo.size);
+            self.pos = @min(self.fifo.size, std.math.add(usize, self.pos, @backingInt(limit)) catch self.fifo.size);
             return self.pos - pos_before;
         }
     };
@@ -361,7 +361,7 @@ test "realloc" {
     try std.testing.expectEqualSlices(u8, &.{}, fifo.get_slices()[1]);
     try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3 }, fifo.read_to_slice(&read_buffer));
 
-    const data_to_append = "A" ** (initial_alloc_size * 2);
+    const data_to_append: *const [initial_alloc_size * 2]u8 = &@splat('A');
     const expected_data_after = [_]u8{ 1, 2, 3 } ++ data_to_append;
 
     try fifo.append_slice(std.testing.allocator, data_to_append);

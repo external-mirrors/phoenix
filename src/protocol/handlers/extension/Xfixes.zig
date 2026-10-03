@@ -6,11 +6,9 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling xfixes request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
-    const minor_opcode = std.meta.intToEnum(MinorOpcode, request_context.header.minor_opcode) catch |err| switch (err) {
-        error.InvalidEnumTag => {
-            std.log.err("Unimplemented xfixes request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
-            return request_context.client.write_error(request_context, .implementation, 0);
-        },
+    const minor_opcode = std.enums.fromInt(MinorOpcode, request_context.header.minor_opcode) orelse {
+        std.log.err("Unimplemented xfixes request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
+        return request_context.client.write_error(request_context, .implementation, 0);
     };
 
     return switch (minor_opcode) {
@@ -43,12 +41,12 @@ fn select_selection_input(request_context: *phx.RequestContext) !void {
 
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("XfixesSelectSelectionInput: invalid window {d}", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     if (request_context.server.atom_manager.get_atom_by_id(req.request.selection) == null) {
         std.log.err("XfixesSelectSelectionInput: invalid selection atom {d}", .{req.request.selection});
-        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.selection));
+        return request_context.client.write_error(request_context, .atom, @backingInt(req.request.selection));
     }
 
     try request_context.server.xfixes_select_selection_input(
@@ -69,8 +67,8 @@ fn set_cursor_name(request_context: *phx.RequestContext) !void {
     defer req.deinit();
 
     const cursor = request_context.server.get_cursor(req.request.cursor) orelse {
-        std.log.err("XfixesSetCursorName: invalid cursor {d}", .{@intFromEnum(req.request.cursor)});
-        return request_context.client.write_error(request_context, .cursor, @intFromEnum(req.request.cursor));
+        std.log.err("XfixesSetCursorName: invalid cursor {d}", .{@backingInt(req.request.cursor)});
+        return request_context.client.write_error(request_context, .cursor, @backingInt(req.request.cursor));
     };
 
     try cursor.set_name(request_context.client.allocator, req.request.name.items);

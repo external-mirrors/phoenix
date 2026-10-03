@@ -61,3 +61,4 @@ Use Server.set_client_muted when a reply requires a lot of data to be sent, such
 Call eglReleaseThread after eglTerminate.
 Create a more efficient intToEnum that checks if the enum values are sequential (take into consideration exhausive enum) and does a cast directly if they are, otherwise call intToEnum.
 Remove rendering to window. Instead render pixmaps directly. Texture blits are expensive on slow (embedded) hardware.
+Change resource management strategy, with a data oriented design, where you have a stable index and generations and you have to call get to get it and its reference counted.

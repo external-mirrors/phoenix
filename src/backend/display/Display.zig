@@ -6,21 +6,23 @@ const x11 = phx.x11;
 const Self = @This();
 
 allocator: std.mem.Allocator,
+io: std.Io,
 impl: DisplayImpl,
 messages: std.ArrayListUnmanaged(Message) = .empty,
-messages_mutex: std.Thread.Mutex = .{},
+messages_mutex: std.Io.Mutex = .init,
 
-pub fn create_x11(server: *phx.Server, allocator: std.mem.Allocator) !Self {
+pub fn create_x11(server: *phx.Server, allocator: std.mem.Allocator, io: std.Io) !Self {
     const display_x11 = try allocator.create(DisplayX11);
     errdefer allocator.destroy(display_x11);
 
-    display_x11.* = try .init(server, allocator);
+    display_x11.* = try .init(server, allocator, io);
     errdefer display_x11.deinit();
 
     try display_x11.run_update_thread();
 
     return .{
         .allocator = allocator,
+        .io = io,
         .impl = .{ .x11 = display_x11 },
     };
 }
@@ -177,8 +179,8 @@ pub fn set_dirty(self: *Self) void {
 
 /// Thread-safe
 pub fn append_message(self: *Self, message: *const Message) !void {
-    self.messages_mutex.lock();
-    defer self.messages_mutex.unlock();
+    self.messages_mutex.lockUncancelable(self.io);
+    defer self.messages_mutex.unlock(self.io);
 
     try self.messages.append(self.allocator, message.*);
     if (self.messages.items.len == 1)

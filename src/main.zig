@@ -6,19 +6,10 @@ pub const std_options = std.Options{
     .log_level = .debug,
 };
 
-pub fn main() !void {
-    if (builtin.mode == .Debug) {
-        var gpa = std.heap.DebugAllocator(.{}){};
-        defer std.debug.assert(gpa.deinit() == .ok);
-
-        var server = try phx.Server.create(gpa.allocator());
-        defer server.destroy();
-        return server.run();
-    } else {
-        var server = try phx.Server.create(std.heap.smp_allocator);
-        defer server.destroy();
-        return server.run();
-    }
+pub fn main(init: std.process.Init) !void {
+    var server = try phx.Server.create(init.gpa, init.io);
+    defer server.destroy();
+    return server.run();
 }
 
 test "all tests" {

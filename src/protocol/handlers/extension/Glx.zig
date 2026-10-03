@@ -13,11 +13,9 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling glx request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
-    const minor_opcode = std.meta.intToEnum(MinorOpcode, request_context.header.minor_opcode) catch |err| switch (err) {
-        error.InvalidEnumTag => {
-            std.log.err("Unimplemented glx request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
-            return request_context.client.write_error(request_context, .implementation, 0);
-        },
+    const minor_opcode = std.enums.fromInt(MinorOpcode, request_context.header.minor_opcode) orelse {
+        std.log.err("Unimplemented glx request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
+        return request_context.client.write_error(request_context, .implementation, 0);
     };
 
     return switch (minor_opcode) {
@@ -47,12 +45,12 @@ fn create_context(request_context: *phx.RequestContext) !void {
 
     if (req.request.screen != request_context.server.screen) {
         std.log.err("Received invalid screen {d} in GlxCreateContext request", .{req.request.screen});
-        return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.screen));
+        return request_context.client.write_error(request_context, .value, @backingInt(req.request.screen));
     }
 
     const visual = request_context.server.get_visual_by_id(req.request.visual) orelse {
         std.log.err("Received invalid visual {d} in GlxCreateContext request", .{req.request.visual});
-        return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.visual));
+        return request_context.client.write_error(request_context, .value, @backingInt(req.request.visual));
     };
 
     // TODO: Use req.request.share_list
@@ -70,7 +68,7 @@ fn destroy_context(request_context: *phx.RequestContext) !void {
 
     var glx_context = request_context.server.get_glx_context(req.request.context) orelse {
         std.log.err("Received invalid glx context {d} in GlxDestroyContext request", .{req.request.context});
-        return request_context.client.write_error(request_context, .glx_context, @intFromEnum(req.request.context));
+        return request_context.client.write_error(request_context, .glx_context, @backingInt(req.request.context));
     };
     request_context.server.remove_resource(glx_context.id.to_id());
 }
@@ -81,7 +79,7 @@ fn is_direct(request_context: *phx.RequestContext) !void {
 
     const glx_context = request_context.server.get_glx_context(req.request.context) orelse {
         std.log.err("Received invalid glx context {d} in GlxIsDirect request", .{req.request.context});
-        return request_context.client.write_error(request_context, .glx_context, @intFromEnum(req.request.context));
+        return request_context.client.write_error(request_context, .glx_context, @backingInt(req.request.context));
     };
 
     var rep = Reply.IsDirect{
@@ -113,7 +111,7 @@ fn get_visual_configs(request_context: *phx.RequestContext) !void {
 
     if (req.request.screen != request_context.server.screen) {
         std.log.err("Received invalid screen {d} in GlxGetVisualConfigs request", .{req.request.screen});
-        return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.screen));
+        return request_context.client.write_error(request_context, .value, @backingInt(req.request.screen));
     }
 
     const screen_visual = request_context.server.get_visual_by_id(phx.Server.screen_true_color_visual_id) orelse unreachable;
@@ -149,7 +147,7 @@ fn get_visual_configs(request_context: *phx.RequestContext) !void {
                 for (stencil_size_values) |stencil_size| {
                     visuals[i] = .{
                         .visual = screen_visual.id,
-                        .class = @intFromEnum(screen_visual.class),
+                        .class = @backingInt(screen_visual.class),
                         .rgba = .true,
                         .red_size = screen_visual.bits_per_color_component,
                         .green_size = screen_visual.bits_per_color_component,
@@ -186,7 +184,7 @@ fn query_server_string(request_context: *phx.RequestContext) !void {
 
     if (req.request.screen != request_context.server.screen) {
         std.log.err("Received invalid screen {d} in GlxQueryServerString request", .{req.request.screen});
-        return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.screen));
+        return request_context.client.write_error(request_context, .value, @backingInt(req.request.screen));
     }
 
     var buffer: [2048]u8 = undefined;
@@ -222,7 +220,7 @@ fn get_fb_configs(request_context: *phx.RequestContext) !void {
 
     if (req.request.screen != request_context.server.screen) {
         std.log.err("Received invalid screen {d} in GlxGetFbConfigs request", .{req.request.screen});
-        return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.screen));
+        return request_context.client.write_error(request_context, .value, @backingInt(req.request.screen));
     }
 
     const screen_visual = request_context.server.get_visual_by_id(phx.Server.screen_true_color_visual_id) orelse unreachable;
@@ -269,7 +267,7 @@ fn get_fb_configs(request_context: *phx.RequestContext) !void {
                     const properties_size_start: u32 = @intCast(properties.items.len);
 
                     if (server_glx_version >= version_1_3) {
-                        properties.append(allocator, .{ .type = .visual_id, .value = @intFromEnum(screen_visual.id) }) catch unreachable;
+                        properties.append(allocator, .{ .type = .visual_id, .value = @backingInt(screen_visual.id) }) catch unreachable;
                         switch (screen_visual.class) {
                             .true_color => properties.append(allocator, .{ .type = .x_visual_type, .value = GLX_TRUE_COLOR }) catch unreachable,
                         }
@@ -285,7 +283,7 @@ fn get_fb_configs(request_context: *phx.RequestContext) !void {
                     properties.append(allocator, .{ .type = .accum_green_size, .value = 0 }) catch unreachable;
                     properties.append(allocator, .{ .type = .accum_blue_size, .value = 0 }) catch unreachable;
                     properties.append(allocator, .{ .type = .accum_alpha_size, .value = 0 }) catch unreachable;
-                    properties.append(allocator, .{ .type = .doublebuffer, .value = @intFromEnum(double_buffer) }) catch unreachable;
+                    properties.append(allocator, .{ .type = .doublebuffer, .value = @backingInt(double_buffer) }) catch unreachable;
                     properties.append(allocator, .{ .type = .stereo, .value = @intFromBool(false) }) catch unreachable;
                     properties.append(allocator, .{ .type = .buffer_size, .value = screen_visual.bits_per_color_component * 3 + alpha_size }) catch unreachable;
                     properties.append(allocator, .{ .type = .depth_size, .value = depth_size }) catch unreachable;
@@ -316,7 +314,7 @@ fn get_drawable_attributes(request_context: *phx.RequestContext) !void {
 
     const glx_drawable = request_context.server.get_glx_drawable(req.request.drawable) orelse {
         std.log.err("Received invalid glx drawable {d} in GlxGetDrawableAttributes request", .{req.request.drawable});
-        return request_context.client.write_error(request_context, .glx_drawable, @intFromEnum(req.request.drawable));
+        return request_context.client.write_error(request_context, .glx_drawable, @backingInt(req.request.drawable));
     };
     const geometry = glx_drawable.get_geometry();
 
@@ -328,7 +326,7 @@ fn get_drawable_attributes(request_context: *phx.RequestContext) !void {
         .{ .type = .y_inverted_ext, .value = @intFromBool(false) },
         .{ .type = .width, .value = @intCast(geometry.width) },
         .{ .type = .height, .value = @intCast(geometry.height) },
-        .{ .type = .screen, .value = @intFromEnum(request_context.server.screen) },
+        .{ .type = .screen, .value = @backingInt(request_context.server.screen) },
         .{ .type = .texture_target_ext, .value = GLX_TEXTURE_2D_EXT },
         .{ .type = .event_mask, .value = 0 }, // TODO: Return a real value
         .{ .type = .fbconfig_id, .value = 0 }, // TODO: Return a real value
@@ -513,7 +511,7 @@ pub const ContextId = enum(x11.Card32) {
     _,
 
     pub fn to_id(self: ContextId) x11.ResourceId {
-        return @enumFromInt(@intFromEnum(self));
+        return @fromBackingInt(@backingInt(self));
     }
 };
 
@@ -522,7 +520,7 @@ pub const DrawableId = enum(x11.Card32) {
     _,
 
     pub fn to_id(self: DrawableId) x11.ResourceId {
-        return @enumFromInt(@intFromEnum(self));
+        return @fromBackingInt(@backingInt(self));
     }
 };
 
@@ -671,7 +669,7 @@ pub const Reply = struct {
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         num_visuals: x11.Card32 = 0,
-        num_properties: x11.Card32 = @typeInfo(VisualProperties).@"struct".fields.len,
+        num_properties: x11.Card32 = @typeInfo(VisualProperties).@"struct".field_names.len,
         pad2: [16]x11.Card8 = @splat(0),
         properties: x11.ListOf(VisualProperties, .{ .length_field = "num_visuals" }),
     };

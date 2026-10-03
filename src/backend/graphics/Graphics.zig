@@ -19,6 +19,7 @@ pub fn create_egl(
     window_id: c.EGLNativeWindowType,
     debug: bool,
     allocator: std.mem.Allocator,
+    io: std.Io,
 ) !Self {
     const egl = try allocator.create(GraphicsEgl);
     errdefer allocator.destroy(egl);
@@ -32,6 +33,7 @@ pub fn create_egl(
         window_id,
         debug,
         allocator,
+        io,
     );
     return .{
         .allocator = allocator,
@@ -721,8 +723,8 @@ pub const GraphicsDrawable = union(enum) {
 
     pub fn get_id(self: *const GraphicsDrawable) x11.DrawableId {
         return switch (self.*) {
-            .window => |window| @enumFromInt(@intFromEnum(window.id.to_id())),
-            .pixmap => |pixmap| @enumFromInt(@intFromEnum(pixmap.id.to_id())),
+            .window => |window| @fromBackingInt(@backingInt(window.id.to_id())),
+            .pixmap => |pixmap| @fromBackingInt(@backingInt(pixmap.id.to_id())),
         };
     }
 };

@@ -8,11 +8,9 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling present request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
-    const minor_opcode = std.meta.intToEnum(MinorOpcode, request_context.header.minor_opcode) catch |err| switch (err) {
-        error.InvalidEnumTag => {
-            std.log.err("Unimplemented  request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
-            return request_context.client.write_error(request_context, .implementation, 0);
-        },
+    const minor_opcode = std.enums.fromInt(MinorOpcode, request_context.header.minor_opcode) orelse {
+        std.log.err("Unimplemented  request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
+        return request_context.client.write_error(request_context, .implementation, 0);
     };
 
     return switch (minor_opcode) {
@@ -45,18 +43,18 @@ fn present_pixmap(request_context: *phx.RequestContext) !void {
     for (req.request.notifies.items) |notify| {
         _ = request_context.server.get_window(notify.window) orelse {
             std.log.err("Received invalid notify window {d} in PresentPixmap request", .{notify.window});
-            return request_context.client.write_error(request_context, .window, @intFromEnum(notify.window));
+            return request_context.client.write_error(request_context, .window, @backingInt(notify.window));
         };
     }
 
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in PresentPixmap request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     const pixmap = request_context.server.get_pixmap(req.request.pixmap) orelse {
         std.log.err("Received invalid pixmap {d} in PresentPixmap request", .{req.request.pixmap});
-        return request_context.client.write_error(request_context, .pixmap, @intFromEnum(req.request.pixmap));
+        return request_context.client.write_error(request_context, .pixmap, @backingInt(req.request.pixmap));
     };
 
     const notifies_in: []const Notify = req.request.notifies.items;
@@ -132,7 +130,7 @@ fn select_input(request_context: *phx.RequestContext) !void {
     } else {
         const window = request_context.server.get_window(req.request.window) orelse {
             std.log.err("Received invalid window {d} in PresentSelectInput request", .{req.request.window});
-            return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+            return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
         };
 
         if (req.request.event_mask.is_empty())
@@ -211,7 +209,7 @@ const EventId = enum(x11.Card32) {
     _,
 
     pub fn to_id(self: EventId) x11.ResourceId {
-        return @enumFromInt(@intFromEnum(self));
+        return @fromBackingInt(@backingInt(self));
     }
 };
 
@@ -289,7 +287,7 @@ const Event = struct {
         _event_code: EventCode = .complete_notify,
         kind: CompleteKind,
         mode: CompleteMode,
-        event_id: EventId = @enumFromInt(0), // This is automatically updated with the event id from the event listener
+        event_id: EventId = @fromBackingInt(0), // This is automatically updated with the event id from the event listener
         window: x11.WindowId,
         serial: x11.Card32,
         ust: x11.Card64,
@@ -319,7 +317,7 @@ const Event = struct {
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
         _event_code: EventCode = .idle_notify,
         pad1: x11.Card16 = 0,
-        event_id: EventId = @enumFromInt(0), // This is automatically updated with the event id from the event listener
+        event_id: EventId = @fromBackingInt(0), // This is automatically updated with the event id from the event listener
         window: x11.WindowId,
         serial: x11.Card32,
         pixmap: x11.PixmapId,

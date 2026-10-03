@@ -1,4 +1,5 @@
 const std = @import("std");
+const phx = @import("../phoenix.zig");
 const builtin = @import("builtin");
 
 pub const max_fds: usize = 16;
@@ -32,7 +33,7 @@ pub const RecvMsgResult = struct {
     pub fn deinit(self: *RecvMsgResult) void {
         for (self.fd_buf[0..self.num_fds]) |fd| {
             if (fd > 0)
-                std.posix.close(fd);
+                phx.os.close(fd);
         }
     }
 
@@ -98,7 +99,7 @@ pub fn sendmsg(socket: std.posix.socket_t, data_to_send: []const u8, fds_to_send
         .flags = 0,
     };
 
-    return std.posix.sendmsg(socket, &msghdr, std.posix.MSG.DONTWAIT);
+    return phx.os.sendmsg(socket, &msghdr, std.posix.MSG.DONTWAIT | std.posix.MSG.NOSIGNAL);
 }
 
 fn posix_recvmsg(socket: std.posix.socket_t, msghdr: *std.c.msghdr, flags: u32) !usize {
@@ -158,7 +159,7 @@ pub fn recvmsg(socket: std.posix.socket_t, data: []u8) !RecvMsgResult {
         .flags = 0,
     };
 
-    const bytes_read = try posix_recvmsg(socket, &msghdr, std.posix.MSG.DONTWAIT);
+    const bytes_read = try posix_recvmsg(socket, &msghdr, std.posix.MSG.DONTWAIT | std.posix.MSG.NOSIGNAL);
 
     const cmsg: *cmsghdr = @ptrCast(&cmsgbuf);
     const cmsghdr_len = cmsg_align(@sizeOf(cmsghdr));

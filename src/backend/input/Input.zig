@@ -33,16 +33,16 @@ pub fn load_keyboard_mapping(self: *Self) void {
     // TODO: Map shift + some keys (such as number keys) to other keys, such as shift + 1 to ! (on a swedish keyboard)
     var keysym_index: usize = 0;
     for (0..keycode_range) |i| {
-        const keycode: x11.KeyCode = @enumFromInt(min_keycode + i);
+        const keycode: x11.KeyCode = @fromBackingInt(@intCast(min_keycode + i));
         const keysym = self.x11_keycode_to_keysym(keycode);
         const keysym_lowercase = phx.keysym.to_lowercase(keysym);
-        self.keyboard_mapping[keysym_index + 0] = @enumFromInt(keysym_lowercase); // Keysym when shift is not pressed
-        self.keyboard_mapping[keysym_index + 1] = @enumFromInt(keysym); // Keysym when shift is not pressed
-        // self.keyboard_mapping[keysym_index + 2] = @enumFromInt(keysym_lowercase);
-        // self.keyboard_mapping[keysym_index + 3] = @enumFromInt(keysym);
-        // self.keyboard_mapping[keysym_index + 4] = @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol);
-        // self.keyboard_mapping[keysym_index + 5] = @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol);
-        // self.keyboard_mapping[keysym_index + 6] = @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol);
+        self.keyboard_mapping[keysym_index + 0] = @fromBackingInt(keysym_lowercase); // Keysym when shift is not pressed
+        self.keyboard_mapping[keysym_index + 1] = @fromBackingInt(keysym); // Keysym when shift is not pressed
+        // self.keyboard_mapping[keysym_index + 2] = @fromBackingInt(keysym_lowercase);
+        // self.keyboard_mapping[keysym_index + 3] = @fromBackingInt(keysym);
+        // self.keyboard_mapping[keysym_index + 4] = @fromBackingInt(phx.KeySyms.XKB_KEY_NoSymbol);
+        // self.keyboard_mapping[keysym_index + 5] = @fromBackingInt(phx.KeySyms.XKB_KEY_NoSymbol);
+        // self.keyboard_mapping[keysym_index + 6] = @fromBackingInt(phx.KeySyms.XKB_KEY_NoSymbol);
         keysym_index += keysyms_per_keycode;
     }
 }
@@ -54,11 +54,11 @@ pub fn get_keyboard_mapping(self: *const Self, first_keycode: usize, num_keycode
 }
 
 pub fn get_min_keycode(_: *const Self) x11.KeyCode {
-    return @enumFromInt(min_keycode);
+    return @fromBackingInt(min_keycode);
 }
 
 pub fn get_max_keycode(_: *const Self) x11.KeyCode {
-    return @enumFromInt(max_keycode);
+    return @fromBackingInt(max_keycode);
 }
 
 pub fn get_keysyms_per_keycode(_: *const Self) u8 {

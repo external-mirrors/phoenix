@@ -23,15 +23,13 @@ pub fn handle_connection_setup_request(server: *phx.Server, client: *phx.Client,
 
     const server_byte_order: ConnectionSetupRequestByteOrder = if (x11.native_endian == .little) .little else .big;
 
-    const client_byte_order = std.meta.intToEnum(ConnectionSetupRequestByteOrder, @intFromEnum(connection_setup_request_header.byte_order)) catch |err| switch (err) {
-        error.InvalidEnumTag => {
-            try reply_with_error(
-                client,
-                "Received invalid endian {d} from the client, expected {s} ({d})",
-                .{ @intFromEnum(connection_setup_request_header.byte_order), @tagName(server_byte_order), @intFromEnum(server_byte_order) },
-            );
-            return false;
-        },
+    const client_byte_order = std.enums.fromInt(ConnectionSetupRequestByteOrder, @backingInt(connection_setup_request_header.byte_order)) orelse {
+        try reply_with_error(
+            client,
+            "Received invalid endian {d} from the client, expected {s} ({d})",
+            .{ @backingInt(connection_setup_request_header.byte_order), @tagName(server_byte_order), @backingInt(server_byte_order) },
+        );
+        return false;
     };
 
     if (client_byte_order != server_byte_order) {

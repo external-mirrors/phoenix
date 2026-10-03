@@ -6,11 +6,9 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling core request: {d}", .{request_context.header.major_opcode});
 
     // TODO: Remove
-    const major_opcode = std.meta.intToEnum(phx.opcode.Major, request_context.header.major_opcode) catch |err| switch (err) {
-        error.InvalidEnumTag => {
-            std.log.err("Unimplemented core request: {d}", .{request_context.header.major_opcode});
-            return request_context.client.write_error(request_context, .implementation, 0);
-        },
+    const major_opcode = std.enums.fromInt(phx.opcode.Major, request_context.header.major_opcode) orelse {
+        std.log.err("Unimplemented core request: {d}", .{request_context.header.major_opcode});
+        return request_context.client.write_error(request_context, .implementation, 0);
     };
 
     return switch (major_opcode) {
@@ -103,7 +101,7 @@ fn create_window(request_context: *phx.RequestContext) !void {
 
     const parent_window = request_context.server.get_window(req.request.parent) orelse {
         std.log.err("Received invalid parent window {d} in CreateWindow request", .{req.request.parent});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.parent));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.parent));
     };
 
     const class = switch (req.request.class) {
@@ -123,11 +121,11 @@ fn create_window(request_context: *phx.RequestContext) !void {
     if (!window_class_validate_attributes(class, &req.request))
         return request_context.client.write_error(request_context, .match, 0);
 
-    const visual: *const phx.Visual = switch (@intFromEnum(req.request.visual)) {
+    const visual: *const phx.Visual = switch (@backingInt(req.request.visual)) {
         copy_from_parent => parent_window.attributes.visual,
         else => request_context.server.get_visual_by_id(req.request.visual) orelse {
             std.log.err("Received invalid visual {d} in CreateWindow request", .{req.request.visual});
-            return request_context.client.write_error(request_context, .value, @intFromEnum(req.request.visual));
+            return request_context.client.write_error(request_context, .value, @backingInt(req.request.visual));
         },
     };
 
@@ -135,7 +133,7 @@ fn create_window(request_context: *phx.RequestContext) !void {
     const background_pixmap: ?*const phx.Pixmap = switch (background_pixmap_arg) {
         none => null,
         parent_relative => parent_window.attributes.background_pixmap,
-        else => request_context.server.get_pixmap(@enumFromInt(background_pixmap_arg)) orelse {
+        else => request_context.server.get_pixmap(@fromBackingInt(background_pixmap_arg)) orelse {
             std.log.err("Received invalid pixmap {d} in CreateWindow request", .{background_pixmap_arg});
             return request_context.client.write_error(request_context, .pixmap, background_pixmap_arg);
         },
@@ -144,7 +142,7 @@ fn create_window(request_context: *phx.RequestContext) !void {
     const border_pixmap_arg = req.request.get_value(x11.Card32, "border_pixmap") orelse none;
     const border_pixmap: ?*const phx.Pixmap = switch (border_pixmap_arg) {
         copy_from_parent => parent_window.attributes.border_pixmap,
-        else => request_context.server.get_pixmap(@enumFromInt(border_pixmap_arg)) orelse {
+        else => request_context.server.get_pixmap(@fromBackingInt(border_pixmap_arg)) orelse {
             std.log.err("Received invalid border pixmap {d} in CreateWindow request", .{border_pixmap_arg});
             return request_context.client.write_error(request_context, .pixmap, border_pixmap_arg);
         },
@@ -153,34 +151,28 @@ fn create_window(request_context: *phx.RequestContext) !void {
     const colormap_arg = req.request.get_value(x11.Card32, "colormap") orelse copy_from_parent;
     const colormap: *phx.Colormap = switch (colormap_arg) {
         copy_from_parent => &parent_window.attributes.colormap,
-        else => request_context.server.get_colormap(@enumFromInt(colormap_arg)) orelse {
+        else => request_context.server.get_colormap(@fromBackingInt(colormap_arg)) orelse {
             std.log.err("Received invalid colormap {d} in CreateWindow request", .{colormap_arg});
             return request_context.client.write_error(request_context, .colormap, colormap_arg);
         },
     };
 
-    const bit_gravity_arg = req.request.get_value(x11.Card8, "bit_gravity") orelse @intFromEnum(BitGravity.forget);
-    const bit_gravity = std.meta.intToEnum(BitGravity, bit_gravity_arg) catch |err| switch (err) {
-        error.InvalidEnumTag => {
-            std.log.err("Received invalid bit gravity {d} in CreateWindow request", .{bit_gravity_arg});
-            return request_context.client.write_error(request_context, .value, bit_gravity_arg);
-        },
+    const bit_gravity_arg = req.request.get_value(x11.Card8, "bit_gravity") orelse @backingInt(BitGravity.forget);
+    const bit_gravity = std.enums.fromInt(BitGravity, bit_gravity_arg) orelse {
+        std.log.err("Received invalid bit gravity {d} in CreateWindow request", .{bit_gravity_arg});
+        return request_context.client.write_error(request_context, .value, bit_gravity_arg);
     };
 
-    const win_gravity_arg = req.request.get_value(x11.Card8, "win_gravity") orelse @intFromEnum(WinGravity.north_west);
-    const win_gravity = std.meta.intToEnum(WinGravity, win_gravity_arg) catch |err| switch (err) {
-        error.InvalidEnumTag => {
-            std.log.err("Received invalid win gravity {d} in CreateWindow request", .{win_gravity_arg});
-            return request_context.client.write_error(request_context, .value, win_gravity_arg);
-        },
+    const win_gravity_arg = req.request.get_value(x11.Card8, "win_gravity") orelse @backingInt(WinGravity.north_west);
+    const win_gravity = std.enums.fromInt(WinGravity, win_gravity_arg) orelse {
+        std.log.err("Received invalid win gravity {d} in CreateWindow request", .{win_gravity_arg});
+        return request_context.client.write_error(request_context, .value, win_gravity_arg);
     };
 
     const backing_store_arg = req.request.get_value(x11.Card8, "backing_store") orelse 0;
-    const backing_store = std.meta.intToEnum(BackingStore, backing_store_arg) catch |err| switch (err) {
-        error.InvalidEnumTag => {
-            std.log.err("Received invalid backing store {d} in CreateWindow request", .{backing_store_arg});
-            return request_context.client.write_error(request_context, .value, backing_store_arg);
-        },
+    const backing_store = std.enums.fromInt(BackingStore, backing_store_arg) orelse {
+        std.log.err("Received invalid backing store {d} in CreateWindow request", .{backing_store_arg});
+        return request_context.client.write_error(request_context, .value, backing_store_arg);
     };
 
     const backing_planes = req.request.get_value(x11.Card32, "backing_planes") orelse 0xFFFFFFFF;
@@ -266,7 +258,7 @@ fn change_window_attributes(request_context: *phx.RequestContext) !void {
 
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in ChangeWindowAttributes request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     var new_window_attributes = window.attributes;
@@ -280,12 +272,12 @@ fn change_window_attributes(request_context: *phx.RequestContext) !void {
                     return request_context.client.write_error(
                         request_context,
                         .window,
-                        @intFromEnum(window.id),
+                        @backingInt(window.id),
                     );
                 };
                 break :blk parent.attributes.background_pixmap;
             },
-            else => request_context.server.get_pixmap(@enumFromInt(arg)) orelse {
+            else => request_context.server.get_pixmap(@fromBackingInt(arg)) orelse {
                 std.log.err(
                     "Received invalid background pixmap {d} in ChangeWindowAttributes request",
                     .{arg},
@@ -309,12 +301,12 @@ fn change_window_attributes(request_context: *phx.RequestContext) !void {
                     return request_context.client.write_error(
                         request_context,
                         .window,
-                        @intFromEnum(window.id),
+                        @backingInt(window.id),
                     );
                 };
                 break :blk parent.attributes.border_pixmap;
             },
-            else => request_context.server.get_pixmap(@enumFromInt(arg)) orelse {
+            else => request_context.server.get_pixmap(@fromBackingInt(arg)) orelse {
                 std.log.err(
                     "Received invalid border pixmap {d} in ChangeWindowAttributes request",
                     .{arg},
@@ -338,12 +330,12 @@ fn change_window_attributes(request_context: *phx.RequestContext) !void {
                     return request_context.client.write_error(
                         request_context,
                         .window,
-                        @intFromEnum(window.id),
+                        @backingInt(window.id),
                     );
                 };
                 break :blk &parent.attributes.colormap;
             },
-            else => request_context.server.get_colormap(@enumFromInt(arg)) orelse {
+            else => request_context.server.get_colormap(@fromBackingInt(arg)) orelse {
                 std.log.err(
                     "Received invalid colormap {d} in ChangeWindowAttributes request",
                     .{arg},
@@ -360,33 +352,27 @@ fn change_window_attributes(request_context: *phx.RequestContext) !void {
     }
 
     if (req.request.get_value(x11.Card8, "bit_gravity")) |arg| {
-        const new_bit_gravity: BitGravity = std.meta.intToEnum(BitGravity, arg) catch |err| switch (err) {
-            error.InvalidEnumTag => {
-                std.log.err("Received invalid bit gravity {d} in ChangeWindowAttributes request", .{arg});
-                return request_context.client.write_error(request_context, .value, arg);
-            },
+        const new_bit_gravity: BitGravity = std.enums.fromInt(BitGravity, arg) orelse {
+            std.log.err("Received invalid bit gravity {d} in ChangeWindowAttributes request", .{arg});
+            return request_context.client.write_error(request_context, .value, arg);
         };
 
         new_window_attributes.bit_gravity = new_bit_gravity;
     }
 
     if (req.request.get_value(x11.Card8, "win_gravity")) |arg| {
-        const new_win_gravity: WinGravity = std.meta.intToEnum(WinGravity, arg) catch |err| switch (err) {
-            error.InvalidEnumTag => {
-                std.log.err("Received invalid win gravity {d} in ChangeWindowAttributes request", .{arg});
-                return request_context.client.write_error(request_context, .value, arg);
-            },
+        const new_win_gravity: WinGravity = std.enums.fromInt(WinGravity, arg) orelse {
+            std.log.err("Received invalid win gravity {d} in ChangeWindowAttributes request", .{arg});
+            return request_context.client.write_error(request_context, .value, arg);
         };
 
         new_window_attributes.win_gravity = new_win_gravity;
     }
 
     if (req.request.get_value(x11.Card8, "backing_store")) |arg| {
-        const new_backing_store: BackingStore = std.meta.intToEnum(BackingStore, arg) catch |err| switch (err) {
-            error.InvalidEnumTag => {
-                std.log.err("Received invalid backing store {d} in ChangeWindowAttributes request", .{arg});
-                return request_context.client.write_error(request_context, .value, arg);
-            },
+        const new_backing_store: BackingStore = std.enums.fromInt(BackingStore, arg) orelse {
+            std.log.err("Received invalid backing store {d} in ChangeWindowAttributes request", .{arg});
+            return request_context.client.write_error(request_context, .value, arg);
         };
 
         new_window_attributes.backing_store = new_backing_store;
@@ -486,7 +472,7 @@ fn get_window_attributes(request_context: *phx.RequestContext) !void {
 
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in GetWindowAttributes request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     var rep = Reply.GetWindowAttributes{
@@ -516,7 +502,7 @@ fn destroy_window(request_context: *phx.RequestContext) !void {
 
     var window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in DestroyWindow request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     if (window.id == request_context.server.root_window.id) {
@@ -537,7 +523,7 @@ fn map_window(request_context: *phx.RequestContext) !void {
 
     var window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in MapWindow request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     window.map(request_context.client);
@@ -549,7 +535,7 @@ fn map_subwindows(request_context: *phx.RequestContext) !void {
 
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in MapSubwindows request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     for (window.children.items) |child| {
@@ -563,7 +549,7 @@ fn unmap_window(request_context: *phx.RequestContext) !void {
 
     var window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in UnmapWindow request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     window.unmap(false);
@@ -575,7 +561,7 @@ fn unmap_subwindows(request_context: *phx.RequestContext) !void {
 
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in UnmapSubwindows request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     for (window.children.items) |child| {
@@ -589,21 +575,21 @@ fn reparent_window(request_context: *phx.RequestContext) !void {
 
     var window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in ReparentWindow request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     if (window == request_context.server.root_window) {
         std.log.err("ReparentWindow: cannot reparent the root window", .{});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     }
 
     const new_parent = request_context.server.get_window(req.request.parent) orelse {
         std.log.err("Received invalid parent window {d} in ReparentWindow request", .{req.request.parent});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.parent));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.parent));
     };
 
     window.reparent(new_parent, req.request.x, req.request.y) catch |err| switch (err) {
-        error.InvalidParent => return request_context.client.write_error(request_context, .match, @intFromEnum(req.request.parent)),
+        error.InvalidParent => return request_context.client.write_error(request_context, .match, @backingInt(req.request.parent)),
         error.OutOfMemory => return error.OutOfMemory,
     };
 }
@@ -616,7 +602,7 @@ fn configure_window(request_context: *phx.RequestContext) !void {
 
     var window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in ConfigureWindow request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     var modified: bool = false;
@@ -678,7 +664,7 @@ fn configure_window(request_context: *phx.RequestContext) !void {
                     // TODO: What should be done if this happens? disconnect the client?
                     std.log.err(
                         "Failed to write (buffer) core event of type \"{s}\" to client {d}, error: {s}",
-                        .{ @tagName(configure_request_event.any.code), substruct_redirect_listener.client.connection.stream.handle, @errorName(err) },
+                        .{ @tagName(configure_request_event.any.code), substruct_redirect_listener.client.socket, @errorName(err) },
                     );
                 };
                 return;
@@ -701,7 +687,7 @@ fn configure_window(request_context: *phx.RequestContext) !void {
                     // TODO: What should be done if this happens? disconnect the client?
                     std.log.err(
                         "Failed to write (buffer) core event of type \"{s}\" to client {d}, error: {s}",
-                        .{ @tagName(resize_request_event.any.code), resize_redirect_client.connection.stream.handle, @errorName(err) },
+                        .{ @tagName(resize_request_event.any.code), resize_redirect_client.socket, @errorName(err) },
                     );
                 };
 
@@ -724,7 +710,7 @@ fn configure_window(request_context: *phx.RequestContext) !void {
                 .width = @intCast(window.attributes.geometry.width),
                 .height = @intCast(window.attributes.geometry.height),
                 .border_width = window.attributes.border_width,
-                .above_sibling = @enumFromInt(none), // TODO:
+                .above_sibling = @fromBackingInt(none), // TODO:
                 .override_redirect = window.attributes.override_redirect,
             },
         };
@@ -738,7 +724,7 @@ fn get_geometry(request_context: *phx.RequestContext) !void {
 
     const drawable = request_context.server.get_drawable(req.request.drawable) orelse {
         std.log.err("Received invalid drawable {d} in GetGeometry request", .{req.request.drawable});
-        return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.drawable));
+        return request_context.client.write_error(request_context, .drawable, @backingInt(req.request.drawable));
     };
     const geometry = drawable.get_geometry();
 
@@ -750,7 +736,7 @@ fn get_geometry(request_context: *phx.RequestContext) !void {
         .y = @intCast(geometry.y),
         .width = @intCast(geometry.width),
         .height = @intCast(geometry.height),
-        .border_width = if (request_context.server.get_window(@enumFromInt(@intFromEnum(req.request.drawable)))) |w| w.attributes.border_width else 0,
+        .border_width = if (request_context.server.get_window(@fromBackingInt(@backingInt(req.request.drawable)))) |w| w.attributes.border_width else 0,
     };
     try request_context.client.write_reply(&rep);
 }
@@ -761,7 +747,7 @@ fn query_tree(request_context: *phx.RequestContext) !void {
 
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in QueryTree request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     const children = try get_window_children_ids(window, request_context.allocator);
@@ -770,7 +756,7 @@ fn query_tree(request_context: *phx.RequestContext) !void {
     var rep = Reply.QueryTree{
         .sequence_number = request_context.sequence_number,
         .root = request_context.server.root_window.id,
-        .parent = if (window.parent) |parent| parent.id else @enumFromInt(none),
+        .parent = if (window.parent) |parent| parent.id else @fromBackingInt(none),
         .children = .{ .items = children },
     };
     try request_context.client.write_reply(&rep);
@@ -782,7 +768,7 @@ fn intern_atom(request_context: *phx.RequestContext) !void {
 
     var atom: phx.Atom = undefined;
     if (req.request.only_if_exists) {
-        atom = if (request_context.server.atom_manager.get_atom_by_name(req.request.name.items)) |item| item else .{ .id = @enumFromInt(none) };
+        atom = if (request_context.server.atom_manager.get_atom_by_name(req.request.name.items)) |item| item else .{ .id = @fromBackingInt(none) };
     } else {
         atom = if (request_context.server.atom_manager.get_atom_by_name_create_if_not_exists(req.request.name.items)) |atom_id| atom_id else |err| switch (err) {
             error.OutOfMemory, error.TooManyAtoms => return request_context.client.write_error(request_context, .alloc, 0),
@@ -803,7 +789,7 @@ fn get_atom_name(request_context: *phx.RequestContext) !void {
 
     const atom_name = request_context.server.atom_manager.get_atom_name_by_id(req.request.atom) orelse {
         std.log.err("Received invalid property atom {d} in GetAtomName request", .{req.request.atom});
-        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.atom));
+        return request_context.client.write_error(request_context, .atom, @backingInt(req.request.atom));
     };
 
     var rep = Reply.GetAtomName{
@@ -819,17 +805,17 @@ fn change_property(request_context: *phx.RequestContext) !void {
 
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in ChangeProperty request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     const property_atom = request_context.server.atom_manager.get_atom_by_id(req.request.property) orelse {
         std.log.err("Received invalid property atom {d} in ChangeProperty request", .{req.request.property});
-        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.property));
+        return request_context.client.write_error(request_context, .atom, @backingInt(req.request.property));
     };
 
     const type_atom = request_context.server.atom_manager.get_atom_by_id(req.request.type) orelse {
         std.log.err("Received invalid type atom {d} in ChangeProperty request", .{req.request.type});
-        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.type));
+        return request_context.client.write_error(request_context, .atom, @backingInt(req.request.type));
     };
 
     switch (req.request.data.data) {
@@ -860,12 +846,12 @@ fn delete_property(request_context: *phx.RequestContext) !void {
 
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in DeleteProperty request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     const property_atom = request_context.server.atom_manager.get_atom_by_id(req.request.property) orelse {
         std.log.err("Received invalid property atom {d} in DeleteProperty request", .{req.request.property});
-        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.property));
+        return request_context.client.write_error(request_context, .atom, @backingInt(req.request.property));
     };
 
     if (window.delete_property(property_atom)) {
@@ -887,12 +873,12 @@ fn get_property(request_context: *phx.RequestContext) !void {
 
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in GetProperty request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     const property_atom = request_context.server.atom_manager.get_atom_by_id(req.request.property) orelse {
         std.log.err("Received invalid property atom {d} in GetProperty request", .{req.request.property});
-        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.property));
+        return request_context.client.write_error(request_context, .atom, @backingInt(req.request.property));
     };
 
     const type_atom_name =
@@ -901,7 +887,7 @@ fn get_property(request_context: *phx.RequestContext) !void {
         else
             request_context.server.atom_manager.get_atom_name_by_id(req.request.type) orelse {
                 std.log.err("Received invalid type atom {d} in GetProperty request", .{req.request.type});
-                return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.type));
+                return request_context.client.write_error(request_context, .atom, @backingInt(req.request.type));
             };
 
     const property = window.get_property(property_atom) orelse {
@@ -988,14 +974,14 @@ fn set_selection_owner(request_context: *phx.RequestContext) !void {
 
     const selection_atom = request_context.server.atom_manager.get_atom_by_id(req.request.selection) orelse {
         std.log.err("Received invalid property atom {d} in SetSelectionOwner request", .{req.request.selection});
-        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.selection));
+        return request_context.client.write_error(request_context, .atom, @backingInt(req.request.selection));
     };
 
     var window: ?*phx.Window = null;
     if (req.request.owner != .none) {
         window = request_context.server.get_window(req.request.owner) orelse {
             std.log.err("Received invalid window {d} in SetSelectionOwner request", .{req.request.owner});
-            return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.owner));
+            return request_context.client.write_error(request_context, .window, @backingInt(req.request.owner));
         };
     }
 
@@ -1025,7 +1011,7 @@ fn get_selection_owner(request_context: *phx.RequestContext) !void {
 
     const selection_atom = request_context.server.atom_manager.get_atom_by_id(req.request.selection) orelse {
         std.log.err("Received invalid property atom {d} in GetSelectionOwner request", .{req.request.selection});
-        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.selection));
+        return request_context.client.write_error(request_context, .atom, @backingInt(req.request.selection));
     };
 
     const selection_owner_window =
@@ -1050,22 +1036,22 @@ fn convert_selection(request_context: *phx.RequestContext) !void {
 
     const requestor = request_context.server.get_window(req.request.requestor) orelse {
         std.log.err("ConvertSelection: invalid requestor window {d}", .{req.request.requestor});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.requestor));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.requestor));
     };
 
     const selection_atom = request_context.server.atom_manager.get_atom_by_id(req.request.selection) orelse {
         std.log.err("ConvertSelection: invalid selection atom {d}", .{req.request.selection});
-        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.selection));
+        return request_context.client.write_error(request_context, .atom, @backingInt(req.request.selection));
     };
 
     if (request_context.server.atom_manager.get_atom_by_id(req.request.target) == null) {
         std.log.err("ConvertSelection: invalid target atom {d}", .{req.request.target});
-        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.target));
+        return request_context.client.write_error(request_context, .atom, @backingInt(req.request.target));
     }
 
-    if (@intFromEnum(req.request.property) != 0 and request_context.server.atom_manager.get_atom_by_id(req.request.property) == null) {
+    if (@backingInt(req.request.property) != 0 and request_context.server.atom_manager.get_atom_by_id(req.request.property) == null) {
         std.log.err("ConvertSelection: invalid property atom {d}", .{req.request.property});
-        return request_context.client.write_error(request_context, .atom, @intFromEnum(req.request.property));
+        return request_context.client.write_error(request_context, .atom, @backingInt(req.request.property));
     }
 
     const owner_opt = request_context.server.selection_owner_manager.get_owner(selection_atom);
@@ -1094,7 +1080,7 @@ fn convert_selection(request_context: *phx.RequestContext) !void {
             .requestor = requestor.id,
             .selection = req.request.selection,
             .target = req.request.target,
-            .property = @enumFromInt(0),
+            .property = @fromBackingInt(0),
         },
     };
     try request_context.client.write_event(&notify);
@@ -1105,7 +1091,7 @@ fn send_event(request_context: *phx.RequestContext) !void {
     defer req.deinit();
 
     const dest_id = req.request.destination;
-    const dest_int = @intFromEnum(dest_id);
+    const dest_int = @backingInt(dest_id);
     const focus_was_destination = dest_int == send_event_destination_input_focus;
     const window = resolve_send_event_destination(request_context.server, dest_id) orelse {
         std.log.err("SendEvent: invalid destination window {d}", .{dest_int});
@@ -1118,7 +1104,7 @@ fn send_event(request_context: *phx.RequestContext) !void {
     if (req.request.event_mask.is_empty()) {
         if (request_context.server.client_manager.get_resource_owner(window.id.to_id())) |owner| {
             owner.write_raw_event_bytes(&event_bytes) catch |err| {
-                std.log.err("SendEvent: failed to write event to owning client {d}, error: {s}", .{ owner.connection.stream.handle, @errorName(err) });
+                std.log.err("SendEvent: failed to write event to owning client {d}, error: {s}", .{ owner.socket, @errorName(err) });
             };
         }
         return;
@@ -1126,8 +1112,8 @@ fn send_event(request_context: *phx.RequestContext) !void {
 
     const code: x11.Card8 = event_bytes[0] & 0x7F;
     const core_event: ?phx.event.Event = blk: {
-        const code_enum = std.meta.intToEnum(phx.event.EventCode, code) catch break :blk null;
-        var ev: phx.event.Event = @bitCast(event_bytes);
+        const code_enum = std.enums.fromInt(phx.event.EventCode, code) orelse break :blk null;
+        var ev = std.mem.bytesToValue(phx.event.Event, &event_bytes);
         ev.any.code = code_enum;
         break :blk ev;
     };
@@ -1160,7 +1146,7 @@ const send_event_destination_pointer_window: x11.Card32 = 0;
 const send_event_destination_input_focus: x11.Card32 = 1;
 
 fn resolve_send_event_destination(server: *phx.Server, dest: x11.WindowId) ?*phx.Window {
-    return switch (@intFromEnum(dest)) {
+    return switch (@backingInt(dest)) {
         send_event_destination_pointer_window => get_pointer_window(server),
         send_event_destination_input_focus => blk: {
             const focus = get_input_focus_window(server) orelse break :blk get_pointer_window(server);
@@ -1221,7 +1207,7 @@ fn deliver_send_event_to_window(
         const intersect_mask: phx.core.EventMask = @bitCast(intersect);
         if (!phx.Window.core_event_mask_matches_event_code(intersect_mask, event.any.code, &event)) continue;
         listener.client.write_raw_event_bytes(event_bytes) catch |err| {
-            std.log.err("SendEvent: failed to write event to client {d}, error: {s}", .{ listener.client.connection.stream.handle, @errorName(err) });
+            std.log.err("SendEvent: failed to write event to client {d}, error: {s}", .{ listener.client.socket, @errorName(err) });
             continue;
         };
         delivered += 1;
@@ -1232,13 +1218,13 @@ fn deliver_send_event_to_window(
 fn grab_server(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.GrabServer, request_context.allocator);
     defer req.deinit();
-    std.log.err("Received GrabServer request from client {d}, ignoring...", .{request_context.client.connection.stream.handle});
+    std.log.err("Received GrabServer request from client {d}, ignoring...", .{request_context.client.socket});
 }
 
 fn ungrab_server(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.UngrabServer, request_context.allocator);
     defer req.deinit();
-    std.log.err("Received UngrabServer request from client {d}, ignoring...", .{request_context.client.connection.stream.handle});
+    std.log.err("Received UngrabServer request from client {d}, ignoring...", .{request_context.client.socket});
 }
 
 // TODO: Implement these
@@ -1312,7 +1298,7 @@ fn query_pointer(request_context: *phx.RequestContext) !void {
 
     const window = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in QueryPointer request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     var offset_x: i32 = 0;
@@ -1340,12 +1326,12 @@ fn translate_coordinates(request_context: *phx.RequestContext) !void {
 
     const src_window = request_context.server.get_window(req.request.src_window) orelse {
         std.log.err("TranslateCoordinates: invalid src window {d}", .{req.request.src_window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.src_window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.src_window));
     };
 
     const dst_window = request_context.server.get_window(req.request.dst_window) orelse {
         std.log.err("TranslateCoordinates: invalid dst window {d}", .{req.request.dst_window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.dst_window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.dst_window));
     };
 
     const src_abs = src_window.get_absolute_position();
@@ -1488,7 +1474,7 @@ fn create_pixmap(request_context: *phx.RequestContext) !void {
 
     const drawable = request_context.server.get_drawable(req.request.drawable) orelse {
         std.log.err("Received invalid drawable {d} in CreatePixmap request", .{req.request.drawable});
-        return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.drawable));
+        return request_context.client.write_error(request_context, .drawable, @backingInt(req.request.drawable));
     };
 
     const import_dmabuf = phx.Graphics.DmabufImport{
@@ -1520,7 +1506,7 @@ fn free_pixmap(request_context: *phx.RequestContext) !void {
 
     var pixmap = request_context.server.get_pixmap(req.request.pixmap) orelse {
         std.log.err("Received invalid pixmap {d} in FreePixmap request", .{req.request.pixmap});
-        return request_context.client.write_error(request_context, .pixmap, @intFromEnum(req.request.pixmap));
+        return request_context.client.write_error(request_context, .pixmap, @backingInt(req.request.pixmap));
     };
 
     pixmap.unref();
@@ -1532,27 +1518,27 @@ fn create_cursor(request_context: *phx.RequestContext) !void {
     defer req.deinit();
 
     const source = request_context.server.get_pixmap(req.request.source) orelse {
-        std.log.err("CreateCursor: invalid source pixmap {d}", .{@intFromEnum(req.request.source)});
-        return request_context.client.write_error(request_context, .pixmap, @intFromEnum(req.request.source));
+        std.log.err("CreateCursor: invalid source pixmap {d}", .{@backingInt(req.request.source)});
+        return request_context.client.write_error(request_context, .pixmap, @backingInt(req.request.source));
     };
 
     if (source.dmabuf_data.depth != 1) {
         std.log.err("CreateCursor: source pixmap must have depth 1, got {d}", .{source.dmabuf_data.depth});
-        return request_context.client.write_error(request_context, .match, @intFromEnum(req.request.source));
+        return request_context.client.write_error(request_context, .match, @backingInt(req.request.source));
     }
 
     if (req.request.mask != .none) {
         const mask = request_context.server.get_pixmap(req.request.mask) orelse {
-            std.log.err("CreateCursor: invalid mask pixmap {d}", .{@intFromEnum(req.request.mask)});
-            return request_context.client.write_error(request_context, .pixmap, @intFromEnum(req.request.mask));
+            std.log.err("CreateCursor: invalid mask pixmap {d}", .{@backingInt(req.request.mask)});
+            return request_context.client.write_error(request_context, .pixmap, @backingInt(req.request.mask));
         };
         if (mask.dmabuf_data.depth != 1) {
             std.log.err("CreateCursor: mask pixmap must have depth 1, got {d}", .{mask.dmabuf_data.depth});
-            return request_context.client.write_error(request_context, .match, @intFromEnum(req.request.mask));
+            return request_context.client.write_error(request_context, .match, @backingInt(req.request.mask));
         }
         if (mask.dmabuf_data.width != source.dmabuf_data.width or mask.dmabuf_data.height != source.dmabuf_data.height) {
             std.log.err("CreateCursor: mask {d}x{d} does not match source {d}x{d}", .{ mask.dmabuf_data.width, mask.dmabuf_data.height, source.dmabuf_data.width, source.dmabuf_data.height });
-            return request_context.client.write_error(request_context, .match, @intFromEnum(req.request.mask));
+            return request_context.client.write_error(request_context, .match, @backingInt(req.request.mask));
         }
     }
 
@@ -1578,8 +1564,8 @@ fn free_cursor(request_context: *phx.RequestContext) !void {
     defer req.deinit();
 
     var cursor = request_context.server.get_cursor(req.request.cursor) orelse {
-        std.log.err("FreeCursor: invalid cursor {d}", .{@intFromEnum(req.request.cursor)});
-        return request_context.client.write_error(request_context, .cursor, @intFromEnum(req.request.cursor));
+        std.log.err("FreeCursor: invalid cursor {d}", .{@backingInt(req.request.cursor)});
+        return request_context.client.write_error(request_context, .cursor, @backingInt(req.request.cursor));
     };
 
     cursor.deinit();
@@ -1614,8 +1600,8 @@ fn alloc_color(request_context: *phx.RequestContext) !void {
     defer req.deinit();
 
     const colormap = request_context.server.get_colormap(req.request.cmap) orelse {
-        std.log.err("AllocColor: invalid colormap {d}", .{@intFromEnum(req.request.cmap)});
-        return request_context.client.write_error(request_context, .colormap, @intFromEnum(req.request.cmap));
+        std.log.err("AllocColor: invalid colormap {d}", .{@backingInt(req.request.cmap)});
+        return request_context.client.write_error(request_context, .colormap, @backingInt(req.request.cmap));
     };
 
     // Phoenix's TrueColor visual uses 8 bits per channel with standard RGBA
@@ -1650,17 +1636,17 @@ fn copy_area(request_context: *phx.RequestContext) !void {
 
     const src_drawable = request_context.server.get_drawable(req.request.src_drawable) orelse {
         std.log.err("CopyArea: invalid src drawable {d}", .{req.request.src_drawable});
-        return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.src_drawable));
+        return request_context.client.write_error(request_context, .drawable, @backingInt(req.request.src_drawable));
     };
 
     const dst_drawable = request_context.server.get_drawable(req.request.dst_drawable) orelse {
         std.log.err("CopyArea: invalid dst drawable {d}", .{req.request.dst_drawable});
-        return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.dst_drawable));
+        return request_context.client.write_error(request_context, .drawable, @backingInt(req.request.dst_drawable));
     };
 
     const gc = request_context.server.get_graphics_context(req.request.gc) orelse {
         std.log.err("CopyArea: invalid gc {d}", .{req.request.gc});
-        return request_context.client.write_error(request_context, .g_context, @intFromEnum(req.request.gc));
+        return request_context.client.write_error(request_context, .g_context, @backingInt(req.request.gc));
     };
 
     if (src_drawable.get_depth() != dst_drawable.get_depth()) {
@@ -1701,7 +1687,7 @@ fn copy_area(request_context: *phx.RequestContext) !void {
         var event = phx.event.NoExposureEvent{
             .drawable = req.request.dst_drawable,
             .minor_opcode = 0,
-            .major_opcode = @intFromEnum(phx.opcode.Major.copy_area),
+            .major_opcode = @backingInt(phx.opcode.Major.copy_area),
         };
         request_context.client.write_event_static_size(&event) catch |err| {
             std.log.err("CopyArea: failed to send NoExposure event: {s}", .{@errorName(err)});
@@ -1715,12 +1701,12 @@ fn poly_rectangle(request_context: *phx.RequestContext) !void {
 
     const drawable = request_context.server.get_drawable(req.request.drawable) orelse {
         std.log.err("PolyRectangle: invalid drawable {d}", .{req.request.drawable});
-        return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.drawable));
+        return request_context.client.write_error(request_context, .drawable, @backingInt(req.request.drawable));
     };
 
     const gc = request_context.server.get_graphics_context(req.request.gc) orelse {
         std.log.err("PolyRectangle: invalid gc {d}", .{req.request.gc});
-        return request_context.client.write_error(request_context, .g_context, @intFromEnum(req.request.gc));
+        return request_context.client.write_error(request_context, .g_context, @backingInt(req.request.gc));
     };
 
     if (req.request.rectangles.items.len == 0)
@@ -1778,12 +1764,12 @@ fn poly_fill_rectangle(request_context: *phx.RequestContext) !void {
 
     const drawable = request_context.server.get_drawable(req.request.drawable) orelse {
         std.log.err("PolyFillRectangle: invalid drawable {d}", .{req.request.drawable});
-        return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.drawable));
+        return request_context.client.write_error(request_context, .drawable, @backingInt(req.request.drawable));
     };
 
     const gc = request_context.server.get_graphics_context(req.request.gc) orelse {
         std.log.err("PolyFillRectangle: invalid gc {d}", .{req.request.gc});
-        return request_context.client.write_error(request_context, .g_context, @intFromEnum(req.request.gc));
+        return request_context.client.write_error(request_context, .g_context, @backingInt(req.request.gc));
     };
 
     if (req.request.rectangles.items.len == 0)
@@ -1840,7 +1826,7 @@ fn put_image(request_context: *phx.RequestContext) !void {
 
     const drawable = request_context.server.get_drawable(req.request.drawable) orelse {
         std.log.err("PutImage: invalid drawable {d}", .{req.request.drawable});
-        return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.drawable));
+        return request_context.client.write_error(request_context, .drawable, @backingInt(req.request.drawable));
     };
 
     switch (req.request.format) {
@@ -1924,7 +1910,7 @@ fn create_gc(request_context: *phx.RequestContext) !void {
 
     if (request_context.server.get_drawable(req.request.drawable) == null) {
         std.log.err("CreateGC: invalid drawable {d}", .{req.request.drawable});
-        return request_context.client.write_error(request_context, .drawable, @intFromEnum(req.request.drawable));
+        return request_context.client.write_error(request_context, .drawable, @backingInt(req.request.drawable));
     }
 
     var gc = phx.GraphicsContext{
@@ -1943,7 +1929,7 @@ fn change_gc(request_context: *phx.RequestContext) !void {
 
     const gc = request_context.server.get_graphics_context(req.request.gc) orelse {
         std.log.err("ChangeGC: invalid gc {d}", .{req.request.gc});
-        return request_context.client.write_error(request_context, .g_context, @intFromEnum(req.request.gc));
+        return request_context.client.write_error(request_context, .g_context, @backingInt(req.request.gc));
     };
 
     apply_gc_value_list_change(gc, &req.request, request_context.server.allocator);
@@ -1955,7 +1941,7 @@ fn free_gc(request_context: *phx.RequestContext) !void {
 
     if (request_context.server.get_graphics_context(req.request.gc) == null) {
         std.log.err("FreeGC: invalid gc {d}", .{req.request.gc});
-        return request_context.client.write_error(request_context, .g_context, @intFromEnum(req.request.gc));
+        return request_context.client.write_error(request_context, .g_context, @backingInt(req.request.gc));
     }
 
     request_context.server.remove_resource(req.request.gc.to_id());
@@ -1967,7 +1953,7 @@ fn set_clip_rectangles(request_context: *phx.RequestContext) !void {
 
     const gc = request_context.server.get_graphics_context(req.request.gc) orelse {
         std.log.err("SetClipRectangles: invalid gc {d}", .{req.request.gc});
-        return request_context.client.write_error(request_context, .g_context, @intFromEnum(req.request.gc));
+        return request_context.client.write_error(request_context, .g_context, @backingInt(req.request.gc));
     };
 
     const allocator = request_context.server.allocator;
@@ -2013,7 +1999,7 @@ fn create_colormap(request_context: *phx.RequestContext) !void {
     // so we only verify if the window is valid.
     _ = request_context.server.get_window(req.request.window) orelse {
         std.log.err("Received invalid window {d} in CreateColormap request", .{req.request.window});
-        return request_context.client.write_error(request_context, .window, @intFromEnum(req.request.window));
+        return request_context.client.write_error(request_context, .window, @backingInt(req.request.window));
     };
 
     const visual = request_context.server.get_visual_by_id(req.request.visual_id) orelse {
@@ -2116,42 +2102,42 @@ fn get_modifier_mapping(request_context: *phx.RequestContext) !void {
         // Shift
         request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Shift_L),
         request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Shift_R),
-        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @fromBackingInt(phx.KeySyms.XKB_KEY_NoSymbol),
 
         // Lock
         request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Caps_Lock),
-        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
-        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @fromBackingInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @fromBackingInt(phx.KeySyms.XKB_KEY_NoSymbol),
 
         // Control
         request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Control_L),
         request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Control_R),
-        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @fromBackingInt(phx.KeySyms.XKB_KEY_NoSymbol),
 
         // Mod1
         request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Alt_L),
         request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Alt_R),
-        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @fromBackingInt(phx.KeySyms.XKB_KEY_NoSymbol),
 
         // Mod2
         request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Num_Lock),
-        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
-        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @fromBackingInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @fromBackingInt(phx.KeySyms.XKB_KEY_NoSymbol),
 
         // Mod3, unassigned
-        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
-        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
-        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @fromBackingInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @fromBackingInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @fromBackingInt(phx.KeySyms.XKB_KEY_NoSymbol),
 
         // Mod4
         request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Meta_L),
         request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_Meta_R),
-        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @fromBackingInt(phx.KeySyms.XKB_KEY_NoSymbol),
 
         // Mod5
         request_context.server.input.x11_modifier_keysym_to_x11_keycode(phx.KeySyms.XKB_KEY_ISO_Level3_Shift),
-        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
-        @enumFromInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @fromBackingInt(phx.KeySyms.XKB_KEY_NoSymbol),
+        @fromBackingInt(phx.KeySyms.XKB_KEY_NoSymbol),
     };
 
     var rep = Reply.GetModifierMapping{
@@ -2343,10 +2329,10 @@ pub const ConfigureWindowValueMask = packed struct(x11.Card16) {
 };
 
 const none: x11.Card32 = 0;
-const any_property_type: x11.AtomId = @enumFromInt(0);
+const any_property_type: x11.AtomId = @fromBackingInt(0);
 const parent_relative: x11.Card32 = 1;
-const window_none: x11.WindowId = @enumFromInt(0);
-const window_pointer_root: x11.WindowId = @enumFromInt(1);
+const window_none: x11.WindowId = @fromBackingInt(0);
+const window_pointer_root: x11.WindowId = @fromBackingInt(1);
 const copy_from_parent: x11.Card32 = 0;
 
 pub const BitGravity = enum(x11.Card8) {
@@ -2495,67 +2481,67 @@ const Extension = struct {
 const supported_extensions = [_]Extension{
     .{
         .name = "DRI3",
-        .major_opcode = @intFromEnum(phx.opcode.Major.dri3),
+        .major_opcode = @backingInt(phx.opcode.Major.dri3),
         .first_event = phx.event.dri3_first_event,
         .first_error = 0,
     },
     .{
         .name = "XFIXES",
-        .major_opcode = @intFromEnum(phx.opcode.Major.xfixes),
+        .major_opcode = @backingInt(phx.opcode.Major.xfixes),
         .first_event = phx.event.xfixes_first_event,
         .first_error = 0,
     },
     .{
         .name = "Present",
-        .major_opcode = @intFromEnum(phx.opcode.Major.present),
+        .major_opcode = @backingInt(phx.opcode.Major.present),
         .first_event = phx.event.present_first_event,
         .first_error = 0,
     },
     .{
         .name = "SYNC",
-        .major_opcode = @intFromEnum(phx.opcode.Major.sync),
+        .major_opcode = @backingInt(phx.opcode.Major.sync),
         .first_event = phx.event.sync_first_event,
         .first_error = phx.err.sync_first_error,
     },
     .{
         .name = "GLX",
-        .major_opcode = @intFromEnum(phx.opcode.Major.glx),
+        .major_opcode = @backingInt(phx.opcode.Major.glx),
         .first_event = phx.event.glx_first_event,
         .first_error = phx.err.glx_first_error,
     },
     // .{
     //     .name = "XKEYBOARD",
-    //     .major_opcode = @intFromEnum(phx.opcode.Major.xkb),
+    //     .major_opcode = @backingInt(phx.opcode.Major.xkb),
     //     .first_event = 0,
     //     .first_error = 0,
     // },
     .{
         .name = "RENDER",
-        .major_opcode = @intFromEnum(phx.opcode.Major.render),
+        .major_opcode = @backingInt(phx.opcode.Major.render),
         .first_event = 0,
         .first_error = phx.err.render_first_error,
     },
     .{
         .name = "RANDR",
-        .major_opcode = @intFromEnum(phx.opcode.Major.randr),
+        .major_opcode = @backingInt(phx.opcode.Major.randr),
         .first_event = phx.event.randr_first_event,
         .first_error = phx.err.randr_first_error,
     },
     .{
         .name = "Generic Event Extension",
-        .major_opcode = @intFromEnum(phx.opcode.Major.generic_event_extension),
+        .major_opcode = @backingInt(phx.opcode.Major.generic_event_extension),
         .first_event = 0,
         .first_error = 0,
     },
     .{
         .name = "XWAYLAND",
-        .major_opcode = @intFromEnum(phx.opcode.Major.xwayland),
+        .major_opcode = @backingInt(phx.opcode.Major.xwayland),
         .first_event = 0,
         .first_error = 0,
     },
     .{
         .name = "MIT-SHM",
-        .major_opcode = @intFromEnum(phx.opcode.Major.mit_shm),
+        .major_opcode = @backingInt(phx.opcode.Major.mit_shm),
         .first_event = phx.event.mit_shm_first_event,
         .first_error = phx.err.mit_shm_first_error,
     },
@@ -2564,13 +2550,7 @@ const supported_extensions = [_]Extension{
 // There has to be a better way to do this. Just let me cast integer types directly zig goddamnit!
 fn downcast_integer(comptime T: type, value: anytype) T {
     comptime std.debug.assert(@bitSizeOf(T) % 8 == 0);
-    const UnsignedType = @Type(.{
-        .int = .{
-            .signedness = .unsigned,
-            .bits = @bitSizeOf(T),
-        },
-    });
-    return @bitCast(@as(UnsignedType, @truncate(value)));
+    return @bitCast(@as(@Int(.unsigned, @bitSizeOf(T)), @truncate(value)));
 }
 
 pub const Request = struct {
@@ -3292,7 +3272,7 @@ pub const Reply = struct {
         format: x11.Card8 = 0,
         sequence_number: x11.Card16,
         length: x11.Card32 = 0, // This is automatically updated with the size of the reply
-        type: x11.AtomId = @enumFromInt(none),
+        type: x11.AtomId = @fromBackingInt(none),
         bytes_after: x11.Card32 = 0,
         data_length: x11.Card32 = 0,
         pad1: [12]x11.Card8 = @splat(0),

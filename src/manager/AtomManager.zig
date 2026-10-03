@@ -15,11 +15,12 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     var self = Self{ .allocator = allocator };
     errdefer self.deinit();
 
-    inline for (@typeInfo(x11.AtomId).@"enum".fields) |*field| {
-        const atom_name = try allocator.dupe(u8, field.name);
+    const enum_info = @typeInfo(x11.AtomId).@"enum";
+    inline for (enum_info.field_names, enum_info.field_values) |field_name, field_value| {
+        const atom_name = try allocator.dupe(u8, field_name);
         errdefer allocator.free(atom_name);
         try self.atoms.append(self.allocator, atom_name);
-        std.debug.assert(self.atoms.items.len == field.value);
+        std.debug.assert(self.atoms.items.len == field_value);
     }
 
     return self;
@@ -33,19 +34,19 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn get_atom_by_id(self: *Self, atom_id: x11.AtomId) ?phx.Atom {
-    const atom_id_num = @intFromEnum(atom_id);
+    const atom_id_num = @backingInt(atom_id);
     return if (atom_id_num > 0 and atom_id_num - 1 < self.atoms.items.len) .{ .id = atom_id } else null;
 }
 
 pub fn get_atom_name_by_id(self: *Self, atom_id: x11.AtomId) ?[]const u8 {
-    const atom_id_num = @intFromEnum(atom_id);
+    const atom_id_num = @backingInt(atom_id);
     return if (atom_id_num > 0 and atom_id_num - 1 < self.atoms.items.len) self.atoms.items[atom_id_num - 1] else null;
 }
 
 pub fn get_atom_by_name(self: *Self, name: []const u8) ?phx.Atom {
     for (self.atoms.items, 1..) |atom_name, atom_id| {
         if (std.mem.eql(u8, name, atom_name))
-            return .{ .id = @enumFromInt(atom_id) };
+            return .{ .id = @fromBackingInt(@intCast(atom_id)) };
     }
     return null;
 }
@@ -64,14 +65,14 @@ pub fn get_atom_by_name_create_if_not_exists(self: *Self, name: []const u8) !phx
     errdefer self.allocator.free(atom_name);
 
     try self.atoms.append(self.allocator, atom_name);
-    return .{ .id = @enumFromInt(self.atoms.items.len) };
+    return .{ .id = @fromBackingInt(@intCast(self.atoms.items.len)) };
 }
 
 test "get atom" {
     var atom_manager = try Self.init(std.testing.allocator);
     defer atom_manager.deinit();
 
-    try std.testing.expect(atom_manager.get_atom_name_by_id(@enumFromInt(0)) == null);
+    try std.testing.expect(atom_manager.get_atom_name_by_id(@fromBackingInt(0)) == null);
     try std.testing.expectEqualSlices(u8, "PRIMARY", atom_manager.get_atom_name_by_id(.PRIMARY).?);
     try std.testing.expectEqualSlices(u8, "WM_TRANSIENT_FOR", atom_manager.get_atom_name_by_id(.WM_TRANSIENT_FOR).?);
     try std.testing.expectEqual(.BITMAP, atom_manager.get_atom_by_name("BITMAP").?.id);

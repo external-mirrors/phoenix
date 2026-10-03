@@ -6,11 +6,9 @@ pub fn handle_request(request_context: *phx.RequestContext) !void {
     std.log.info("Handling render request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
 
     // TODO: Remove
-    const minor_opcode = std.meta.intToEnum(MinorOpcode, request_context.header.minor_opcode) catch |err| switch (err) {
-        error.InvalidEnumTag => {
-            std.log.err("Unimplemented render request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
-            return request_context.client.write_error(request_context, .implementation, 0);
-        },
+    const minor_opcode = std.enums.fromInt(MinorOpcode, request_context.header.minor_opcode) orelse {
+        std.log.err("Unimplemented render request: {d}:{d}", .{ request_context.header.major_opcode, request_context.header.minor_opcode });
+        return request_context.client.write_error(request_context, .implementation, 0);
     };
 
     return switch (minor_opcode) {
@@ -78,7 +76,7 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
                 .alpha_shift = 0,
                 .alpha_mask = 0x0001,
             },
-            .colormap = @enumFromInt(0),
+            .colormap = @fromBackingInt(0),
         },
         .{
             .id = .a8,
@@ -94,7 +92,7 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
                 .alpha_shift = 0,
                 .alpha_mask = 0x00ff,
             },
-            .colormap = @enumFromInt(0),
+            .colormap = @fromBackingInt(0),
         },
         .{
             .id = .rgb15,
@@ -110,7 +108,7 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
                 .alpha_shift = 0,
                 .alpha_mask = 0x0000,
             },
-            .colormap = @enumFromInt(0),
+            .colormap = @fromBackingInt(0),
         },
         .{
             .id = .rgb16,
@@ -126,7 +124,7 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
                 .alpha_shift = 0,
                 .alpha_mask = 0x0000,
             },
-            .colormap = @enumFromInt(0),
+            .colormap = @fromBackingInt(0),
         },
         .{
             .id = .rgb24,
@@ -142,7 +140,7 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
                 .alpha_shift = 0,
                 .alpha_mask = 0x0000,
             },
-            .colormap = @enumFromInt(0),
+            .colormap = @fromBackingInt(0),
         },
         .{
             .id = .argb32,
@@ -158,7 +156,7 @@ fn query_pict_formats(request_context: *phx.RequestContext) !void {
                 .alpha_shift = 24,
                 .alpha_mask = 0x00ff,
             },
-            .colormap = @enumFromInt(0),
+            .colormap = @fromBackingInt(0),
         },
     };
 
@@ -238,8 +236,8 @@ fn create_picture(request_context: *phx.RequestContext) !void {
     };
 
     const format_depth = get_pict_format_depth(req.request.format) orelse {
-        std.log.err("RenderCreatePicture: invalid pict format {d}", .{@intFromEnum(req.request.format)});
-        return request_context.client.write_error(request_context, .render_pict_format, @intFromEnum(req.request.format));
+        std.log.err("RenderCreatePicture: invalid pict format {d}", .{@backingInt(req.request.format)});
+        return request_context.client.write_error(request_context, .render_pict_format, @backingInt(req.request.format));
     };
 
     if (format_depth != drawable.get_depth()) {
@@ -270,8 +268,8 @@ fn change_picture(request_context: *phx.RequestContext) !void {
     defer req.deinit();
 
     const picture = request_context.server.get_picture(req.request.picture) orelse {
-        std.log.err("RenderChangePicture: invalid picture {d}", .{@intFromEnum(req.request.picture)});
-        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.picture));
+        std.log.err("RenderChangePicture: invalid picture {d}", .{@backingInt(req.request.picture)});
+        return request_context.client.write_error(request_context, .render_picture, @backingInt(req.request.picture));
     };
 
     _ = try apply_picture_values(request_context, picture, &req.request, "RenderChangePicture");
@@ -284,16 +282,14 @@ fn apply_picture_values(
     comptime op_name: []const u8,
 ) !bool {
     if (request.get_value(x11.Card8, "repeat")) |v| {
-        picture.repeat = std.meta.intToEnum(Repeat, v) catch |err| switch (err) {
-            error.InvalidEnumTag => {
-                try request_context.client.write_error(request_context, .value, v);
-                return false;
-            },
+        picture.repeat = std.enums.fromInt(Repeat, v) orelse {
+            try request_context.client.write_error(request_context, .value, v);
+            return false;
         };
     }
 
     if (request.get_value(x11.Card32, "alpha_map")) |v| {
-        const alpha_map_id: PictureId = @enumFromInt(v);
+        const alpha_map_id: PictureId = @fromBackingInt(v);
         if (alpha_map_id != .none and request_context.server.get_picture(alpha_map_id) == null) {
             std.log.err("{s}: invalid alpha_map picture {d}", .{ op_name, v });
             try request_context.client.write_error(request_context, .render_picture, v);
@@ -308,7 +304,7 @@ fn apply_picture_values(
     if (request.get_value(i16, "clip_y_origin")) |v| picture.clip_y_origin = v;
 
     if (request.get_value(x11.Card32, "clip_mask")) |v| {
-        const clip_mask_id: x11.PixmapId = @enumFromInt(v);
+        const clip_mask_id: x11.PixmapId = @fromBackingInt(v);
         if (clip_mask_id != .none) {
             const clip_pixmap = request_context.server.get_pixmap(clip_mask_id) orelse {
                 std.log.err("{s}: invalid clip_mask pixmap {d}", .{ op_name, v });
@@ -328,33 +324,27 @@ fn apply_picture_values(
     if (request.get_value(bool, "graphics_exposure")) |v| picture.graphics_exposure = v;
 
     if (request.get_value(x11.Card8, "subwindow_mode")) |v| {
-        picture.subwindow_mode = std.meta.intToEnum(SubwindowMode, v) catch |err| switch (err) {
-            error.InvalidEnumTag => {
-                try request_context.client.write_error(request_context, .value, v);
-                return false;
-            },
+        picture.subwindow_mode = std.enums.fromInt(SubwindowMode, v) orelse {
+            try request_context.client.write_error(request_context, .value, v);
+            return false;
         };
     }
 
     if (request.get_value(x11.Card8, "poly_edge")) |v| {
-        picture.poly_edge = std.meta.intToEnum(PolyEdge, v) catch |err| switch (err) {
-            error.InvalidEnumTag => {
-                try request_context.client.write_error(request_context, .value, v);
-                return false;
-            },
+        picture.poly_edge = std.enums.fromInt(PolyEdge, v) orelse {
+            try request_context.client.write_error(request_context, .value, v);
+            return false;
         };
     }
 
     if (request.get_value(x11.Card8, "poly_mode")) |v| {
-        picture.poly_mode = std.meta.intToEnum(PolyMode, v) catch |err| switch (err) {
-            error.InvalidEnumTag => {
-                try request_context.client.write_error(request_context, .value, v);
-                return false;
-            },
+        picture.poly_mode = std.enums.fromInt(PolyMode, v) orelse {
+            try request_context.client.write_error(request_context, .value, v);
+            return false;
         };
     }
 
-    if (request.get_value(x11.Card32, "dither")) |v| picture.dither = @enumFromInt(v);
+    if (request.get_value(x11.Card32, "dither")) |v| picture.dither = @fromBackingInt(v);
     if (request.get_value(bool, "component_alpha")) |v| picture.component_alpha = v;
 
     return true;
@@ -365,8 +355,8 @@ fn free_picture(request_context: *phx.RequestContext) !void {
     defer req.deinit();
 
     const picture = request_context.server.get_picture(req.request.picture) orelse {
-        std.log.err("RenderFreePicture: invalid picture {d}", .{@intFromEnum(req.request.picture)});
-        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.picture));
+        std.log.err("RenderFreePicture: invalid picture {d}", .{@backingInt(req.request.picture)});
+        return request_context.client.write_error(request_context, .render_picture, @backingInt(req.request.picture));
     };
 
     picture.deinit();
@@ -377,34 +367,34 @@ fn composite(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.Composite, request_context.allocator);
     defer req.deinit();
 
-    const op_int: x11.Card8 = @intFromEnum(req.request.op);
+    const op_int: x11.Card8 = @backingInt(req.request.op);
     if (op_int < pict_op_minimum or op_int > pict_op_maximum) {
         std.log.err("RenderComposite: invalid pict op {d}", .{op_int});
         return request_context.client.write_error(request_context, .render_pict_op, op_int);
     }
 
     const src = request_context.server.get_picture(req.request.src) orelse {
-        std.log.err("RenderComposite: invalid src picture {d}", .{@intFromEnum(req.request.src)});
-        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.src));
+        std.log.err("RenderComposite: invalid src picture {d}", .{@backingInt(req.request.src)});
+        return request_context.client.write_error(request_context, .render_picture, @backingInt(req.request.src));
     };
 
     const dst = request_context.server.get_picture(req.request.dst) orelse {
-        std.log.err("RenderComposite: invalid dst picture {d}", .{@intFromEnum(req.request.dst)});
-        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.dst));
+        std.log.err("RenderComposite: invalid dst picture {d}", .{@backingInt(req.request.dst)});
+        return request_context.client.write_error(request_context, .render_picture, @backingInt(req.request.dst));
     };
 
     var mask: ?*phx.Picture = null;
     if (req.request.mask != .none) {
         mask = request_context.server.get_picture(req.request.mask) orelse {
-            std.log.err("RenderComposite: invalid mask picture {d}", .{@intFromEnum(req.request.mask)});
-            return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.mask));
+            std.log.err("RenderComposite: invalid mask picture {d}", .{@backingInt(req.request.mask)});
+            return request_context.client.write_error(request_context, .render_picture, @backingInt(req.request.mask));
         };
     }
 
     // Solid-fill pictures cannot be Composite destinations - they have no
     // backing storage to write into.
     const dst_drawable = dst.drawable orelse {
-        std.log.err("RenderComposite: dst picture {d} has no drawable (solid fill?)", .{@intFromEnum(req.request.dst)});
+        std.log.err("RenderComposite: dst picture {d} has no drawable (solid fill?)", .{@backingInt(req.request.dst)});
         return request_context.client.write_error(request_context, .match, 0);
     };
 
@@ -514,19 +504,19 @@ fn fill_rectangles(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.FillRectangles, request_context.allocator);
     defer req.deinit();
 
-    const op_int: x11.Card8 = @intFromEnum(req.request.op);
+    const op_int: x11.Card8 = @backingInt(req.request.op);
     if (op_int < pict_op_minimum or op_int > pict_op_maximum) {
         std.log.err("RenderFillRectangles: invalid pict op {d}", .{op_int});
         return request_context.client.write_error(request_context, .render_pict_op, op_int);
     }
 
     const picture = request_context.server.get_picture(req.request.dst) orelse {
-        std.log.err("RenderFillRectangles: invalid dst picture {d}", .{@intFromEnum(req.request.dst)});
-        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.dst));
+        std.log.err("RenderFillRectangles: invalid dst picture {d}", .{@backingInt(req.request.dst)});
+        return request_context.client.write_error(request_context, .render_picture, @backingInt(req.request.dst));
     };
 
     const dst_drawable = picture.drawable orelse {
-        std.log.err("RenderFillRectangles: dst picture {d} has no drawable (solid fill?)", .{@intFromEnum(req.request.dst)});
+        std.log.err("RenderFillRectangles: dst picture {d} has no drawable (solid fill?)", .{@backingInt(req.request.dst)});
         return request_context.client.write_error(request_context, .match, 0);
     };
 
@@ -548,29 +538,29 @@ fn trapezoids(request_context: *phx.RequestContext) !void {
     var req = try request_context.client.read_request(Request.Trapezoids, request_context.allocator);
     defer req.deinit();
 
-    const op_int: x11.Card8 = @intFromEnum(req.request.op);
+    const op_int: x11.Card8 = @backingInt(req.request.op);
     if (op_int < pict_op_minimum or op_int > pict_op_maximum) {
         std.log.err("RenderTrapezoids: invalid pict op {d}", .{op_int});
         return request_context.client.write_error(request_context, .render_pict_op, op_int);
     }
 
     const src = request_context.server.get_picture(req.request.src) orelse {
-        std.log.err("RenderTrapezoids: invalid src picture {d}", .{@intFromEnum(req.request.src)});
-        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.src));
+        std.log.err("RenderTrapezoids: invalid src picture {d}", .{@backingInt(req.request.src)});
+        return request_context.client.write_error(request_context, .render_picture, @backingInt(req.request.src));
     };
 
     const dst = request_context.server.get_picture(req.request.dst) orelse {
-        std.log.err("RenderTrapezoids: invalid dst picture {d}", .{@intFromEnum(req.request.dst)});
-        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.dst));
+        std.log.err("RenderTrapezoids: invalid dst picture {d}", .{@backingInt(req.request.dst)});
+        return request_context.client.write_error(request_context, .render_picture, @backingInt(req.request.dst));
     };
 
     if (req.request.mask_format != .none and get_pict_format_depth(req.request.mask_format) == null) {
-        std.log.err("RenderTrapezoids: invalid mask format {d}", .{@intFromEnum(req.request.mask_format)});
-        return request_context.client.write_error(request_context, .render_pict_format, @intFromEnum(req.request.mask_format));
+        std.log.err("RenderTrapezoids: invalid mask format {d}", .{@backingInt(req.request.mask_format)});
+        return request_context.client.write_error(request_context, .render_pict_format, @backingInt(req.request.mask_format));
     }
 
     const dst_drawable = dst.drawable orelse {
-        std.log.err("RenderTrapezoids: dst picture {d} has no drawable (solid fill?)", .{@intFromEnum(req.request.dst)});
+        std.log.err("RenderTrapezoids: dst picture {d} has no drawable (solid fill?)", .{@backingInt(req.request.dst)});
         return request_context.client.write_error(request_context, .match, 0);
     };
 
@@ -667,8 +657,8 @@ fn create_cursor(request_context: *phx.RequestContext) !void {
     defer req.deinit();
 
     const source = request_context.server.get_picture(req.request.source) orelse {
-        std.log.err("RenderCreateCursor: invalid source picture {d}", .{@intFromEnum(req.request.source)});
-        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.source));
+        std.log.err("RenderCreateCursor: invalid source picture {d}", .{@backingInt(req.request.source)});
+        return request_context.client.write_error(request_context, .render_picture, @backingInt(req.request.source));
     };
 
     const cursor = phx.Cursor{
@@ -692,8 +682,8 @@ fn create_anim_cursor(request_context: *phx.RequestContext) !void {
 
     for (req.request.frames.items) |frame| {
         if (request_context.server.get_cursor(frame.cursor) == null) {
-            std.log.err("RenderCreateAnimCursor: invalid cursor {d} in frames", .{@intFromEnum(frame.cursor)});
-            return request_context.client.write_error(request_context, .cursor, @intFromEnum(frame.cursor));
+            std.log.err("RenderCreateAnimCursor: invalid cursor {d} in frames", .{@backingInt(frame.cursor)});
+            return request_context.client.write_error(request_context, .cursor, @backingInt(frame.cursor));
         }
     }
 
@@ -851,38 +841,38 @@ fn composite_glyphs(request_context: *phx.RequestContext, comptime IndexT: type)
     var req = try request_context.client.read_request(RequestT, request_context.allocator);
     defer req.deinit();
 
-    const op_int: x11.Card8 = @intFromEnum(req.request.op);
+    const op_int: x11.Card8 = @backingInt(req.request.op);
     if (op_int < pict_op_minimum or op_int > pict_op_maximum) {
         std.log.err("{s}: invalid pict op {d}", .{ op_name, op_int });
         return request_context.client.write_error(request_context, .render_pict_op, op_int);
     }
 
     const src = request_context.server.get_picture(req.request.src) orelse {
-        std.log.err("{s}: invalid src picture {d}", .{ op_name, @intFromEnum(req.request.src) });
-        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.src));
+        std.log.err("{s}: invalid src picture {d}", .{ op_name, @backingInt(req.request.src) });
+        return request_context.client.write_error(request_context, .render_picture, @backingInt(req.request.src));
     };
 
     const dst = request_context.server.get_picture(req.request.dst) orelse {
-        std.log.err("{s}: invalid dst picture {d}", .{ op_name, @intFromEnum(req.request.dst) });
-        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.dst));
+        std.log.err("{s}: invalid dst picture {d}", .{ op_name, @backingInt(req.request.dst) });
+        return request_context.client.write_error(request_context, .render_picture, @backingInt(req.request.dst));
     };
 
     const dst_drawable = dst.drawable orelse {
-        std.log.err("{s}: dst picture {d} has no drawable", .{ op_name, @intFromEnum(req.request.dst) });
+        std.log.err("{s}: dst picture {d} has no drawable", .{ op_name, @backingInt(req.request.dst) });
         return request_context.client.write_error(request_context, .match, 0);
     };
 
     if (req.request.mask_format != .none and get_pict_format_depth(req.request.mask_format) == null) {
-        std.log.err("{s}: invalid mask format {d}", .{ op_name, @intFromEnum(req.request.mask_format) });
-        return request_context.client.write_error(request_context, .render_pict_format, @intFromEnum(req.request.mask_format));
+        std.log.err("{s}: invalid mask format {d}", .{ op_name, @backingInt(req.request.mask_format) });
+        return request_context.client.write_error(request_context, .render_pict_format, @backingInt(req.request.mask_format));
     }
 
     var current_glyph_set = request_context.server.get_glyph_set(req.request.glyphset) orelse {
-        std.log.err("{s}: invalid glyph set {d}", .{ op_name, @intFromEnum(req.request.glyphset) });
-        return request_context.client.write_error(request_context, .render_glyph_set, @intFromEnum(req.request.glyphset));
+        std.log.err("{s}: invalid glyph set {d}", .{ op_name, @backingInt(req.request.glyphset) });
+        return request_context.client.write_error(request_context, .render_glyph_set, @backingInt(req.request.glyphset));
     };
 
-    var commands = std.ArrayListUnmanaged(phx.Graphics.GlyphCommand){};
+    var commands: std.ArrayListUnmanaged(phx.Graphics.GlyphCommand) = .empty;
     defer commands.deinit(request_context.allocator);
 
     const cmds = req.request.glyphcmds.items;
@@ -900,7 +890,7 @@ fn composite_glyphs(request_context: *phx.RequestContext, comptime IndexT: type)
                 commands.clearRetainingCapacity();
             }
             const new_set_int = std.mem.readInt(u32, cmds[pos + 4 ..][0..4], x11.native_endian);
-            const new_set_id: GlyphSetId = @enumFromInt(new_set_int);
+            const new_set_id: GlyphSetId = @fromBackingInt(new_set_int);
             current_glyph_set = request_context.server.get_glyph_set(new_set_id) orelse {
                 std.log.err("{s}: invalid glyph set in switch element {d}", .{ op_name, new_set_int });
                 return request_context.client.write_error(request_context, .render_glyph_set, new_set_int);
@@ -929,7 +919,7 @@ fn composite_glyphs(request_context: *phx.RequestContext, comptime IndexT: type)
             const id_bytes = cmds[pos + i * index_size ..][0..index_size];
             const glyph_id: u32 = std.mem.readInt(IndexT, id_bytes, x11.native_endian);
             const glyph = current_glyph_set.glyphs.get(glyph_id) orelse {
-                std.log.err("{s}: missing glyph id {d} in glyph set {d}", .{ op_name, glyph_id, @intFromEnum(current_glyph_set.id) });
+                std.log.err("{s}: missing glyph id {d} in glyph set {d}", .{ op_name, glyph_id, @backingInt(current_glyph_set.id) });
                 return request_context.client.write_error(request_context, .render_glyph, glyph_id);
             };
 
@@ -999,8 +989,8 @@ fn add_glyphs(request_context: *phx.RequestContext) !void {
     defer req.deinit();
 
     const glyph_set = request_context.server.get_glyph_set(req.request.glyphset) orelse {
-        std.log.err("RenderAddGlyphs: invalid glyph set {d}", .{@intFromEnum(req.request.glyphset)});
-        return request_context.client.write_error(request_context, .render_glyph_set, @intFromEnum(req.request.glyphset));
+        std.log.err("RenderAddGlyphs: invalid glyph set {d}", .{@backingInt(req.request.glyphset)});
+        return request_context.client.write_error(request_context, .render_glyph_set, @backingInt(req.request.glyphset));
     };
 
     if (req.request.glyphids.items.len != req.request.num_glyphs or req.request.glyphs.items.len != req.request.num_glyphs) {
@@ -1013,8 +1003,8 @@ fn add_glyphs(request_context: *phx.RequestContext) !void {
     }
 
     const depth = get_pict_format_depth(glyph_set.format) orelse {
-        std.log.err("RenderAddGlyphs: glyph set has unknown format {d}", .{@intFromEnum(glyph_set.format)});
-        return request_context.client.write_error(request_context, .render_glyph_set, @intFromEnum(req.request.glyphset));
+        std.log.err("RenderAddGlyphs: glyph set has unknown format {d}", .{@backingInt(glyph_set.format)});
+        return request_context.client.write_error(request_context, .render_glyph_set, @backingInt(req.request.glyphset));
     };
     const bpp = render_depth_to_bpp(depth);
 
@@ -1082,8 +1072,8 @@ fn free_glyph_set(request_context: *phx.RequestContext) !void {
     defer req.deinit();
 
     const glyph_set = request_context.server.get_glyph_set(req.request.glyphset) orelse {
-        std.log.err("RenderFreeGlyphSet: invalid glyph set {d}", .{@intFromEnum(req.request.glyphset)});
-        return request_context.client.write_error(request_context, .render_glyph_set, @intFromEnum(req.request.glyphset));
+        std.log.err("RenderFreeGlyphSet: invalid glyph set {d}", .{@backingInt(req.request.glyphset)});
+        return request_context.client.write_error(request_context, .render_glyph_set, @backingInt(req.request.glyphset));
     };
 
     glyph_set.deinit();
@@ -1095,8 +1085,8 @@ fn free_glyphs(request_context: *phx.RequestContext) !void {
     defer req.deinit();
 
     const glyph_set = request_context.server.get_glyph_set(req.request.glyphset) orelse {
-        std.log.err("RenderFreeGlyphs: invalid glyph set {d}", .{@intFromEnum(req.request.glyphset)});
-        return request_context.client.write_error(request_context, .render_glyph_set, @intFromEnum(req.request.glyphset));
+        std.log.err("RenderFreeGlyphs: invalid glyph set {d}", .{@backingInt(req.request.glyphset)});
+        return request_context.client.write_error(request_context, .render_glyph_set, @backingInt(req.request.glyphset));
     };
 
     var removed_any = false;
@@ -1115,8 +1105,8 @@ fn create_glyph_set(request_context: *phx.RequestContext) !void {
     defer req.deinit();
 
     if (get_pict_format_depth(req.request.format) == null) {
-        std.log.err("RenderCreateGlyphSet: invalid pict format {d}", .{@intFromEnum(req.request.format)});
-        return request_context.client.write_error(request_context, .render_pict_format, @intFromEnum(req.request.format));
+        std.log.err("RenderCreateGlyphSet: invalid pict format {d}", .{@backingInt(req.request.format)});
+        return request_context.client.write_error(request_context, .render_pict_format, @backingInt(req.request.format));
     }
 
     const glyph_set = phx.GlyphSet{
@@ -1150,8 +1140,8 @@ fn set_picture_clip_rectangles(request_context: *phx.RequestContext) !void {
     defer req.deinit();
 
     const picture = request_context.server.get_picture(req.request.picture) orelse {
-        std.log.err("RenderSetPictureClipRectangles: invalid picture {d}", .{@intFromEnum(req.request.picture)});
-        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.picture));
+        std.log.err("RenderSetPictureClipRectangles: invalid picture {d}", .{@backingInt(req.request.picture)});
+        return request_context.client.write_error(request_context, .render_picture, @backingInt(req.request.picture));
     };
 
     picture.clip_x_origin = req.request.clip_x_origin;
@@ -1165,8 +1155,8 @@ fn set_picture_transform(request_context: *phx.RequestContext) !void {
     defer req.deinit();
 
     const picture = request_context.server.get_picture(req.request.picture) orelse {
-        std.log.err("RenderSetPictureTransform: invalid picture {d}", .{@intFromEnum(req.request.picture)});
-        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.picture));
+        std.log.err("RenderSetPictureTransform: invalid picture {d}", .{@backingInt(req.request.picture)});
+        return request_context.client.write_error(request_context, .render_picture, @backingInt(req.request.picture));
     };
 
     picture.transform = req.request.transform;
@@ -1177,8 +1167,8 @@ fn set_picture_filter(request_context: *phx.RequestContext) !void {
     defer req.deinit();
 
     const picture = request_context.server.get_picture(req.request.picture) orelse {
-        std.log.err("RenderSetPictureFilter: invalid picture {d}", .{@intFromEnum(req.request.picture)});
-        return request_context.client.write_error(request_context, .render_picture, @intFromEnum(req.request.picture));
+        std.log.err("RenderSetPictureFilter: invalid picture {d}", .{@backingInt(req.request.picture)});
+        return request_context.client.write_error(request_context, .render_picture, @backingInt(req.request.picture));
     };
 
     const filter = Filter.from_name(req.request.filter.items) orelse {
@@ -1282,7 +1272,7 @@ pub const PictureId = enum(x11.Card32) {
     _,
 
     pub fn to_id(self: PictureId) x11.ResourceId {
-        return @enumFromInt(@intFromEnum(self));
+        return @fromBackingInt(@backingInt(self));
     }
 };
 
@@ -1291,7 +1281,7 @@ pub const GlyphSetId = enum(x11.Card32) {
     _,
 
     pub fn to_id(self: GlyphSetId) x11.ResourceId {
-        return @enumFromInt(@intFromEnum(self));
+        return @fromBackingInt(@backingInt(self));
     }
 };
 
@@ -1397,11 +1387,11 @@ pub const Fixed = enum(i32) {
     _,
 
     pub fn from_int(value: i32) Fixed {
-        return @enumFromInt(value);
+        return @fromBackingInt(value);
     }
 
     pub fn to_int(self: Fixed) i32 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 };
 
@@ -1572,7 +1562,7 @@ pub const CreatePictureValueMask = packed struct(x11.Card32) {
 fn downcast_integer(comptime T: type, value: x11.Card32) T {
     const target_int_info = @typeInfo(T);
     const UnsignedType = switch (target_int_info) {
-        .int => |int_info| @Type(.{ .int = .{ .signedness = .unsigned, .bits = int_info.bits } }),
+        .int => |int_info| @Int(.unsigned, int_info.bits),
         .bool => u1,
         .@"enum" => |enum_info| enum_info.tag_type,
         else => @compileError("downcast_integer only supports integer, bool and enum types"),

@@ -50,7 +50,7 @@ pub fn add_client(self: *Self, client: phx.Client) !*phx.Client {
     new_client.* = client;
     errdefer self.allocator.destroy(new_client);
 
-    const result = try self.clients_by_fd.getOrPut(client.connection.stream.handle);
+    const result = try self.clients_by_fd.getOrPut(client.socket);
     if (result.found_existing)
         return error.ClientAlreadyAdded;
 
@@ -99,7 +99,7 @@ pub fn get_resource_of_type(
     self: *Self,
     resource_id: x11.ResourceId,
     comptime resource_tag: std.meta.Tag(phx.Resource),
-) ?*std.meta.TagPayload(phx.Resource, resource_tag) {
+) ?*@FieldType(phx.Resource, @tagName(resource_tag)) {
     const resource = self.get_resource(resource_id) orelse return null;
     return if (std.meta.activeTag(resource.*) == resource_tag)
         &@field(resource.*, @tagName(resource_tag))

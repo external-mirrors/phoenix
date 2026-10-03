@@ -50,13 +50,14 @@ dri_card_fd: std.posix.fd_t,
 
 server: *phx.Server,
 allocator: std.mem.Allocator,
+io: std.Io,
 
 pixmap_to_import: std.ArrayListUnmanaged(*phx.Pixmap) = .empty,
 framebuffer: u32,
 stencil_renderbuffer: u32 = 0,
 stencil_renderbuffer_width: u32 = 0,
 stencil_renderbuffer_height: u32 = 0,
-mutex: std.Thread.Mutex,
+mutex: std.Io.Mutex,
 width: u32,
 height: u32,
 
@@ -192,6 +193,7 @@ pub fn init(
     window_id: c.EGLNativeWindowType,
     debug: bool,
     allocator: std.mem.Allocator,
+    io: std.Io,
 ) !Self {
     const context_attr = [_]c.EGLint{
         c.EGL_CONTEXT_MAJOR_VERSION,                           required_egl_major,
@@ -251,13 +253,13 @@ pub fn init(
     }
 
     var dri_card_fd: ?std.posix.fd_t = null;
-    errdefer if (dri_card_fd) |fd| std.posix.close(fd);
+    errdefer if (dri_card_fd) |fd| phx.os.close(fd);
 
     var device: c.EGLAttrib = undefined;
     if (eglQueryDisplayAttribEXT(egl_display, c.EGL_DEVICE_EXT, &device) == c.EGL_TRUE and device > 0) {
         const dev: usize = @intCast(device);
         const dri_card_path = eglQueryDeviceStringEXT(@ptrFromInt(dev), c.EGL_DRM_DEVICE_FILE_EXT) orelse return error.FailedToGetDevicePath;
-        dri_card_fd = try std.posix.openZ(dri_card_path, .{ .ACCMODE = .RDWR, .CLOEXEC = true }, 0);
+        dri_card_fd = try phx.os.open(dri_card_path, .{ .ACCMODE = .RDWR, .CLOEXEC = true }, 0);
     } else {
         return error.FailedToGetDevicePath;
     }
@@ -314,9 +316,10 @@ pub fn init(
 
         .server = server,
         .allocator = allocator,
+        .io = io,
 
         .framebuffer = framebuffer,
-        .mutex = .{},
+        .mutex = .init,
 
         .width = width,
         .height = height,
@@ -370,7 +373,7 @@ pub fn deinit(self: *Self) void {
     self.shm_pixmaps.deinit(self.allocator);
 
     if (self.dri_card_fd > 0) {
-        std.posix.close(self.dri_card_fd);
+        phx.os.close(self.dri_card_fd);
         self.dri_card_fd = 0;
     }
 
@@ -1375,14 +1378,14 @@ pub fn render(self: *Self) void {
         c.glClearColor(0.0, 0.47450, 0.73725, 1.0);
         c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT | c.GL_STENCIL_BUFFER_BIT);
 
-        self.mutex.lock();
+        self.mutex.lockUncancelable(self.io);
         if (self.root_window) |root_window| {
             self.perform_operations();
             self.render_graphics_windows(root_window, @Vector(2, i32){ 0, 0 }, @Vector(2, i32){ @intCast(self.width), @intCast(self.height) });
             c.glBindTexture(c.GL_TEXTURE_2D, 0);
             c.glScissor(0, 0, @intCast(self.width), @intCast(self.height));
         }
-        self.mutex.unlock();
+        self.mutex.unlock(self.io);
 
         _ = c.eglSwapBuffers(self.egl_display, self.egl_surface);
     }
@@ -1423,8 +1426,8 @@ fn pixel_to_color_vec(color: u32) @Vector(4, f32) {
 }
 
 pub fn create_window(self: *Self, window: *const phx.Window) !*phx.Graphics.GraphicsWindow {
-    self.mutex.lock();
-    defer self.mutex.unlock();
+    self.mutex.lockUncancelable(self.io);
+    defer self.mutex.unlock(self.io);
 
     const parent_window = if (window.parent) |parent| parent.graphics_window else null;
 
@@ -1459,8 +1462,8 @@ pub fn create_window(self: *Self, window: *const phx.Window) !*phx.Graphics.Grap
 }
 
 pub fn configure_window(self: *Self, window: *phx.Window, geometry: phx.Geometry) void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
+    self.mutex.lockUncancelable(self.io);
+    defer self.mutex.unlock(self.io);
 
     if (geometry.width != window.graphics_window.width or geometry.height != window.graphics_window.height)
         window.graphics_window.recreate_texture = true;
@@ -1474,8 +1477,8 @@ pub fn configure_window(self: *Self, window: *phx.Window, geometry: phx.Geometry
 }
 
 pub fn destroy_window(self: *Self, window: *phx.Window) void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
+    self.mutex.lockUncancelable(self.io);
+    defer self.mutex.unlock(self.io);
 
     window.graphics_window.delete = true;
     self.dirty.store(true, .release);
@@ -1488,16 +1491,16 @@ pub fn create_pixmap(self: *Self, pixmap: *phx.Pixmap) !void {
             unreachable;
     }
 
-    self.mutex.lock();
-    defer self.mutex.unlock();
+    self.mutex.lockUncancelable(self.io);
+    defer self.mutex.unlock(self.io);
 
     try self.pixmap_to_import.append(self.allocator, pixmap);
     self.dirty.store(true, .release);
 }
 
 pub fn destroy_pixmap(self: *Self, pixmap: *phx.Pixmap) void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
+    self.mutex.lockUncancelable(self.io);
+    defer self.mutex.unlock(self.io);
 
     for (self.pixmap_to_import.items, 0..) |pixmap_to_import, i| {
         if (pixmap_to_import == pixmap) {
@@ -1535,8 +1538,8 @@ pub fn present_pixmap(
     notifies: []const phx.Graphics.PresentNotify,
     notifies_allocator: ?std.mem.Allocator,
 ) !void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
+    self.mutex.lockUncancelable(self.io);
+    defer self.mutex.unlock(self.io);
 
     try self.operations.append(self.allocator, .{ .present_pixmap = .{
         .pixmap = pixmap,
@@ -1554,8 +1557,8 @@ pub fn present_pixmap(
 }
 
 pub fn put_image(self: *Self, op: *const phx.Graphics.PutImageArguments) !void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
+    self.mutex.lockUncancelable(self.io);
+    defer self.mutex.unlock(self.io);
 
     var graphics_drawable = to_graphics_drawable(op.drawable);
 
@@ -1582,8 +1585,8 @@ pub fn put_image(self: *Self, op: *const phx.Graphics.PutImageArguments) !void {
 }
 
 pub fn copy_area(self: *Self, op: *const phx.Graphics.CopyAreaArguments) !void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
+    self.mutex.lockUncancelable(self.io);
+    defer self.mutex.unlock(self.io);
 
     var src_drawable = to_graphics_drawable(op.src_drawable);
     var dst_drawable = to_graphics_drawable(op.dst_drawable);
@@ -1611,8 +1614,8 @@ pub fn copy_area(self: *Self, op: *const phx.Graphics.CopyAreaArguments) !void {
 }
 
 pub fn composite(self: *Self, op: *const phx.Graphics.CompositeArguments) !void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
+    self.mutex.lockUncancelable(self.io);
+    defer self.mutex.unlock(self.io);
 
     var src = phx.Graphics.SrcOp.from_args(op.src, &to_graphics_drawable);
     var mask: ?phx.Graphics.MaskOp = if (op.mask) |m| phx.Graphics.MaskOp.from_args(m, &to_graphics_drawable) else null;
@@ -1684,8 +1687,8 @@ fn to_graphics_drawable(drawable: phx.Drawable) phx.Graphics.GraphicsDrawable {
 }
 
 pub fn fill_rectangles(self: *Self, op: *const phx.Graphics.FillRectanglesArguments) !void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
+    self.mutex.lockUncancelable(self.io);
+    defer self.mutex.unlock(self.io);
 
     var graphics_drawable = to_graphics_drawable(op.drawable);
 
@@ -1710,8 +1713,8 @@ pub fn fill_rectangles(self: *Self, op: *const phx.Graphics.FillRectanglesArgume
 }
 
 pub fn render_trapezoids(self: *Self, op: *const phx.Graphics.TrapezoidsArguments) !void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
+    self.mutex.lockUncancelable(self.io);
+    defer self.mutex.unlock(self.io);
 
     var src = phx.Graphics.SrcOp.from_args(op.src, &to_graphics_drawable);
     var dst_drawable = to_graphics_drawable(op.dst_drawable);
@@ -1937,8 +1940,8 @@ fn perform_trapezoids(self: *Self, op: *phx.Graphics.TrapezoidsOperation) void {
 }
 
 pub fn composite_glyphs(self: *Self, op: *const phx.Graphics.CompositeGlyphsArguments) !void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
+    self.mutex.lockUncancelable(self.io);
+    defer self.mutex.unlock(self.io);
 
     var src = phx.Graphics.SrcOp.from_args(op.src, &to_graphics_drawable);
     var dst_drawable = to_graphics_drawable(op.dst_drawable);
@@ -2003,8 +2006,8 @@ fn ensure_glyph_atlas_texture(self: *Self, op: *const phx.Graphics.CompositeGlyp
 }
 
 pub fn destroy_glyph_set_atlas(self: *Self, glyph_set: *phx.GlyphSet) void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
+    self.mutex.lockUncancelable(self.io);
+    defer self.mutex.unlock(self.io);
 
     if (self.glyph_set_atlases.fetchRemove(glyph_set)) |kv| {
         self.textures_to_delete.append(self.allocator, kv.value.texture_id) catch |err| {
@@ -2222,11 +2225,11 @@ fn create_texture_from_dmabuf(self: *Self, pixmap: *const phx.Pixmap) !u32 {
             }
         }
 
-        var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-        var resolved_path_buf: [std.fs.max_path_bytes]u8 = undefined;
+        var path_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
+        var resolved_path_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
 
         const path = try std.fmt.bufPrint(&path_buf, "/proc/self/fd/{d}", .{pixmap.dmabuf_data.fd[i]});
-        const resolved_path = std.posix.readlink(path, &resolved_path_buf) catch "unknown";
+        const resolved_path = phx.os.readlink(path, &resolved_path_buf) catch "unknown";
         std.log.info("import dmabuf: {d}: {s}", .{ pixmap.dmabuf_data.fd[i], resolved_path });
 
         std.log.info("import fd[{d}]: {d}, depth: {d}, width: {d}, height: {d}, offset: {d}, pitch: {d}, modifier: {any}", .{
@@ -2358,8 +2361,8 @@ fn process_pending_textures_to_delete(self: *Self) void {
 
 fn run_graphics_updates(self: *Self) void {
     // TODO: Instead of locking all of the operations, copy the data (dmabufs to import) and unlock immediately?
-    self.mutex.lock();
-    defer self.mutex.unlock();
+    self.mutex.lockUncancelable(self.io);
+    defer self.mutex.unlock(self.io);
 
     self.create_textures_from_dmabufs();
     self.process_pending_textures_to_delete();

@@ -16,23 +16,24 @@ fn write_reply_fields(comptime T: type, reply: *T, writer: *std.Io.Writer, compt
     if (@typeInfo(T) != .@"struct")
         @compileError("Expected T to be a struct, got: " ++ @typeName(T) ++ " which is a " ++ @tagName(@typeInfo(T)));
 
-    inline for (@typeInfo(T).@"struct".fields) |*field| {
-        if (@typeInfo(field.type) == .@"struct" and @hasDecl(field.type, "is_list_of")) {
-            const list_of_options = comptime field.type.get_options();
-            const list_of = &@field(reply, field.name);
+    const struct_info = @typeInfo(T).@"struct";
+    inline for (struct_info.field_names, struct_info.field_types) |field_name, FieldType| {
+        if (@typeInfo(FieldType) == .@"struct" and @hasDecl(FieldType, "is_list_of")) {
+            const list_of_options = comptime FieldType.get_options();
+            const list_of = &@field(reply, field_name);
             if (list_of_options.length_field) |length_field| {
                 comptime std.debug.assert(!is_root or !std.mem.eql(u8, length_field, "length"));
                 @field(reply, length_field) = @intCast(list_of.items.len);
             }
         }
-        try write_reply_field(field.type, &@field(reply, field.name), writer);
+        try write_reply_field(FieldType, &@field(reply, field_name), writer);
     }
 }
 
 fn write_reply_field(comptime FieldType: type, value: *FieldType, writer: *std.Io.Writer) !void {
     switch (@typeInfo(FieldType)) {
-        .@"enum" => |e| try writer.writeInt(e.tag_type, @intFromEnum(value.*), x11.native_endian),
-        .int => |i| try writer.writeInt(@Type(.{ .int = i }), value.*, x11.native_endian),
+        .@"enum" => |e| try writer.writeInt(e.tag_type, @backingInt(value.*), x11.native_endian),
+        .int => try writer.writeInt(FieldType, value.*, x11.native_endian),
         .bool => try writer.writeInt(x11.Card8, if (value.*) 1 else 0, x11.native_endian),
         .@"struct" => |*s| {
             if (@hasDecl(FieldType, "is_list_of")) {
@@ -52,10 +53,10 @@ fn write_reply_field(comptime FieldType: type, value: *FieldType, writer: *std.I
         },
         .array => |*arr| {
             switch (@typeInfo(arr.child)) {
-                .int => |i| {
+                .int => {
                     // TODO: Use writeAll instead
                     for (value) |element| {
-                        try writer.writeInt(@Type(.{ .int = i }), element, x11.native_endian);
+                        try writer.writeInt(arr.child, element, x11.native_endian);
                     }
                 },
                 else => @compileError("Only int arrays are supported right now, got array of " ++ @typeName(arr.child)),

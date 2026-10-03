@@ -65,6 +65,7 @@ pub const Geometry = @import("misc/Geometry.zig");
 pub const Version = @import("misc/Version.zig");
 pub const fixed = @import("misc/fixed.zig");
 pub const time = @import("misc/time.zig");
+pub const os = @import("misc/os.zig");
 pub const pattern = @import("misc/pattern.zig");
 pub const InputFocus = @import("misc/InputFocus.zig");
 pub const Refcount = @import("misc/Refcount.zig");
@@ -76,6 +77,4 @@ pub const KeySyms = keysym.KeySyms;
 pub const Crtc = @import("display/Crtc.zig");
 pub const ScreenResources = @import("display/ScreenResources.zig");
 
-pub const c_include = @import("c.zig");
-pub const c = c_include.c;
-pub const cKeySym = c_include.KeySym;
+pub const c = @import("c");

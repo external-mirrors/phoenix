@@ -263,7 +263,7 @@ const Key = enum(u8) {
     pub const wimax = Key.wwan;
 
     pub fn to_int(self: Key) u8 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 };
 
@@ -271,12 +271,12 @@ pub fn deinit(_: *Self) void {}
 
 fn x11_keycode_to_linux_key(keycode: x11.KeyCode) Key {
     std.debug.assert(keycode.to_int() >= 8);
-    return @enumFromInt(keycode.to_int() - 8);
+    return @fromBackingInt(keycode.to_int() - 8);
 }
 
 fn linux_key_to_x11_keycode(key: Key) x11.KeyCode {
     std.debug.assert(key.to_int() <= 248);
-    return @enumFromInt(key.to_int() + 8);
+    return @fromBackingInt(key.to_int() + 8);
 }
 
 // TODO: Read keyboard configuration from /usr/share/X11/xkb instead of manual mapping.

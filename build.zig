@@ -93,7 +93,7 @@ fn create_c_translator(b: *std.Build, target: std.Build.ResolvedTarget, optimize
         }) catch @panic("OOM");
     }
 
-    const translator: Translator = .init(b.dependency("translate_c", .{}), .{
+    const translator: Translator = .init(b.dependency("translate_c", .{ .optimize = optimize }), .{
         .c_source_file = b.path("src/c.h"),
         .target = target,
         .optimize = optimize,

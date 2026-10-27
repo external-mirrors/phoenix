@@ -183,6 +183,27 @@ const MaskProgram = struct {
     }
 };
 
+fn choose_egl_config(egl_display: c.EGLDisplay, native_visual_id: c.EGLint, allocator: std.mem.Allocator) !c.EGLConfig {
+    var num_configs: c.EGLint = 0;
+    if (c.eglChooseConfig(egl_display, &config_attr, null, 0, &num_configs) == c.EGL_FALSE or num_configs <= 0)
+        return error.FailedToChooseEglConfig;
+
+    const configs = try allocator.alloc(c.EGLConfig, @intCast(num_configs));
+    defer allocator.free(configs);
+
+    if (c.eglChooseConfig(egl_display, &config_attr, configs.ptr, num_configs, &num_configs) == c.EGL_FALSE)
+        return error.FailedToChooseEglConfig;
+
+    for (configs[0..@intCast(num_configs)]) |egl_config| {
+        var config_native_visual_id: c.EGLint = 0;
+        if (c.eglGetConfigAttrib(egl_display, egl_config, c.EGL_NATIVE_VISUAL_ID, &config_native_visual_id) == c.EGL_TRUE and
+            config_native_visual_id == native_visual_id)
+            return egl_config;
+    }
+
+    return error.FailedToChooseEglConfig;
+}
+
 pub fn init(
     server: *phx.Server,
     width: u32,
@@ -191,6 +212,7 @@ pub fn init(
     screen_type: c_int,
     connection: c.EGLNativeDisplayType,
     window_id: c.EGLNativeWindowType,
+    window_native_visual_id: c.EGLint,
     debug: bool,
     allocator: std.mem.Allocator,
     io: std.Io,
@@ -232,10 +254,7 @@ pub fn init(
     if (c.eglBindAPI(c.EGL_OPENGL_API) == c.EGL_FALSE)
         return error.FailedToBindEgl;
 
-    var egl_config: c.EGLConfig = null;
-    var num_configs: c.EGLint = 0;
-    if (c.eglChooseConfig(egl_display, &config_attr, &egl_config, 1, &num_configs) == c.EGL_FALSE or num_configs != 1)
-        return error.FailedToChooseEglConfig;
+    const egl_config = try choose_egl_config(egl_display, window_native_visual_id, allocator);
 
     const egl_surface = c.eglCreateWindowSurface(egl_display, egl_config, window_id, &surface_attr) orelse return error.FailedToCreateEglWindowSurface;
     errdefer _ = c.eglDestroySurface(egl_display, egl_surface);

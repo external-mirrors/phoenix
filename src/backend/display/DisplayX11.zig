@@ -77,6 +77,7 @@ pub fn init(server: *phx.Server, allocator: std.mem.Allocator, io: std.Io) !Self
         c.EGL_PLATFORM_XCB_SCREEN_EXT,
         connection,
         window_id,
+        @intCast(screen.*.root_visual),
         gl_debug,
         allocator,
         io,
